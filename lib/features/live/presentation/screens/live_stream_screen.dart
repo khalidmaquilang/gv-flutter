@@ -1,5 +1,6 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:video_player/video_player.dart';
 import '../../data/services/live_service.dart';
 import '../../data/models/live_interaction_model.dart';
 
@@ -25,6 +26,9 @@ class _LiveStreamScreenState extends State<LiveStreamScreen>
   final TextEditingController _commentController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
 
+  // Dummy Video
+  late VideoPlayerController _videoController;
+
   // Animations
   late AnimationController _heartAnimController;
   final List<Widget> _floatingHearts = [];
@@ -32,7 +36,15 @@ class _LiveStreamScreenState extends State<LiveStreamScreen>
   @override
   void initState() {
     super.initState();
-    _initAgora();
+    // Agora logic preserved but disabled for now to prevent errors
+    // _initAgora();
+    // Simulate joined state for UI
+    Future.delayed(const Duration(seconds: 1), () {
+      if (mounted) setState(() => _joined = true);
+    });
+
+    _initDummyVideo();
+
     _heartAnimController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 2),
@@ -63,6 +75,24 @@ class _LiveStreamScreenState extends State<LiveStreamScreen>
         );
       }
     });
+  }
+
+  void _initDummyVideo() {
+    // Using a sample video URL for demo purposes
+    _videoController =
+        VideoPlayerController.networkUrl(
+            Uri.parse(
+              'https://flutter.github.io/assets-for-api-docs/assets/videos/butterfly.mp4',
+            ),
+          )
+          ..initialize().then((_) {
+            // Ensure the first frame is shown after the video is initialized
+            if (mounted) {
+              setState(() {});
+              _videoController.play();
+              _videoController.setLooping(true);
+            }
+          });
   }
 
   void _scrollToBottom() {
@@ -134,7 +164,8 @@ class _LiveStreamScreenState extends State<LiveStreamScreen>
 
   @override
   void dispose() {
-    _liveService.leaveChannel();
+    // _liveService.leaveChannel(); // logic preserved
+    _videoController.dispose();
     _heartAnimController.dispose();
     _commentController.dispose();
     _scrollController.dispose();
@@ -147,30 +178,37 @@ class _LiveStreamScreenState extends State<LiveStreamScreen>
       backgroundColor: Colors.black,
       body: Stack(
         children: [
+          // Dummy Video Layer
           Center(
-            child: _joined
-                ? Text(
-                    widget.isBroadcaster ? "Broadcasting..." : "Watching...",
-                    style: const TextStyle(color: Colors.white, fontSize: 20),
+            child: _videoController.value.isInitialized
+                ? AspectRatio(
+                    aspectRatio: _videoController.value.aspectRatio,
+                    child: VideoPlayer(_videoController),
                   )
                 : const CircularProgressIndicator(),
           ),
 
+          // Agora Placeholder / Status (Preserved but hidden or repurposed)
+          if (!_joined)
+            Center(
+              child: Text(
+                "Joining Channel...",
+                style: const TextStyle(color: Colors.white, fontSize: 16),
+              ),
+            ),
+
           // Floating Hearts
           ..._floatingHearts,
 
-          if (widget.isBroadcaster)
-            Positioned(
-              bottom: 30,
-              left: 0,
-              right: 0,
-              child: Center(
-                child: IconButton(
-                  icon: const Icon(Icons.close, color: Colors.white, size: 40),
-                  onPressed: () => Navigator.pop(context),
-                ),
-              ),
+          // Close Button (Top Right)
+          Positioned(
+            top: 40,
+            right: 16,
+            child: IconButton(
+              icon: const Icon(Icons.close, color: Colors.white, size: 30),
+              onPressed: () => Navigator.pop(context),
             ),
+          ),
 
           // Live Chat Overlay
           Positioned(
@@ -194,7 +232,7 @@ class _LiveStreamScreenState extends State<LiveStreamScreen>
                               TextSpan(
                                 text: "${msg.username}: ",
                                 style: TextStyle(
-                                  color: Colors.white.withOpacity(0.7),
+                                  color: Colors.white.withValues(alpha: 0.7),
                                   fontWeight: FontWeight.bold,
                                 ),
                               ),
@@ -225,6 +263,7 @@ class _LiveStreamScreenState extends State<LiveStreamScreen>
                     child: TextField(
                       controller: _commentController,
                       style: const TextStyle(color: Colors.white),
+                      textInputAction: TextInputAction.send,
                       decoration: InputDecoration(
                         hintText: "Say something...",
                         hintStyle: TextStyle(color: Colors.grey[400]),
@@ -236,6 +275,14 @@ class _LiveStreamScreenState extends State<LiveStreamScreen>
                         ),
                         contentPadding: const EdgeInsets.symmetric(
                           horizontal: 20,
+                          vertical: 10,
+                        ),
+                        suffixIcon: IconButton(
+                          icon: const Icon(
+                            Icons.send,
+                            color: Color(0xFFFE2C55),
+                          ),
+                          onPressed: _sendMessage,
                         ),
                       ),
                       onSubmitted: (_) => _sendMessage(),
@@ -250,7 +297,6 @@ class _LiveStreamScreenState extends State<LiveStreamScreen>
                     ),
                     onPressed: () {
                       _liveService.sendReaction();
-                      // _showHeartAnimation(); // Local immediate feedback is handled by stream listener too, but can force it here
                     },
                   ),
                   IconButton(
