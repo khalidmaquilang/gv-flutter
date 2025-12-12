@@ -19,7 +19,7 @@ class ProfileService {
         id: userId,
         name: "User $userId",
         email: "user$userId@example.com",
-        avatar: "https://via.placeholder.com/150",
+        avatar: "https://dummyimage.com/150",
         bio: "TikTok Clone User\nFollow me!",
       );
     }

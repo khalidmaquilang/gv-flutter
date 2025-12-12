@@ -156,9 +156,9 @@ class LiveService {
           id: index,
           name: "Live User $index",
           email: "live$index@test.com",
-          avatar: "https://via.placeholder.com/50",
+          avatar: "https://dummyimage.com/50",
         ),
-        thumbnailUrl: "https://via.placeholder.com/300x400",
+        thumbnailUrl: "https://dummyimage.com/300x400",
         viewersCount: Random().nextInt(5000) + 100,
         title: "Live Stream #$index - Join now!",
       );

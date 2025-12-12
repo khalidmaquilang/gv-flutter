@@ -15,7 +15,7 @@ class ChatService {
         id: index + 10,
         name: "Chat User $index",
         email: "chat$index@test.com",
-        avatar: "https://via.placeholder.com/50",
+        avatar: "https://dummyimage.com/50",
         bio: "Hi",
       ),
     );
