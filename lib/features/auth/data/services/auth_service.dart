@@ -8,7 +8,16 @@ class AuthService {
   final Dio _dio;
   final _storage = const FlutterSecureStorage();
 
-  AuthService({Dio? dio}) : _dio = dio ?? Dio();
+  AuthService({Dio? dio})
+    : _dio =
+          dio ??
+          Dio(
+            BaseOptions(
+              baseUrl: ApiConstants.baseUrl,
+              connectTimeout: const Duration(seconds: 10),
+              receiveTimeout: const Duration(seconds: 10),
+            ),
+          );
 
   Future<User> login(String email, String password) async {
     try {
@@ -54,5 +63,28 @@ class AuthService {
   Future<void> logout() async {
     await _storage.delete(key: 'auth_token');
     _dio.options.headers.remove('Authorization');
+  }
+
+  Future<User?> restoreSession() async {
+    try {
+      final token = await _storage
+          .read(key: 'auth_token')
+          .timeout(
+            const Duration(seconds: 5),
+            onTimeout: () {
+              return null;
+            },
+          );
+
+      if (token == null) return null;
+
+      _dio.options.headers['Authorization'] = 'Bearer $token';
+      final response = await _dio.get(ApiConstants.baseUrl + ApiConstants.user);
+      return User.fromJson(response.data);
+    } catch (e) {
+      // If token is invalid, expired, or storage fails, clear it and return null
+      await logout();
+      return null;
+    }
   }
 }

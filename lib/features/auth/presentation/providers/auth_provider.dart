@@ -38,4 +38,17 @@ class AuthController extends StateNotifier<AsyncValue<User?>> {
     await _authService.logout();
     state = const AsyncValue.data(null);
   }
+
+  Future<void> checkAuthStatus() async {
+    // Delay to ensure we are not in the middle of a build or init frame
+    await Future.delayed(Duration.zero);
+
+    state = const AsyncValue.loading();
+    try {
+      final user = await _authService.restoreSession();
+      state = AsyncValue.data(user);
+    } catch (e, st) {
+      state = AsyncValue.error(e, st);
+    }
+  }
 }
