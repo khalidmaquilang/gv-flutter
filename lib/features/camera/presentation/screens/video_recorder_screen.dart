@@ -322,13 +322,20 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
           }
 
           if (_countdown <= 0) {
+            _audioPlayer.play(AssetSource('sounds/start_record.wav'));
             timer.cancel();
-            startAction();
+            // Wait for sound to finish (~400ms) before starting capture
+            Future.delayed(const Duration(milliseconds: 450), () {
+              if (mounted) startAction();
+            });
           }
         });
       } else {
         // Immediate
-        startAction();
+        _audioPlayer.play(AssetSource('sounds/start_record.wav'));
+        Future.delayed(const Duration(milliseconds: 450), () {
+          if (mounted) startAction();
+        });
       }
     }
   }
