@@ -219,7 +219,7 @@ class _PreviewScreenState extends State<PreviewScreen> {
               ),
             ),
 
-          // Audio Mixing Controls (Only for mic-only videos)
+          // Audio Mixing Controls (Only show if NO sound is selected)
           if (widget.isVideo && widget.sound == null)
             Positioned(
               top: 100,

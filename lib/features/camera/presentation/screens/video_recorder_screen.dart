@@ -13,8 +13,6 @@ import '../../data/models/sound_model.dart';
 import 'sound_selection_screen.dart';
 import '../../data/services/deepar_service.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:ffmpeg_kit_flutter/ffmpeg_kit.dart';
-import 'package:ffmpeg_kit_flutter/return_code.dart';
 
 class VideoRecorderScreen extends ConsumerStatefulWidget {
   const VideoRecorderScreen({super.key});
@@ -322,32 +320,9 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
       }
 
       if (file != null) {
-        if (_selectedSound != null) {
-          // Strip audio if music was playing (Lip Sync)
-          final dir = await getTemporaryDirectory();
-          final outPath =
-              "${dir.path}/no_audio_${DateTime.now().millisecondsSinceEpoch}.mp4";
-
-          // -an disables audio recording
-          final session = await FFmpegKit.execute(
-            "-i ${file.path} -c copy -an $outPath",
-          );
-          final returnCode = await session.getReturnCode();
-
-          if (ReturnCode.isSuccess(returnCode)) {
-            debugPrint("FFmpeg: Audio stripped successfully");
-            _recordedFiles.add(XFile(outPath));
-          } else {
-            debugPrint("FFmpeg: Failed to strip audio. Using original.");
-            _recordedFiles.add(XFile(file.path));
-          }
-        } else {
-          _recordedFiles.add(XFile(file.path));
-        }
+        _recordedFiles.add(XFile(file.path));
       }
     }
-
-    if (!mounted) return;
 
     final filesToPreview = List<XFile>.from(_recordedFiles);
     final soundToPass = _selectedSound;

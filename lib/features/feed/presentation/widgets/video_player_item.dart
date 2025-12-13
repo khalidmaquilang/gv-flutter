@@ -32,6 +32,10 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem> {
         VideoPlayerController.networkUrl(Uri.parse(widget.video.videoUrl))
           ..initialize()
               .then((_) {
+                if (!mounted) {
+                  // Widget was disposed while loading
+                  return;
+                }
                 setState(() {
                   _isLoading = false;
                 });
