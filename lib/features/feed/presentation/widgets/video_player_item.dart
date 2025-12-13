@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:video_player/video_player.dart';
 import '../../data/models/video_model.dart';
 import '../../data/services/video_service.dart';
@@ -59,6 +60,12 @@ class _VideoPlayerItemState extends State<VideoPlayerItem> {
     }
   }
 
+  Future<void> _shareVideo() async {
+    await Share.share(
+      'Check out this video by @${widget.video.user.name}: ${widget.video.videoUrl}',
+    );
+  }
+
   void _showComments() {
     showModalBottomSheet(
       context: context,
@@ -104,7 +111,7 @@ class _VideoPlayerItemState extends State<VideoPlayerItem> {
                 onTap: _showComments,
               ),
               const SizedBox(height: 16),
-              _buildAction(Icons.share, "Share", onTap: () {}),
+              _buildAction(Icons.share, "Share", onTap: _shareVideo),
             ],
           ),
         ),
