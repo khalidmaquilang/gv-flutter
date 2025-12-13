@@ -329,11 +329,9 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
 
     setState(() {
       isRecording = false;
-      isPaused = false;
-      _segments.clear();
+      isPaused = true;
       _currentSegmentProgress = 0.0;
-      _recordedFiles.clear();
-      _selectedSound = null;
+      // Navigate to preview without clearing state so user can "Back" to edit
     });
 
     if (filesToPreview.isNotEmpty) {

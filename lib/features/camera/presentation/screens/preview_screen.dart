@@ -198,6 +198,21 @@ class _PreviewScreenState extends State<PreviewScreen> {
                   ),
           ),
 
+          // Back Button
+          Positioned(
+            top: 60,
+            left: 20,
+            child: IconButton(
+              onPressed: () => Navigator.of(context).pop(),
+              icon: const Icon(
+                Icons.arrow_back_ios,
+                color: Colors.white,
+                size: 30,
+                shadows: [Shadow(color: Colors.black, blurRadius: 4)],
+              ),
+            ),
+          ),
+
           // Progress Indication
           if (widget.files.length > 1)
             Positioned(
