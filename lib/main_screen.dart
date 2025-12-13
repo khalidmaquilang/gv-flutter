@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
-import '../../features/feed/presentation/screens/feed_screen.dart';
-import '../../features/camera/presentation/screens/video_recorder_screen.dart';
-import '../../features/profile/presentation/screens/profile_screen.dart';
-import '../../features/chat/presentation/screens/chat_list_screen.dart';
+import 'package:test_flutter/features/feed/presentation/screens/feed_screen.dart';
+import 'package:test_flutter/features/camera/presentation/screens/video_recorder_screen.dart';
+import 'package:test_flutter/features/profile/presentation/screens/profile_screen.dart';
+import 'package:test_flutter/features/chat/presentation/screens/chat_list_screen.dart';
+import 'package:test_flutter/features/discover/presentation/screens/discover_screen.dart';
 
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
@@ -18,7 +19,7 @@ class _MainScreenState extends State<MainScreen> {
 
   final List<Widget> _pages = [
     const FeedScreen(),
-    const Center(child: Text("Discover")),
+    const DiscoverScreen(),
     const SizedBox.shrink(), // Placeholder for Record
     const ChatListScreen(),
     const ProfileScreen(userId: 1, isCurrentUser: true), // Mock current user
