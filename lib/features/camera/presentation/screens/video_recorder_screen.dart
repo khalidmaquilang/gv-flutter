@@ -324,6 +324,54 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
       }
     }
 
+    // Calculate total duration
+    double totalProgress = _segments.fold(0.0, (sum, seg) => sum + seg);
+    // If we just stopped a recording, add its progress (which wasn't added to _segments yet)
+    // Actually, in the logic above:
+    // We added the file to _recordedFiles, but we didn't explicitly add _currentSegmentProgress to _segments
+    // because we are about to clear it.
+    // However, if we fail validation, we MUST add it to _segments to keep state consistent?
+    // Or just calculate for validation now.
+    // If the last block executed (isRecording was true), we have a new file.
+    // But _segments was NOT updated in that block (lines 313-325).
+    // So totalProgress currently only has OLD segments.
+    // We need to account for the just-finished segment.
+
+    // Wait, _currentSegmentProgress is still valid here from the timer?
+    // Yes.
+
+    double currentDuration = totalProgress * _maxDuration;
+    if (isRecording) {
+      currentDuration += (_currentSegmentProgress * _maxDuration);
+    }
+
+    if (currentDuration < 1.0) {
+      if (mounted) {
+        setState(() {
+          // We finished the "recording" action, but we are essentially "pausing" now
+          // because we are not navigating.
+          // We need to ensure the LAST file is added to _segments if we want to keep it?
+          // The block above added it to _recordedFiles.
+          // We should add its progress to _segments too, so if we Resume, it's counted.
+          if (isRecording) {
+            // If we just transitioned from recording
+            _segments.add(_currentSegmentProgress);
+            isPaused = true;
+            isRecording = false;
+            _currentSegmentProgress = 0.0;
+          } else {
+            // If we were already paused and just hit check
+            // State is already clean.
+          }
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Recording must be at least 1 second")),
+        );
+      }
+      return;
+    }
+
     final filesToPreview = List<XFile>.from(_recordedFiles);
     final soundToPass = _selectedSound;
 
