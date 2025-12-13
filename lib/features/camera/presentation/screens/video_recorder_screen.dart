@@ -548,163 +548,195 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
             ),
 
           // Top Actions
-          if (!isRecording)
-            Positioned(
-              top: 48,
-              left: 16,
-              child: IconButton(
-                icon: const Icon(Icons.close, color: Colors.white, size: 28),
-                onPressed: () => Navigator.of(context).pop(),
+          Positioned(
+            top: 48,
+            left: 16,
+            child: IgnorePointer(
+              ignoring: isRecording,
+              child: AnimatedOpacity(
+                duration: const Duration(milliseconds: 200),
+                opacity: isRecording ? 0.0 : 1.0,
+                child: IconButton(
+                  icon: const Icon(Icons.close, color: Colors.white, size: 28),
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
               ),
             ),
+          ),
 
           // Select Sound
-          if (!isRecording)
-            Positioned(
-              top: 48,
-              left: 0,
-              right: 0,
-              child: Center(
-                child: GestureDetector(
-                  onTap: _selectSound,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 15,
-                      vertical: 8,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.5),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(
-                          Icons.music_note,
-                          color: Colors.white,
-                          size: 16,
-                        ),
-                        const SizedBox(width: 5),
-                        Text(
-                          _selectedSound?.title ?? "Add Sound",
-                          style: const TextStyle(color: Colors.white),
-                        ),
-                        if (_selectedSound != null) ...[
-                          const SizedBox(width: 5),
-                          GestureDetector(
-                            onTap: () {
-                              setState(() {
-                                _selectedSound = null;
-                              });
-                            },
-                            child: const Icon(
-                              Icons.close,
-                              color: Colors.white,
-                              size: 14,
-                            ),
+          // Select Sound
+          Positioned(
+            top: 48,
+            left: 0,
+            right: 0,
+            child: IgnorePointer(
+              ignoring: isRecording,
+              child: AnimatedOpacity(
+                duration: const Duration(milliseconds: 200),
+                opacity: isRecording ? 0.0 : 1.0,
+                child: Center(
+                  child: GestureDetector(
+                    onTap: _selectSound,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 15,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.5),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.music_note,
+                            color: Colors.white,
+                            size: 16,
                           ),
+                          const SizedBox(width: 5),
+                          Text(
+                            _selectedSound?.title ?? "Add Sound",
+                            style: const TextStyle(color: Colors.white),
+                          ),
+                          if (_selectedSound != null) ...[
+                            const SizedBox(width: 5),
+                            GestureDetector(
+                              onTap: () {
+                                setState(() {
+                                  _selectedSound = null;
+                                });
+                              },
+                              child: const Icon(
+                                Icons.close,
+                                color: Colors.white,
+                                size: 14,
+                              ),
+                            ),
+                          ],
                         ],
-                      ],
+                      ),
                     ),
                   ),
                 ),
               ),
             ),
+          ),
 
           // Floating Side Menu
-          if (!isRecording)
-            Positioned(
-              top: 48,
-              right: 16,
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-                decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.4),
-                  borderRadius: BorderRadius.circular(24),
-                ),
-                child: Column(
-                  children: [
-                    // Flip Camera
-                    _buildMenuIcon(
-                      icon: Icons.flip_camera_ios,
-                      label: "Flip",
-                      onTap: () {
-                        _deepArController?.flipCamera();
-                      },
-                    ),
-                    const SizedBox(height: 16),
+          // Floating Side Menu
+          Positioned(
+            top: 48,
+            right: 16,
+            child: IgnorePointer(
+              ignoring: isRecording,
+              child: AnimatedOpacity(
+                duration: const Duration(milliseconds: 200),
+                opacity: isRecording ? 0.0 : 1.0,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 8,
+                    horizontal: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.4),
+                    borderRadius: BorderRadius.circular(24),
+                  ),
+                  child: Column(
+                    children: [
+                      // Flip Camera
+                      _buildMenuIcon(
+                        icon: Icons.flip_camera_ios,
+                        label: "Flip",
+                        onTap: () {
+                          _deepArController?.flipCamera();
+                        },
+                      ),
+                      const SizedBox(height: 16),
 
-                    // Flash Toggle
-                    _buildMenuIcon(
-                      icon: _flashMode == FlashState.off
-                          ? Icons.flash_off
-                          : Icons.flash_on,
-                      label: "Flash",
-                      onTap: _toggleFlash,
-                      isActive: _flashMode == FlashState.on,
-                    ),
-                    const SizedBox(height: 16),
+                      // Flash Toggle
+                      _buildMenuIcon(
+                        icon: _flashMode == FlashState.off
+                            ? Icons.flash_off
+                            : Icons.flash_on,
+                        label: "Flash",
+                        onTap: _toggleFlash,
+                        isActive: _flashMode == FlashState.on,
+                      ),
+                      const SizedBox(height: 16),
 
-                    // Timer Toggle
-                    _buildMenuIcon(
-                      icon: _timerDelay == 0
-                          ? Icons.timer_off_outlined
-                          : (_timerDelay == 3 ? Icons.timer_3 : Icons.timer_10),
-                      label: "Timer",
-                      onTap: _toggleTimer,
-                      isActive: _timerDelay > 0,
-                    ),
-                  ],
+                      // Timer Toggle
+                      _buildMenuIcon(
+                        icon: _timerDelay == 0
+                            ? Icons.timer_off_outlined
+                            : (_timerDelay == 3
+                                  ? Icons.timer_3
+                                  : Icons.timer_10),
+                        label: "Timer",
+                        onTap: _toggleTimer,
+                        isActive: _timerDelay > 0,
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
+          ),
 
           // Effects / Filters List (New)
-          if (!isRecording)
-            Positioned(
-              bottom: 150, // Above controls
-              left: 0,
-              right: 0,
-              child: SizedBox(
-                height: 70,
-                child: ListView.builder(
-                  scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  itemCount: _effects.length,
-                  itemBuilder: (context, index) {
-                    final effect = _effects[index];
-                    final isSelected = _selectedEffectIndex == index;
-                    return GestureDetector(
-                      onTap: () => _switchEffect(index),
-                      child: Container(
-                        margin: const EdgeInsets.only(right: 12),
-                        width: 60,
-                        height: 60,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: isSelected
-                                ? AppColors.neonPink
-                                : Colors.white,
-                            width: 2,
+          // Effects / Filters List (New)
+          Positioned(
+            bottom: 150, // Above controls
+            left: 0,
+            right: 0,
+            child: IgnorePointer(
+              ignoring: isRecording,
+              child: AnimatedOpacity(
+                duration: const Duration(milliseconds: 200),
+                opacity: isRecording ? 0.0 : 1.0,
+                child: SizedBox(
+                  height: 70,
+                  child: ListView.builder(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    itemCount: _effects.length,
+                    itemBuilder: (context, index) {
+                      final effect = _effects[index];
+                      final isSelected = _selectedEffectIndex == index;
+                      return GestureDetector(
+                        onTap: () => _switchEffect(index),
+                        child: Container(
+                          margin: const EdgeInsets.only(right: 12),
+                          width: 60,
+                          height: 60,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: isSelected
+                                  ? AppColors.neonPink
+                                  : Colors.white,
+                              width: 2,
+                            ),
+                            color: Colors.black.withOpacity(0.5),
                           ),
-                          color: Colors.black.withOpacity(0.5),
-                        ),
-                        child: Center(
-                          child: Text(
-                            effect == 'none' ? 'Ø' : effect[0].toUpperCase(),
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
+                          child: Center(
+                            child: Text(
+                              effect == 'none' ? 'Ø' : effect[0].toUpperCase(),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                    );
-                  },
+                      );
+                    },
+                  ),
                 ),
               ),
             ),
+          ),
 
           // Bottom Area
           Positioned(
@@ -865,34 +897,44 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
                 const SizedBox(height: 20),
 
                 // Mode Selector
-                if (!isRecording)
-                  SizedBox(
-                    height: 30,
-                    child: ListView.builder(
-                      scrollDirection: Axis.horizontal,
-                      shrinkWrap: true,
-                      itemCount: _modes.length,
-                      itemBuilder: (context, index) {
-                        bool isSelected = _selectedModeIndex == index;
-                        return GestureDetector(
-                          onTap: () => _onModeChanged(index),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 15),
-                            child: Text(
-                              _modes[index],
-                              style: TextStyle(
-                                color: isSelected ? Colors.white : Colors.grey,
-                                fontWeight: isSelected
-                                    ? FontWeight.bold
-                                    : FontWeight.normal,
-                                fontSize: 14,
+                AnimatedSize(
+                  duration: const Duration(milliseconds: 200),
+                  child: SizedBox(
+                    height: (!isRecording && !isPaused) ? 30 : 0,
+                    child: AnimatedOpacity(
+                      duration: const Duration(milliseconds: 200),
+                      opacity: (!isRecording && !isPaused) ? 1.0 : 0.0,
+                      child: ListView.builder(
+                        scrollDirection: Axis.horizontal,
+                        shrinkWrap: true,
+                        itemCount: _modes.length,
+                        itemBuilder: (context, index) {
+                          bool isSelected = _selectedModeIndex == index;
+                          return GestureDetector(
+                            onTap: () => _onModeChanged(index),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 15,
+                              ),
+                              child: Text(
+                                _modes[index],
+                                style: TextStyle(
+                                  color: isSelected
+                                      ? Colors.white
+                                      : Colors.grey,
+                                  fontWeight: isSelected
+                                      ? FontWeight.bold
+                                      : FontWeight.normal,
+                                  fontSize: 14,
+                                ),
                               ),
                             ),
-                          ),
-                        );
-                      },
+                          );
+                        },
+                      ),
                     ),
                   ),
+                ),
               ],
             ),
           ),
