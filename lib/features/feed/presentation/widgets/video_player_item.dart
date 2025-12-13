@@ -66,6 +66,16 @@ class _VideoPlayerItemState extends State<VideoPlayerItem> {
     );
   }
 
+  void _togglePlay() {
+    setState(() {
+      if (_controller.value.isPlaying) {
+        _controller.pause();
+      } else {
+        _controller.play();
+      }
+    });
+  }
+
   void _showComments() {
     showModalBottomSheet(
       context: context,
@@ -80,18 +90,20 @@ class _VideoPlayerItemState extends State<VideoPlayerItem> {
     return Stack(
       children: [
         // Video Layer
-        Container(
-          color: Colors.black,
-          child: Center(
-            child: _isLoading
-                ? const CircularProgressIndicator()
-                : AspectRatio(
-                    aspectRatio: _controller.value.aspectRatio,
-                    child: VideoPlayer(_controller),
-                  ),
+        GestureDetector(
+          onTap: _togglePlay,
+          child: Container(
+            color: Colors.black,
+            child: Center(
+              child: _isLoading
+                  ? const CircularProgressIndicator()
+                  : AspectRatio(
+                      aspectRatio: _controller.value.aspectRatio,
+                      child: VideoPlayer(_controller),
+                    ),
+            ),
           ),
         ),
-
         // Right Side Actions (Avatar, Like, Comment, Share)
         Positioned(
           bottom: 100,
