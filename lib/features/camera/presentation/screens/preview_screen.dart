@@ -136,29 +136,6 @@ class _PreviewScreenState extends State<PreviewScreen> {
               ),
             ),
 
-          // Debug Info Overlay (Temporary)
-          if (_videoController != null)
-            Positioned(
-              top: 100,
-              left: 20,
-              right: 20,
-              child: Container(
-                padding: const EdgeInsets.all(8),
-                color: Colors.black54,
-                child: Text(
-                  "Debug Info:\n"
-                  "File: ${widget.files[_currentFileIndex].path.split('/').last}\n"
-                  "Init: ${_videoController!.value.isInitialized}\n"
-                  "Playing: ${_videoController!.value.isPlaying}\n"
-                  "Pos: ${_videoController!.value.position}\n"
-                  "Dur: ${_videoController!.value.duration}\n"
-                  "Ratio: ${_videoController!.value.aspectRatio}\n"
-                  "Error: ${_videoController!.value.errorDescription}",
-                  style: const TextStyle(color: Colors.white, fontSize: 10),
-                ),
-              ),
-            ),
-
           Positioned(
             top: 48,
             left: 16,
