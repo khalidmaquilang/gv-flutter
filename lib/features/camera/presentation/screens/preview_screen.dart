@@ -4,31 +4,34 @@ import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 
 class PreviewScreen extends StatefulWidget {
-  final XFile videoFile;
+  final XFile file;
+  final bool isVideo;
 
-  const PreviewScreen({super.key, required this.videoFile});
+  const PreviewScreen({super.key, required this.file, this.isVideo = true});
 
   @override
   State<PreviewScreen> createState() => _PreviewScreenState();
 }
 
 class _PreviewScreenState extends State<PreviewScreen> {
-  late VideoPlayerController _controller;
+  VideoPlayerController? _videoController;
 
   @override
   void initState() {
     super.initState();
-    _controller = VideoPlayerController.file(File(widget.videoFile.path))
-      ..initialize().then((_) {
-        setState(() {});
-        _controller.play();
-        _controller.setLooping(true);
-      });
+    if (widget.isVideo) {
+      _videoController = VideoPlayerController.file(File(widget.file.path))
+        ..initialize().then((_) {
+          setState(() {});
+          _videoController?.play();
+          _videoController?.setLooping(true);
+        });
+    }
   }
 
   @override
   void dispose() {
-    _controller.dispose();
+    _videoController?.dispose();
     super.dispose();
   }
 
@@ -39,12 +42,15 @@ class _PreviewScreenState extends State<PreviewScreen> {
       body: Stack(
         children: [
           Center(
-            child: _controller.value.isInitialized
-                ? AspectRatio(
-                    aspectRatio: _controller.value.aspectRatio,
-                    child: VideoPlayer(_controller),
-                  )
-                : const CircularProgressIndicator(),
+            child: widget.isVideo
+                ? (_videoController != null &&
+                          _videoController!.value.isInitialized
+                      ? AspectRatio(
+                          aspectRatio: _videoController!.value.aspectRatio,
+                          child: VideoPlayer(_videoController!),
+                        )
+                      : const CircularProgressIndicator())
+                : Image.file(File(widget.file.path), fit: BoxFit.contain),
           ),
           Positioned(
             top: 48,
@@ -59,9 +65,13 @@ class _PreviewScreenState extends State<PreviewScreen> {
             right: 16,
             child: ElevatedButton(
               onPressed: () {
-                // Todo: Upload Video
+                // Todo: Upload Logic
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text("Uploading Video... (Mock)")),
+                  SnackBar(
+                    content: Text(
+                      "Uploading ${widget.isVideo ? 'Video' : 'Photo'}... (Mock)",
+                    ),
+                  ),
                 );
               },
               style: ElevatedButton.styleFrom(

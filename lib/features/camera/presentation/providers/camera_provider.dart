@@ -41,6 +41,21 @@ class CameraNotifier extends StateNotifier<AsyncValue<CameraController?>> {
     return file;
   }
 
+  Future<XFile?> takePicture() async {
+    final file = await _service.takePicture();
+    return file;
+  }
+
+  Future<void> switchCamera() async {
+    state = const AsyncValue.loading();
+    try {
+      await _service.switchCamera();
+      state = AsyncValue.data(_service.controller);
+    } catch (e, st) {
+      state = AsyncValue.error(e, st);
+    }
+  }
+
   @override
   void dispose() {
     _service.dispose();
