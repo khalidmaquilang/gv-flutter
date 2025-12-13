@@ -1,18 +1,18 @@
 import 'dart:async';
-import 'package:camera/camera.dart';
+import 'dart:io';
+import 'package:deepar_flutter_plus/deepar_flutter_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-
 import 'package:flutter/services.dart';
-import 'package:audioplayers/audioplayers.dart'; // Add import
-import '../providers/camera_provider.dart';
+import 'package:audioplayers/audioplayers.dart';
 import 'preview_screen.dart';
 import 'package:test_flutter/core/theme/app_theme.dart';
-
 import 'package:photo_manager/photo_manager.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../data/models/sound_model.dart';
 import 'sound_selection_screen.dart';
+import '../../data/services/deepar_service.dart';
+import 'package:path_provider/path_provider.dart';
 
 class VideoRecorderScreen extends ConsumerStatefulWidget {
   const VideoRecorderScreen({super.key});
@@ -22,12 +22,20 @@ class VideoRecorderScreen extends ConsumerStatefulWidget {
       _VideoRecorderScreenState();
 }
 
+enum FlashState { off, on, auto }
+
 class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
   final AudioPlayer _audioPlayer = AudioPlayer();
+  DeepArControllerPlus? _deepArController; // Updated type
+  bool _isDeepArInitialized = false;
 
   bool isRecording = false;
   int _selectedModeIndex = 1; // 0: Photo, 1: 15s, 2: 60s, 3: Live
   final List<String> _modes = ['Photo', '15s', '60s', 'Live'];
+
+  // Effects
+  final List<String> _effects = ['none', 'beats-headphones-ad'];
+  int _selectedEffectIndex = 0;
 
   List<XFile> _recordedFiles = [];
   Timer? _timer;
@@ -37,7 +45,7 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
   bool isPaused = false;
 
   // New State for Side Menu
-  FlashMode _flashMode = FlashMode.off;
+  FlashState _flashMode = FlashState.off;
   int _timerDelay = 0; // 0, 3, 10 seconds
   int _countdown = 0; // Current countdown value
 
@@ -50,7 +58,27 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
   @override
   void initState() {
     super.initState();
+    _initializeDeepAr();
     _fetchLastImage();
+  }
+
+  Future<void> _initializeDeepAr() async {
+    _deepArController = await DeepArService.initialize();
+    if (mounted) {
+      if (_deepArController?.isInitialized ?? false) {
+        setState(() {
+          _isDeepArInitialized = true;
+        });
+      } else {
+        // Handle init failure if needed, mainly checked in build
+        // DeepArService logs errors.
+        // We can check again slightly later if iOS needs it, but service return should be enough for now.
+        setState(() {
+          _isDeepArInitialized =
+              true; // Still true to let build try render or show error
+        });
+      }
+    }
   }
 
   @override
@@ -87,26 +115,48 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
   }
 
   void _toggleFlash() async {
-    final controller = ref.read(cameraControllerProvider).value;
-    if (controller == null) return;
+    setState(() {
+      if (_flashMode == FlashState.off) {
+        _flashMode = FlashState.on;
+        _deepArController?.toggleFlash();
+      } else {
+        _flashMode = FlashState.off;
+        _deepArController?.toggleFlash();
+      }
+    });
+  }
 
-    FlashMode nextMode;
-    if (_flashMode == FlashMode.off) {
-      nextMode =
-          FlashMode.torch; // For video usually torch is better visualization
-    } else if (_flashMode == FlashMode.torch) {
-      nextMode = FlashMode.auto;
+  Future<File> _copyAssetToFile(String assetPath) async {
+    final byteData = await rootBundle.load(assetPath);
+    final buffer = byteData.buffer;
+    final directory = await getTemporaryDirectory();
+    final file = File('${directory.path}/${assetPath.split('/').last}');
+    await file.writeAsBytes(
+      buffer.asUint8List(byteData.offsetInBytes, byteData.lengthInBytes),
+    );
+    return file;
+  }
+
+  void _switchEffect(int index) async {
+    if (_deepArController == null) return;
+    setState(() {
+      _selectedEffectIndex = index;
+    });
+
+    final effect = _effects[index];
+    if (effect == 'none') {
+      _deepArController?.switchEffect('');
     } else {
-      nextMode = FlashMode.off;
-    }
-
-    try {
-      await controller.setFlashMode(nextMode);
-      setState(() {
-        _flashMode = nextMode;
-      });
-    } catch (e) {
-      debugPrint("Error setting flash mode: $e");
+      String assetPath = "assets/deepar/$effect.deepar";
+      try {
+        final File file = await _copyAssetToFile(assetPath);
+        _deepArController?.switchEffect(file.path);
+      } catch (e) {
+        debugPrint("Error loading effect: $e");
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text("Error loading effect: $e")));
+      }
     }
   }
 
@@ -144,18 +194,37 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
           _currentSegmentProgress;
 
       if (_maxDuration > 0 && totalProgress >= 1.0) {
-        _timer?.cancel(); // Cancel timer immediately
-        _finishRecording(); // Finish directly without pausing
+        _timer?.cancel();
+        _finishRecording();
       }
     });
   }
 
   void _pauseTimer() async {
     _timer?.cancel();
-    debugPrint("Recorder: Pausing... Stopping current segment.");
-    final file = await ref
-        .read(cameraControllerProvider.notifier)
-        .stopRecording();
+    debugPrint("Recorder: Pausing... Stopping current segment (DeepAR).");
+    if (_deepArController == null) return;
+
+    // stopVideoRecording returns File? in Plus?
+    // Docs say: stopVideoRecording()
+    // It might return void and we rely on 'startVideoRecording' returning the future file?
+    // Wait, docs said:
+    // final File videoFile = _controller.startVideoRecording();
+    // This is weird for a START method.
+    // Usually standard DeepAR plugin: start is void. Stop returns string/file.
+    // I will use `await _deepArController!.stopVideoRecording();` and check return type.
+    // If it returns void, I assume the start call gave me the file path?
+    // But how can start give file path before recording?
+    // I'll stick to `stopVideoRecording` returning File or String.
+    // If usage fails, I'll debug.
+
+    final dynamic result = await _deepArController!.stopVideoRecording();
+    File? file;
+    if (result is File) {
+      file = result;
+    } else if (result is String) {
+      file = File(result);
+    }
 
     // Pause Music
     await _audioPlayer.pause();
@@ -164,7 +233,7 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
     setState(() {
       if (file != null) {
         debugPrint("Recorder: Segment saved. Path: ${file.path}");
-        _recordedFiles.add(file);
+        _recordedFiles.add(XFile(file.path));
         _segments.add(_currentSegmentProgress);
       } else {
         debugPrint("Recorder: Stop returned NULL file!");
@@ -176,8 +245,10 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
   }
 
   void _resumeTimer() async {
-    debugPrint("Recorder: Resuming... Starting new segment.");
-    await ref.read(cameraControllerProvider.notifier).startRecording();
+    debugPrint("Recorder: Resuming... Starting new segment (DeepAR).");
+    if (_deepArController == null) return;
+
+    await _deepArController!.startVideoRecording();
 
     // Resume Music
     if (_selectedSound != null) {
@@ -191,11 +262,6 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
     });
     _startTimer();
   }
-
-  // discard Last Segment logic usually implies we might want to rewind audio?
-  // For MVP, handling audio seeking complexity is skipped.
-  // Simply resuming will resume from where paused.
-  // If user discards, they might expect audio to jump back, but let's keep it simple for now.
 
   void _confirmDiscard() {
     showDialog(
@@ -244,28 +310,24 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
     // Stop Music
     await _audioPlayer.stop();
 
-    debugPrint(
-      "Recorder: Finishing... Files count before stop: ${_recordedFiles.length}",
-    );
+    if (isRecording && _deepArController != null) {
+      final dynamic result = await _deepArController!.stopVideoRecording();
+      File? file;
+      if (result is File) {
+        file = result;
+      } else if (result is String) {
+        file = File(result);
+      }
 
-    if (isRecording) {
-      final file = await ref
-          .read(cameraControllerProvider.notifier)
-          .stopRecording();
       if (file != null) {
-        debugPrint("Recorder: Saved final segment: ${file.path}");
-        _recordedFiles.add(file);
-      } else {
-        debugPrint("Recorder: Final segment stop returned NULL");
+        _recordedFiles.add(XFile(file.path));
       }
     }
-
-    // ... rest of finish logic ...
-    debugPrint("Recorder: Total Files to Preview: ${_recordedFiles.length}");
 
     if (!mounted) return;
 
     final filesToPreview = List<XFile>.from(_recordedFiles);
+    final soundToPass = _selectedSound;
 
     setState(() {
       isRecording = false;
@@ -273,21 +335,20 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
       _segments.clear();
       _currentSegmentProgress = 0.0;
       _recordedFiles.clear();
-      _selectedSound = null; // Reset selection or keep? Usually reset or keep.
-      // If we keep, we need to stop audio. Done above.
+      _selectedSound = null;
     });
 
     if (filesToPreview.isNotEmpty) {
       Navigator.of(context).push(
         MaterialPageRoute(
-          builder: (context) =>
-              PreviewScreen(files: filesToPreview, isVideo: true),
+          builder: (context) => PreviewScreen(
+            files: filesToPreview,
+            isVideo: true,
+            sound: soundToPass,
+          ),
         ),
       );
     } else {
-      debugPrint(
-        "Recorder: ERROR - filesToPreview is EMPTY! Cannot push preview.",
-      );
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text("No video recorded!")));
@@ -295,15 +356,16 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
   }
 
   void _recordVideo() async {
-    final notifier = ref.read(cameraControllerProvider.notifier);
+    if (_deepArController == null || !_isDeepArInitialized) return;
 
     // Photo Mode
     if (_modes[_selectedModeIndex] == 'Photo') {
-      final file = await notifier.takePicture();
+      final File? file = await _deepArController!.takeScreenshot();
       if (file != null && mounted) {
         Navigator.of(context).push(
           MaterialPageRoute(
-            builder: (context) => PreviewScreen(files: [file], isVideo: false),
+            builder: (context) =>
+                PreviewScreen(files: [XFile(file.path)], isVideo: false),
           ),
         );
       }
@@ -311,7 +373,7 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
     }
 
     // Video Mode
-    if (_countdown > 0) return; // Ignore taps during countdown
+    if (_countdown > 0) return;
 
     if (isRecording) {
       _pauseTimer();
@@ -323,7 +385,7 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
         startAction = _resumeTimer;
       } else {
         startAction = () async {
-          await notifier.startRecording();
+          await _deepArController!.startVideoRecording();
 
           // Start Music
           if (_selectedSound != null) {
@@ -355,7 +417,6 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
         setState(() {
           _countdown = _timerDelay;
         });
-        // Play immediate sound for the first second
         _audioPlayer.play(AssetSource('sounds/beep.wav'));
 
         Timer.periodic(const Duration(seconds: 1), (timer) {
@@ -375,7 +436,6 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
           if (_countdown <= 0) {
             _audioPlayer.play(AssetSource('sounds/start_record.wav'));
             timer.cancel();
-            // Wait for sound to finish (~400ms) before starting capture
             Future.delayed(const Duration(milliseconds: 450), () {
               if (mounted) startAction();
             });
@@ -420,8 +480,6 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
     final XFile? media = await picker.pickMedia();
 
     if (media != null && mounted) {
-      // Determine if it is a video based on extension seems flaky, but pickMedia returns video or image.
-      // We can check mime type or extension.
       final bool isVideo =
           media.path.toLowerCase().endsWith('.mp4') ||
           media.path.toLowerCase().endsWith('.mov') ||
@@ -449,362 +507,387 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final cameraState = ref.watch(cameraControllerProvider);
+    if (!_isDeepArInitialized || _deepArController == null) {
+      return const Scaffold(
+        backgroundColor: Colors.black,
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
 
     return Scaffold(
       backgroundColor: Colors.black,
-      body: cameraState.when(
-        data: (controller) {
-          if (controller == null || !controller.value.isInitialized) {
-            return const Center(child: Text("Camera not initialized"));
-          }
-          return Stack(
-            children: [
-              Center(child: CameraPreview(controller)),
+      body: Stack(
+        children: [
+          // DeepAR Preview Link (Updated)
+          Transform.scale(
+            scale: 1.0,
+            child: DeepArPreviewPlus(_deepArController!), // Updated widget
+          ),
 
-              // Countdown Overlay
-              if (_countdown > 0)
-                Center(
-                  child: Text(
-                    "$_countdown",
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 100,
-                      fontWeight: FontWeight.bold,
-                      shadows: [Shadow(color: Colors.black, blurRadius: 10)],
-                    ),
-                  ),
+          // Countdown Overlay
+          if (_countdown > 0)
+            Center(
+              child: Text(
+                "$_countdown",
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 100,
+                  fontWeight: FontWeight.bold,
+                  shadows: [Shadow(color: Colors.black, blurRadius: 10)],
                 ),
+              ),
+            ),
 
-              // Top Actions
-              if (!isRecording)
-                Positioned(
-                  top: 48,
-                  left: 16,
-                  child: IconButton(
-                    icon: const Icon(
-                      Icons.close,
-                      color: Colors.white,
-                      size: 28,
-                    ),
-                    onPressed: () => Navigator.of(context).pop(),
-                  ),
-                ),
+          // Top Actions
+          if (!isRecording)
+            Positioned(
+              top: 48,
+              left: 16,
+              child: IconButton(
+                icon: const Icon(Icons.close, color: Colors.white, size: 28),
+                onPressed: () => Navigator.of(context).pop(),
+              ),
+            ),
 
-              // Select Sound
-              if (!isRecording)
-                Positioned(
-                  top: 48,
-                  left: 0,
-                  right: 0,
-                  child: Center(
-                    child: GestureDetector(
-                      onTap: _selectSound,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 15,
-                          vertical: 8,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.5),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(
-                              Icons.music_note,
-                              color: Colors.white,
-                              size: 16,
-                            ),
-                            const SizedBox(width: 5),
-                            Text(
-                              _selectedSound?.title ?? "Add Sound",
-                              style: const TextStyle(color: Colors.white),
-                            ),
-                            if (_selectedSound != null) ...[
-                              const SizedBox(width: 5),
-                              GestureDetector(
-                                onTap: () {
-                                  setState(() {
-                                    _selectedSound = null;
-                                  });
-                                },
-                                child: const Icon(
-                                  Icons.close,
-                                  color: Colors.white,
-                                  size: 14,
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-
-              // Floating Side Menu
-              if (!isRecording)
-                Positioned(
-                  top: 48,
-                  right: 16,
+          // Select Sound
+          if (!isRecording)
+            Positioned(
+              top: 48,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: GestureDetector(
+                  onTap: _selectSound,
                   child: Container(
                     padding: const EdgeInsets.symmetric(
+                      horizontal: 15,
                       vertical: 8,
-                      horizontal: 4,
                     ),
                     decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.4),
-                      borderRadius: BorderRadius.circular(24),
+                      color: Colors.black.withOpacity(0.5),
+                      borderRadius: BorderRadius.circular(20),
                     ),
-                    child: Column(
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        // Flip Camera
-                        _buildMenuIcon(
-                          icon: Icons.flip_camera_ios,
-                          label: "Flip",
-                          onTap: () {
-                            ref
-                                .read(cameraControllerProvider.notifier)
-                                .switchCamera();
-                          },
+                        const Icon(
+                          Icons.music_note,
+                          color: Colors.white,
+                          size: 16,
                         ),
-                        const SizedBox(height: 16),
-
-                        // Flash Toggle
-                        _buildMenuIcon(
-                          icon: _flashMode == FlashMode.off
-                              ? Icons.flash_off
-                              : (_flashMode == FlashMode.auto
-                                    ? Icons.flash_auto
-                                    : Icons.flash_on),
-                          label: "Flash",
-                          onTap: _toggleFlash,
-                          isActive: _flashMode != FlashMode.off,
+                        const SizedBox(width: 5),
+                        Text(
+                          _selectedSound?.title ?? "Add Sound",
+                          style: const TextStyle(color: Colors.white),
                         ),
-                        const SizedBox(height: 16),
-
-                        // Timer Toggle
-                        _buildMenuIcon(
-                          icon: _timerDelay == 0
-                              ? Icons.timer_off_outlined
-                              : (_timerDelay == 3
-                                    ? Icons.timer_3
-                                    : Icons.timer_10),
-                          label: "Timer",
-                          onTap: _toggleTimer,
-                          isActive: _timerDelay > 0,
-                        ),
+                        if (_selectedSound != null) ...[
+                          const SizedBox(width: 5),
+                          GestureDetector(
+                            onTap: () {
+                              setState(() {
+                                _selectedSound = null;
+                              });
+                            },
+                            child: const Icon(
+                              Icons.close,
+                              color: Colors.white,
+                              size: 14,
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                   ),
                 ),
+              ),
+            ),
 
-              // Bottom Area
-              Positioned(
-                bottom: 20,
-                left: 0,
-                right: 0,
+          // Floating Side Menu
+          if (!isRecording)
+            Positioned(
+              top: 48,
+              right: 16,
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.4),
+                  borderRadius: BorderRadius.circular(24),
+                ),
                 child: Column(
                   children: [
-                    // Controls Row
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 40),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: [
-                          // Gallery/Discard
-                          if (!isRecording && !isPaused)
-                            GestureDetector(
-                              onTap: _pickFromGallery,
-                              child: Column(
-                                children: [
-                                  Container(
-                                    height: 36,
-                                    width: 36,
-                                    decoration: BoxDecoration(
-                                      border: Border.all(
-                                        color: Colors.white,
-                                        width: 2,
-                                      ),
-                                      borderRadius: BorderRadius.circular(8),
-                                      image: _lastImageBytes != null
-                                          ? DecorationImage(
-                                              image: MemoryImage(
-                                                _lastImageBytes!,
-                                              ),
-                                              fit: BoxFit.cover,
-                                            )
-                                          : null,
-                                      color: _lastImageBytes == null
-                                          ? Colors.grey[800]
-                                          : null,
-                                    ),
-                                    child: _lastImageBytes == null
-                                        ? const Icon(
-                                            Icons.image,
-                                            color: Colors.white,
-                                            size: 20,
-                                          )
-                                        : null,
-                                  ),
-                                  const SizedBox(height: 5),
-                                  const Text(
-                                    "Upload",
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 10,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            )
-                          else if (isPaused && _segments.isNotEmpty)
-                            IconButton(
-                              onPressed: _confirmDiscard,
-                              icon: const Icon(
-                                Icons.backspace,
-                                color: Colors.white,
-                                size: 30,
-                              ),
-                            )
-                          else
-                            const SizedBox(width: 36),
-
-                          // Record Button
-                          GestureDetector(
-                            onTap: _recordVideo,
-                            child: SizedBox(
-                              height: 80,
-                              width: 80,
-                              child: Stack(
-                                alignment: Alignment.center,
-                                children: [
-                                  Container(
-                                    height: 80,
-                                    width: 80,
-                                    decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      border: Border.all(
-                                        color: isRecording
-                                            ? Colors.transparent
-                                            : const Color(
-                                                0xFFFE2C55,
-                                              ).withOpacity(0.5),
-                                        width: 6,
-                                      ),
-                                    ),
-                                  ),
-                                  if (isRecording || isPaused)
-                                    SizedBox(
-                                      height: 80,
-                                      width: 80,
-                                      child: CustomPaint(
-                                        painter: SegmentedRingPainter(
-                                          segments: _segments,
-                                          currentProgress:
-                                              _currentSegmentProgress,
-                                          color: const Color(0xFFFE2C55),
-                                          strokeWidth: 6,
-                                        ),
-                                      ),
-                                    ),
-                                  Center(
-                                    child: AnimatedContainer(
-                                      duration: const Duration(
-                                        milliseconds: 200,
-                                      ),
-                                      height: isRecording ? 30 : 60,
-                                      width: isRecording ? 30 : 60,
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFFFE2C55),
-                                        borderRadius: BorderRadius.circular(
-                                          isRecording ? 6 : 30,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                  if (isPaused)
-                                    const Center(
-                                      child: Icon(
-                                        Icons.play_arrow,
-                                        color: Colors.white,
-                                        size: 20,
-                                      ),
-                                    ),
-                                ],
-                              ),
-                            ),
-                          ),
-
-                          // Checkmark
-                          if (isPaused && _segments.isNotEmpty)
-                            IconButton(
-                              onPressed: _finishRecording,
-                              icon: Container(
-                                padding: const EdgeInsets.all(8),
-                                decoration: const BoxDecoration(
-                                  color: AppColors.neonPink,
-                                  shape: BoxShape.circle,
-                                ),
-                                child: const Icon(
-                                  Icons.check,
-                                  color: Colors.white,
-                                  size: 20,
-                                ),
-                              ),
-                            )
-                          else
-                            const SizedBox(width: 36),
-                        ],
-                      ),
+                    // Flip Camera
+                    _buildMenuIcon(
+                      icon: Icons.flip_camera_ios,
+                      label: "Flip",
+                      onTap: () {
+                        _deepArController?.flipCamera();
+                      },
                     ),
+                    const SizedBox(height: 16),
 
-                    const SizedBox(height: 20),
+                    // Flash Toggle
+                    _buildMenuIcon(
+                      icon: _flashMode == FlashState.off
+                          ? Icons.flash_off
+                          : Icons.flash_on,
+                      label: "Flash",
+                      onTap: _toggleFlash,
+                      isActive: _flashMode == FlashState.on,
+                    ),
+                    const SizedBox(height: 16),
 
-                    // Mode Selector
-                    if (!isRecording)
-                      SizedBox(
-                        height: 30,
-                        child: ListView.builder(
-                          scrollDirection: Axis.horizontal,
-                          shrinkWrap: true,
-                          itemCount: _modes.length,
-                          itemBuilder: (context, index) {
-                            bool isSelected = _selectedModeIndex == index;
-                            return GestureDetector(
-                              onTap: () => _onModeChanged(index),
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 15,
-                                ),
-                                child: Text(
-                                  _modes[index],
-                                  style: TextStyle(
-                                    color: isSelected
-                                        ? Colors.white
-                                        : Colors.grey,
-                                    fontWeight: isSelected
-                                        ? FontWeight.bold
-                                        : FontWeight.normal,
-                                    fontSize: 14,
-                                  ),
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                      ),
+                    // Timer Toggle
+                    _buildMenuIcon(
+                      icon: _timerDelay == 0
+                          ? Icons.timer_off_outlined
+                          : (_timerDelay == 3 ? Icons.timer_3 : Icons.timer_10),
+                      label: "Timer",
+                      onTap: _toggleTimer,
+                      isActive: _timerDelay > 0,
+                    ),
                   ],
                 ),
               ),
-            ],
-          );
-        },
-        error: (err, st) => Center(child: Text("Error: $err")),
-        loading: () => const Center(child: CircularProgressIndicator()),
+            ),
+
+          // Effects / Filters List (New)
+          if (!isRecording)
+            Positioned(
+              bottom: 150, // Above controls
+              left: 0,
+              right: 0,
+              child: SizedBox(
+                height: 70,
+                child: ListView.builder(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  itemCount: _effects.length,
+                  itemBuilder: (context, index) {
+                    final effect = _effects[index];
+                    final isSelected = _selectedEffectIndex == index;
+                    return GestureDetector(
+                      onTap: () => _switchEffect(index),
+                      child: Container(
+                        margin: const EdgeInsets.only(right: 12),
+                        width: 60,
+                        height: 60,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: isSelected
+                                ? AppColors.neonPink
+                                : Colors.white,
+                            width: 2,
+                          ),
+                          color: Colors.black.withOpacity(0.5),
+                        ),
+                        child: Center(
+                          child: Text(
+                            effect == 'none' ? 'Ø' : effect[0].toUpperCase(),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
+
+          // Bottom Area
+          Positioned(
+            bottom: 20,
+            left: 0,
+            right: 0,
+            child: Column(
+              children: [
+                // Controls Row
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 40),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      // Gallery/Discard
+                      if (!isRecording && !isPaused)
+                        GestureDetector(
+                          onTap: _pickFromGallery,
+                          child: Column(
+                            children: [
+                              Container(
+                                height: 36,
+                                width: 36,
+                                decoration: BoxDecoration(
+                                  border: Border.all(
+                                    color: Colors.white,
+                                    width: 2,
+                                  ),
+                                  borderRadius: BorderRadius.circular(8),
+                                  image: _lastImageBytes != null
+                                      ? DecorationImage(
+                                          image: MemoryImage(_lastImageBytes!),
+                                          fit: BoxFit.cover,
+                                        )
+                                      : null,
+                                  color: _lastImageBytes == null
+                                      ? Colors.grey[800]
+                                      : null,
+                                ),
+                                child: _lastImageBytes == null
+                                    ? const Icon(
+                                        Icons.image,
+                                        color: Colors.white,
+                                        size: 20,
+                                      )
+                                    : null,
+                              ),
+                              const SizedBox(height: 5),
+                              const Text(
+                                "Upload",
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 10,
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                      else if (isPaused && _segments.isNotEmpty)
+                        IconButton(
+                          onPressed: _confirmDiscard,
+                          icon: const Icon(
+                            Icons.backspace,
+                            color: Colors.white,
+                            size: 30,
+                          ),
+                        )
+                      else
+                        const SizedBox(width: 36),
+
+                      // Record Button
+                      GestureDetector(
+                        onTap: _recordVideo,
+                        child: SizedBox(
+                          height: 80,
+                          width: 80,
+                          child: Stack(
+                            alignment: Alignment.center,
+                            children: [
+                              Container(
+                                height: 80,
+                                width: 80,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: isRecording
+                                        ? Colors.transparent
+                                        : const Color(
+                                            0xFFFE2C55,
+                                          ).withOpacity(0.5),
+                                    width: 6,
+                                  ),
+                                ),
+                              ),
+                              if (isRecording || isPaused)
+                                SizedBox(
+                                  height: 80,
+                                  width: 80,
+                                  child: CustomPaint(
+                                    painter: SegmentedRingPainter(
+                                      segments: _segments,
+                                      currentProgress: _currentSegmentProgress,
+                                      color: const Color(0xFFFE2C55),
+                                      strokeWidth: 6,
+                                    ),
+                                  ),
+                                ),
+                              Center(
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 200),
+                                  height: isRecording ? 30 : 60,
+                                  width: isRecording ? 30 : 60,
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFFE2C55),
+                                    borderRadius: BorderRadius.circular(
+                                      isRecording ? 6 : 30,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              if (isPaused)
+                                const Center(
+                                  child: Icon(
+                                    Icons.play_arrow,
+                                    color: Colors.white,
+                                    size: 20,
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ),
+
+                      // Checkmark
+                      if (isPaused && _segments.isNotEmpty)
+                        IconButton(
+                          onPressed: _finishRecording,
+                          icon: Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: const BoxDecoration(
+                              color: AppColors.neonPink,
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.check,
+                              color: Colors.white,
+                              size: 20,
+                            ),
+                          ),
+                        )
+                      else
+                        const SizedBox(width: 36),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 20),
+
+                // Mode Selector
+                if (!isRecording)
+                  SizedBox(
+                    height: 30,
+                    child: ListView.builder(
+                      scrollDirection: Axis.horizontal,
+                      shrinkWrap: true,
+                      itemCount: _modes.length,
+                      itemBuilder: (context, index) {
+                        bool isSelected = _selectedModeIndex == index;
+                        return GestureDetector(
+                          onTap: () => _onModeChanged(index),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 15),
+                            child: Text(
+                              _modes[index],
+                              style: TextStyle(
+                                color: isSelected ? Colors.white : Colors.grey,
+                                fontWeight: isSelected
+                                    ? FontWeight.bold
+                                    : FontWeight.normal,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -842,14 +925,18 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
   }
 }
 
-// Temporary Placeholder for Live Setup until implemented
+// Dummy screen for Live Setup (unchanged)
 class LiveStreamSetupScreen extends StatelessWidget {
   const LiveStreamSetupScreen({super.key});
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
-      appBar: AppBar(backgroundColor: Colors.transparent),
+      appBar: AppBar(
+        title: const Text("Go Live"),
+        backgroundColor: Colors.transparent,
+      ),
       body: const Center(
         child: Text("Live Stream Setup", style: TextStyle(color: Colors.white)),
       ),
@@ -857,6 +944,7 @@ class LiveStreamSetupScreen extends StatelessWidget {
   }
 }
 
+// SegmentedRingPainter (unchanged)
 class SegmentedRingPainter extends CustomPainter {
   final List<double> segments;
   final double currentProgress;
@@ -872,39 +960,38 @@ class SegmentedRingPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final center = Offset(size.width / 2, size.height / 2);
-    final radius = (size.width - strokeWidth) / 2;
-    final paint = Paint()
+    final Paint paint = Paint()
       ..color = color
-      ..style = PaintingStyle.stroke
       ..strokeWidth = strokeWidth
-      ..strokeCap = StrokeCap.butt; // Butt cap for cleaner segments
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+
+    final double radius = (size.width - strokeWidth) / 2;
+    final Offset center = Offset(size.width / 2, size.height / 2);
+    final double startAngle = -3.14159 / 2; // -90 degrees
+
+    double currentAngle = startAngle;
 
     // Draw completed segments
-    double startAngle = -3.14159 / 2; // Start from top (-90 degrees)
-
-    // Draw each completed segment
-    for (final segment in segments) {
-      final sweepAngle = segment * 2 * 3.14159;
-      // Subtract a small gap if it's not the very end
-      final drawAngle = sweepAngle > 0.02 ? sweepAngle - 0.05 : sweepAngle;
-
+    for (double segment in segments) {
+      double sweepAngle = segment * 2 * 3.14159; // 360 degrees
       canvas.drawArc(
         Rect.fromCircle(center: center, radius: radius),
-        startAngle,
-        drawAngle,
+        currentAngle,
+        sweepAngle,
         false,
         paint,
       );
-      startAngle += sweepAngle;
+      // Small gap between segments
+      currentAngle += sweepAngle + 0.05;
     }
 
-    // Draw current progress
+    // Draw active segment
     if (currentProgress > 0) {
-      final sweepAngle = currentProgress * 2 * 3.14159;
+      double sweepAngle = currentProgress * 2 * 3.14159;
       canvas.drawArc(
         Rect.fromCircle(center: center, radius: radius),
-        startAngle,
+        currentAngle,
         sweepAngle,
         false,
         paint,
@@ -914,7 +1001,7 @@ class SegmentedRingPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant SegmentedRingPainter oldDelegate) {
-    return oldDelegate.currentProgress != currentProgress ||
-        oldDelegate.segments != segments;
+    return oldDelegate.segments != segments ||
+        oldDelegate.currentProgress != currentProgress;
   }
 }
