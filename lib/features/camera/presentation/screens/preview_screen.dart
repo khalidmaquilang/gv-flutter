@@ -5,7 +5,8 @@ import 'package:video_player/video_player.dart';
 import 'package:test_flutter/core/theme/app_theme.dart';
 import '../../../feed/data/services/video_service.dart';
 
-import 'package:audioplayers/audioplayers.dart';
+import 'package:just_audio/just_audio.dart';
+import 'package:audio_session/audio_session.dart';
 import '../../data/models/sound_model.dart';
 
 class PreviewScreen extends StatefulWidget {
@@ -35,45 +36,52 @@ class _PreviewScreenState extends State<PreviewScreen> {
   @override
   void initState() {
     super.initState();
+    if (widget.sound != null) {
+      _isVoiceMuted = true;
+      _initAudio();
+    }
     if (widget.isVideo && widget.files.isNotEmpty) {
       _initializeController(0);
     }
   }
 
-  // Helper to safely play music without blocking video
-  Future<void> _tryPlayMusic() async {
-    if (widget.sound == null || widget.sound!.url.isEmpty) return;
-
-    // If player exists, just resume (assuming already setup)
-    if (_musicPlayer != null) {
-      if (_musicPlayer!.state != PlayerState.playing) {
-        await _musicPlayer?.resume();
-      }
-      return;
-    }
-
+  Future<void> _initAudio() async {
     // Initialize fresh
     _musicPlayer = AudioPlayer();
 
+    // Prepare session for mixing - Do this ONCE
+    final session = await AudioSession.instance;
+    await session.configure(
+      const AudioSessionConfiguration(
+        avAudioSessionCategory: AVAudioSessionCategory.playback,
+        avAudioSessionCategoryOptions:
+            AVAudioSessionCategoryOptions.mixWithOthers,
+        androidAudioAttributes: AndroidAudioAttributes(
+          contentType: AndroidAudioContentType.music,
+          usage: AndroidAudioUsage.media,
+        ),
+        androidAudioFocusGainType: AndroidAudioFocusGainType.gain,
+      ),
+    );
+
     try {
-      Source source;
       if (widget.sound!.url.startsWith('assets/')) {
-        source = AssetSource(widget.sound!.url.substring(7));
+        await _musicPlayer?.setAsset(widget.sound!.url);
       } else {
-        source = UrlSource(widget.sound!.url);
+        await _musicPlayer?.setUrl(widget.sound!.url);
       }
 
-      // Set volume first to avoid blast if unmuted
       await _musicPlayer?.setVolume(_isMusicMuted ? 0 : 1.0);
-      await _musicPlayer?.setReleaseMode(ReleaseMode.loop);
-
-      // Play (which includes setSource)
-      await _musicPlayer?.play(source);
+      await _musicPlayer?.setLoopMode(LoopMode.one);
+      // Ready to play!
     } catch (e) {
-      debugPrint("PreviewScreen: Music playback failed: $e");
-      // Clean up if failed
-      _musicPlayer?.dispose();
-      _musicPlayer = null;
+      debugPrint("PreviewScreen: Audio init failed: $e");
+    }
+  }
+
+  void _startMusic() {
+    if (_musicPlayer != null && widget.sound != null) {
+      _musicPlayer?.play();
     }
   }
 
@@ -82,7 +90,10 @@ class _PreviewScreenState extends State<PreviewScreen> {
       final file = widget.files[index];
       debugPrint("PreviewScreen: Init video $index: ${file.path}");
 
-      final controller = VideoPlayerController.file(File(file.path));
+      final controller = VideoPlayerController.file(
+        File(file.path),
+        videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
+      );
       _videoController = controller;
 
       await controller.initialize();
@@ -101,10 +112,10 @@ class _PreviewScreenState extends State<PreviewScreen> {
         // Play video FIRST
         await controller.play();
 
-        // Then try music (fire and forget, don't await) with DELAY
+        // Then start music (should be preloaded or loading) with DELAY
         if (index == 0) {
           Future.delayed(const Duration(milliseconds: 500), () {
-            if (mounted) _tryPlayMusic();
+            if (mounted) _startMusic();
           });
         }
       }
@@ -132,7 +143,7 @@ class _PreviewScreenState extends State<PreviewScreen> {
       // Reset music position if looping video sequence?
       if (_musicPlayer != null) {
         await _musicPlayer?.seek(Duration.zero);
-        await _musicPlayer?.resume(); // Ensure playing
+        if (!_isMusicMuted) _musicPlayer?.play();
       }
 
       if (!mounted) return;
@@ -144,6 +155,7 @@ class _PreviewScreenState extends State<PreviewScreen> {
     setState(() {
       _isVoiceMuted = !_isVoiceMuted;
       _videoController?.setVolume(_isVoiceMuted ? 0 : 1.0);
+      debugPrint("PreviewScreen: Voice Muted: $_isVoiceMuted");
     });
   }
 
@@ -151,6 +163,7 @@ class _PreviewScreenState extends State<PreviewScreen> {
     setState(() {
       _isMusicMuted = !_isMusicMuted;
       _musicPlayer?.setVolume(_isMusicMuted ? 0 : 1.0);
+      debugPrint("PreviewScreen: Music Muted: $_isMusicMuted");
     });
   }
 
@@ -206,8 +219,8 @@ class _PreviewScreenState extends State<PreviewScreen> {
               ),
             ),
 
-          // Audio Mixing Controls
-          if (widget.isVideo)
+          // Audio Mixing Controls (Only for mic-only videos)
+          if (widget.isVideo && widget.sound == null)
             Positioned(
               top: 100,
               right: 16,

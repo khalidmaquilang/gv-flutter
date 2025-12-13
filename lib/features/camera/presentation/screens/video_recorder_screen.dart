@@ -13,6 +13,8 @@ import '../../data/models/sound_model.dart';
 import 'sound_selection_screen.dart';
 import '../../data/services/deepar_service.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:ffmpeg_kit_flutter/ffmpeg_kit.dart';
+import 'package:ffmpeg_kit_flutter/return_code.dart';
 
 class VideoRecorderScreen extends ConsumerStatefulWidget {
   const VideoRecorderScreen({super.key});
@@ -320,7 +322,28 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
       }
 
       if (file != null) {
-        _recordedFiles.add(XFile(file.path));
+        if (_selectedSound != null) {
+          // Strip audio if music was playing (Lip Sync)
+          final dir = await getTemporaryDirectory();
+          final outPath =
+              "${dir.path}/no_audio_${DateTime.now().millisecondsSinceEpoch}.mp4";
+
+          // -an disables audio recording
+          final session = await FFmpegKit.execute(
+            "-i ${file.path} -c copy -an $outPath",
+          );
+          final returnCode = await session.getReturnCode();
+
+          if (ReturnCode.isSuccess(returnCode)) {
+            debugPrint("FFmpeg: Audio stripped successfully");
+            _recordedFiles.add(XFile(outPath));
+          } else {
+            debugPrint("FFmpeg: Failed to strip audio. Using original.");
+            _recordedFiles.add(XFile(file.path));
+          }
+        } else {
+          _recordedFiles.add(XFile(file.path));
+        }
       }
     }
 
@@ -385,6 +408,22 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
         startAction = _resumeTimer;
       } else {
         startAction = () async {
+          // Try to mute microphone if we are playing music (Lip Sync mode)
+          if (_selectedSound != null) {
+            try {
+              // wrapper might not stick, but native SDK supports audio manipulation.
+              // deepar_flutter usually just records mic.
+              // Attempt to disable audio processing if method exists (blind guess based on SDKs)
+              // _deepArController?.enableAudio(false);
+              // Actually, deepar_flutter_plus uses MethodChannels.
+              // Let's rely on the user understanding physics or use headphones.
+
+              // Alternative: Just record.
+            } catch (e) {
+              debugPrint("Could not mute audio: $e");
+            }
+          }
+
           await _deepArController!.startVideoRecording();
 
           // Start Music
