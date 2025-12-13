@@ -273,15 +273,33 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
 
     if (isRecording) {
       _pauseTimer();
-    } else if (isPaused) {
-      _resumeTimer();
     } else {
-      // Handle Timer Delay
+      // Logic for both Starting Fresh and Resuming
+      VoidCallback startAction;
+
+      if (isPaused) {
+        startAction = _resumeTimer;
+      } else {
+        startAction = () async {
+          await notifier.startRecording();
+          if (!mounted) return;
+          setState(() {
+            isRecording = true;
+            isPaused = false;
+            _recordedFiles.clear();
+            _segments.clear();
+            _currentSegmentProgress = 0.0;
+          });
+          _startTimer();
+        };
+      }
+
       if (_timerDelay > 0) {
+        // Run Countdown
         setState(() {
           _countdown = _timerDelay;
         });
-        Timer.periodic(const Duration(seconds: 1), (timer) async {
+        Timer.periodic(const Duration(seconds: 1), (timer) {
           if (!mounted) {
             timer.cancel();
             return;
@@ -293,29 +311,12 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
 
           if (_countdown <= 0) {
             timer.cancel();
-            // Start actual recording
-            await notifier.startRecording();
-            setState(() {
-              isRecording = true;
-              isPaused = false;
-              _recordedFiles.clear();
-              _segments.clear();
-              _currentSegmentProgress = 0.0;
-            });
-            _startTimer();
+            startAction();
           }
         });
       } else {
-        // Immediate Start
-        await notifier.startRecording();
-        setState(() {
-          isRecording = true;
-          isPaused = false;
-          _recordedFiles.clear();
-          _segments.clear();
-          _currentSegmentProgress = 0.0;
-        });
-        _startTimer();
+        // Immediate
+        startAction();
       }
     }
   }
