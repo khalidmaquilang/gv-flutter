@@ -80,10 +80,8 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
           _currentSegmentProgress;
 
       if (_maxDuration > 0 && totalProgress >= 1.0) {
-        _pauseTimer();
-        if (totalProgress >= 1.0) {
-          _finishRecording();
-        }
+        _timer?.cancel(); // Cancel timer immediately
+        _finishRecording(); // Finish directly without pausing
       }
     });
   }
