@@ -441,24 +441,21 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
             _countdown--;
           });
 
-          if (_countdown > 0) {
+          if (_countdown > 1) {
             _audioPlayer.play(AssetSource('sounds/beep.wav'));
+          } else if (_countdown == 1) {
+            _audioPlayer.play(AssetSource('sounds/start_record.wav'));
           }
 
           if (_countdown <= 0) {
-            _audioPlayer.play(AssetSource('sounds/start_record.wav'));
             timer.cancel();
-            Future.delayed(const Duration(milliseconds: 450), () {
-              if (mounted) startAction();
-            });
+            if (mounted) startAction();
           }
         });
       } else {
         // Immediate
-        _audioPlayer.play(AssetSource('sounds/start_record.wav'));
-        Future.delayed(const Duration(milliseconds: 450), () {
-          if (mounted) startAction();
-        });
+        // Immediate
+        startAction();
       }
     }
   }
