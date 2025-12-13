@@ -66,13 +66,7 @@ class _LiveStreamScreenState extends State<LiveStreamScreen>
 
     _liveService.giftStream.listen((gift) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text("${gift.username} sent ${gift.giftName}!"),
-            backgroundColor: const Color(0xFFFE2C55),
-            duration: const Duration(seconds: 1),
-          ),
-        );
+        _showGiftAnimation(gift);
       }
     });
   }
@@ -136,6 +130,94 @@ class _LiveStreamScreenState extends State<LiveStreamScreen>
       if (mounted) {
         setState(() {
           _floatingHearts.remove(heart);
+        });
+      }
+      animation.dispose();
+    });
+  }
+
+  void _showGiftAnimation(LiveGift gift) {
+    final animation = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 3),
+    );
+
+    // Simple mapping for icons based on name (should be consistent with bottom sheet)
+    String icon = '🎁';
+    switch (gift.giftName) {
+      case 'Rose':
+        icon = '🌹';
+        break;
+      case 'Heart':
+        icon = '❤️';
+        break;
+      case 'Mic':
+        icon = '🎤';
+        break;
+      case 'Panda':
+        icon = '🐼';
+        break;
+      case 'Car':
+        icon = '🏎️';
+        break;
+      case 'Castle':
+        icon = '🏰';
+        break;
+      case 'Rocket':
+        icon = '🚀';
+        break;
+      case 'Planet':
+        icon = '🪐';
+        break;
+    }
+
+    Widget giftWidget = Center(
+      child: FadeTransition(
+        opacity: Tween<double>(begin: 1.0, end: 0.0).animate(
+          CurvedAnimation(parent: animation, curve: const Interval(0.7, 1.0)),
+        ),
+        child: ScaleTransition(
+          scale: Tween<double>(begin: 0.0, end: 1.5).animate(
+            CurvedAnimation(parent: animation, curve: Curves.elasticOut),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(icon, style: const TextStyle(fontSize: 100)),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 5,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.black54,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  "${gift.username} sent ${gift.giftName}",
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    setState(() {
+      _floatingHearts.add(
+        giftWidget,
+      ); // Reusing _floatingHearts list for simplicity
+    });
+
+    animation.forward().then((value) {
+      if (mounted) {
+        setState(() {
+          _floatingHearts.remove(giftWidget);
         });
       }
       animation.dispose();
@@ -306,12 +388,197 @@ class _LiveStreamScreenState extends State<LiveStreamScreen>
                       size: 30,
                     ),
                     onPressed: () {
-                      _liveService.sendGift();
+                      _showGiftPicker(context);
                     },
                   ),
                 ],
               ),
             ),
+        ],
+      ),
+    );
+  }
+
+  void _showGiftPicker(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => GiftPickerBottomSheet(
+        onGiftSent: (name, value) {
+          _liveService.sendGift(name, value);
+          Navigator.pop(context);
+        },
+      ),
+    );
+  }
+}
+
+class GiftPickerBottomSheet extends StatefulWidget {
+  final Function(String name, int value) onGiftSent;
+
+  const GiftPickerBottomSheet({super.key, required this.onGiftSent});
+
+  @override
+  State<GiftPickerBottomSheet> createState() => _GiftPickerBottomSheetState();
+}
+
+class _GiftPickerBottomSheetState extends State<GiftPickerBottomSheet> {
+  int _selectedIndex = -1;
+
+  final List<Map<String, dynamic>> _gifts = [
+    {'name': 'Rose', 'value': 1, 'icon': '🌹'},
+    {'name': 'Heart', 'value': 5, 'icon': '❤️'},
+    {'name': 'Mic', 'value': 10, 'icon': '🎤'},
+    {'name': 'Panda', 'value': 50, 'icon': '🐼'},
+    {'name': 'Car', 'value': 100, 'icon': '🏎️'},
+    {'name': 'Castle', 'value': 500, 'icon': '🏰'},
+    {'name': 'Rocket', 'value': 1000, 'icon': '🚀'},
+    {'name': 'Planet', 'value': 5000, 'icon': '🪐'},
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 400,
+      decoration: const BoxDecoration(
+        color: Color(0xFF1E1E1E),
+        borderRadius: BorderRadius.only(
+          topLeft: Radius.circular(20),
+          topRight: Radius.circular(20),
+        ),
+      ),
+      child: Column(
+        children: [
+          // Header
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  "Send a Gift",
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.monetization_on,
+                      color: Colors.amber,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 5),
+                    const Text(
+                      "Balance: 1250", // Mock Balance
+                      style: TextStyle(color: Colors.white),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+
+          // Grid
+          Expanded(
+            child: GridView.builder(
+              padding: const EdgeInsets.all(10),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 4,
+                childAspectRatio: 0.8,
+                crossAxisSpacing: 10,
+                mainAxisSpacing: 10,
+              ),
+              itemCount: _gifts.length,
+              itemBuilder: (context, index) {
+                final gift = _gifts[index];
+                final isSelected = _selectedIndex == index;
+                return GestureDetector(
+                  onTap: () => setState(() => _selectedIndex = index),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: isSelected
+                          ? const Color(0xFFFE2C55).withOpacity(0.1)
+                          : Colors.transparent,
+                      border: Border.all(
+                        color: isSelected
+                            ? const Color(0xFFFE2C55)
+                            : Colors.transparent,
+                        width: 2,
+                      ),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          gift['icon'],
+                          style: const TextStyle(fontSize: 30),
+                        ),
+                        const SizedBox(height: 5),
+                        Text(
+                          gift['name'],
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                          ),
+                        ),
+                        const SizedBox(height: 5),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(
+                              Icons.monetization_on,
+                              color: Colors.amber,
+                              size: 12,
+                            ),
+                            const SizedBox(width: 2),
+                            Text(
+                              "${gift['value']}",
+                              style: const TextStyle(
+                                color: Colors.grey,
+                                fontSize: 10,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+
+          // Send Button
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: SizedBox(
+              width: double.infinity,
+              height: 50,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFFE2C55),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(25),
+                  ),
+                  disabledBackgroundColor: Colors.grey[800],
+                ),
+                onPressed: _selectedIndex == -1
+                    ? null
+                    : () {
+                        final gift = _gifts[_selectedIndex];
+                        widget.onGiftSent(gift['name'], gift['value']);
+                      },
+                child: const Text(
+                  "Send",
+                  style: TextStyle(color: Colors.white, fontSize: 16),
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );

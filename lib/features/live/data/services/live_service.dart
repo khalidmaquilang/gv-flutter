@@ -112,10 +112,8 @@ class LiveService {
     );
   }
 
-  void sendGift() {
-    _giftController.add(
-      LiveGift(username: "Me", giftName: "Galaxy", value: 100),
-    );
+  void sendGift(String name, int value) {
+    _giftController.add(LiveGift(username: "Me", giftName: name, value: value));
   }
 
   Future<void> joinChannel(
