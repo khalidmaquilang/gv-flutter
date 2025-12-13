@@ -337,103 +337,114 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
                 ),
 
               // Top Actions
-              Positioned(
-                top: 48,
-                left: 16,
-                child: IconButton(
-                  icon: const Icon(Icons.close, color: Colors.white, size: 28),
-                  onPressed: () => Navigator.of(context).pop(),
+              if (!isRecording)
+                Positioned(
+                  top: 48,
+                  left: 16,
+                  child: IconButton(
+                    icon: const Icon(
+                      Icons.close,
+                      color: Colors.white,
+                      size: 28,
+                    ),
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
                 ),
-              ),
 
               // Select Sound
-              Positioned(
-                top: 48,
-                left: 0,
-                right: 0,
-                child: Center(
-                  child: GestureDetector(
-                    onTap: _selectSound,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 15,
-                        vertical: 8,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.black.withOpacity(0.5),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: const Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.music_note, color: Colors.white, size: 16),
-                          SizedBox(width: 5),
-                          Text(
-                            "Add Sound",
-                            style: TextStyle(color: Colors.white),
-                          ),
-                        ],
+              if (!isRecording)
+                Positioned(
+                  top: 48,
+                  left: 0,
+                  right: 0,
+                  child: Center(
+                    child: GestureDetector(
+                      onTap: _selectSound,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 15,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withOpacity(0.5),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.music_note,
+                              color: Colors.white,
+                              size: 16,
+                            ),
+                            SizedBox(width: 5),
+                            Text(
+                              "Add Sound",
+                              style: TextStyle(color: Colors.white),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
                 ),
-              ),
 
               // Floating Side Menu
-              Positioned(
-                top: 48,
-                right: 16,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    vertical: 8,
-                    horizontal: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.4),
-                    borderRadius: BorderRadius.circular(24),
-                  ),
-                  child: Column(
-                    children: [
-                      // Flip Camera
-                      _buildMenuIcon(
-                        icon: Icons.flip_camera_ios,
-                        label: "Flip",
-                        onTap: () {
-                          ref
-                              .read(cameraControllerProvider.notifier)
-                              .switchCamera();
-                        },
-                      ),
-                      const SizedBox(height: 16),
+              if (!isRecording)
+                Positioned(
+                  top: 48,
+                  right: 16,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 8,
+                      horizontal: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.4),
+                      borderRadius: BorderRadius.circular(24),
+                    ),
+                    child: Column(
+                      children: [
+                        // Flip Camera
+                        _buildMenuIcon(
+                          icon: Icons.flip_camera_ios,
+                          label: "Flip",
+                          onTap: () {
+                            ref
+                                .read(cameraControllerProvider.notifier)
+                                .switchCamera();
+                          },
+                        ),
+                        const SizedBox(height: 16),
 
-                      // Flash Toggle
-                      _buildMenuIcon(
-                        icon: _flashMode == FlashMode.off
-                            ? Icons.flash_off
-                            : (_flashMode == FlashMode.auto
-                                  ? Icons.flash_auto
-                                  : Icons.flash_on),
-                        label: "Flash",
-                        onTap: _toggleFlash,
-                        isActive: _flashMode != FlashMode.off,
-                      ),
-                      const SizedBox(height: 16),
+                        // Flash Toggle
+                        _buildMenuIcon(
+                          icon: _flashMode == FlashMode.off
+                              ? Icons.flash_off
+                              : (_flashMode == FlashMode.auto
+                                    ? Icons.flash_auto
+                                    : Icons.flash_on),
+                          label: "Flash",
+                          onTap: _toggleFlash,
+                          isActive: _flashMode != FlashMode.off,
+                        ),
+                        const SizedBox(height: 16),
 
-                      // Timer Toggle
-                      _buildMenuIcon(
-                        icon: _timerDelay == 0
-                            ? Icons.timer_off_outlined
-                            : (_timerDelay == 3
-                                  ? Icons.timer_3
-                                  : Icons.timer_10),
-                        label: "Timer",
-                        onTap: _toggleTimer,
-                        isActive: _timerDelay > 0,
-                      ),
-                    ],
+                        // Timer Toggle
+                        _buildMenuIcon(
+                          icon: _timerDelay == 0
+                              ? Icons.timer_off_outlined
+                              : (_timerDelay == 3
+                                    ? Icons.timer_3
+                                    : Icons.timer_10),
+                          label: "Timer",
+                          onTap: _toggleTimer,
+                          isActive: _timerDelay > 0,
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
 
               // Bottom Area
               Positioned(
@@ -466,7 +477,7 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
                                       borderRadius: BorderRadius.circular(8),
                                       image: const DecorationImage(
                                         image: NetworkImage(
-                                          "https://picsum.photos/50",
+                                          "https://dummyimage.com/50",
                                         ),
                                         fit: BoxFit.cover,
                                       ),
@@ -587,37 +598,38 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
                     const SizedBox(height: 20),
 
                     // Mode Selector
-                    SizedBox(
-                      height: 30,
-                      child: ListView.builder(
-                        scrollDirection: Axis.horizontal,
-                        shrinkWrap: true,
-                        itemCount: _modes.length,
-                        itemBuilder: (context, index) {
-                          bool isSelected = _selectedModeIndex == index;
-                          return GestureDetector(
-                            onTap: () => _onModeChanged(index),
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 15,
-                              ),
-                              child: Text(
-                                _modes[index],
-                                style: TextStyle(
-                                  color: isSelected
-                                      ? Colors.white
-                                      : Colors.grey,
-                                  fontWeight: isSelected
-                                      ? FontWeight.bold
-                                      : FontWeight.normal,
-                                  fontSize: 14,
+                    if (!isRecording)
+                      SizedBox(
+                        height: 30,
+                        child: ListView.builder(
+                          scrollDirection: Axis.horizontal,
+                          shrinkWrap: true,
+                          itemCount: _modes.length,
+                          itemBuilder: (context, index) {
+                            bool isSelected = _selectedModeIndex == index;
+                            return GestureDetector(
+                              onTap: () => _onModeChanged(index),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 15,
+                                ),
+                                child: Text(
+                                  _modes[index],
+                                  style: TextStyle(
+                                    color: isSelected
+                                        ? Colors.white
+                                        : Colors.grey,
+                                    fontWeight: isSelected
+                                        ? FontWeight.bold
+                                        : FontWeight.normal,
+                                    fontSize: 14,
+                                  ),
                                 ),
                               ),
-                            ),
-                          );
-                        },
+                            );
+                          },
+                        ),
                       ),
-                    ),
                   ],
                 ),
               ),
