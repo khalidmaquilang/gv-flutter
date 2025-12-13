@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
+import '../../../feed/data/services/video_service.dart';
 
 class PreviewScreen extends StatefulWidget {
   final List<XFile> files;
@@ -137,26 +138,39 @@ class _PreviewScreenState extends State<PreviewScreen> {
             ),
 
           Positioned(
-            top: 48,
-            left: 16,
-            child: IconButton(
-              icon: const Icon(Icons.arrow_back, color: Colors.white),
-              onPressed: () => Navigator.of(context).pop(),
-            ),
-          ),
-          Positioned(
             bottom: 40,
             right: 16,
             child: ElevatedButton(
-              onPressed: () {
-                // Todo: Upload Logic (Pass list of files)
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      "Uploading ${widget.isVideo ? 'Video (${widget.files.length} clips)' : 'Photo'}... (Mock)",
-                    ),
-                  ),
+              onPressed: () async {
+                if (widget.files.isEmpty) return;
+
+                // For MVP: Just upload the first segment path.
+                // In real app, we would ffmpeg stitch them here.
+                final path = widget.files.first.path;
+
+                ScaffoldMessenger.of(
+                  context,
+                ).showSnackBar(const SnackBar(content: Text("Uploading...")));
+
+                // Call service
+                final success = await VideoService().uploadVideo(
+                  path,
+                  "My cool video #${DateTime.now().second}",
                 );
+
+                if (!mounted) return;
+
+                if (success) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text("Posted successfully!")),
+                  );
+                  // Pop to feed (or root)
+                  Navigator.of(context).popUntil((route) => route.isFirst);
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text("Upload failed")),
+                  );
+                }
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFFFE2C55),

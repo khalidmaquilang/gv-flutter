@@ -57,7 +57,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
               ),
               const SizedBox(height: 48),
               const Text(
-                'Sign up for TikTok',
+                'Sign up for GV Live',
                 style: TextStyle(
                   color: Colors.white,
                   fontSize: 24,

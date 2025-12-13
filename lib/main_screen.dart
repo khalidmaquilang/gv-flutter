@@ -30,9 +30,10 @@ class _MainScreenState extends ConsumerState<MainScreen> {
   ];
 
   void _onItemTapped(int index) async {
+    final currentIndex = ref.read(bottomNavIndexProvider);
+
     if (index == 2) {
       // Pause feed by setting index to 2 (Camera)
-      final previousIndex = ref.read(bottomNavIndexProvider);
       ref.read(bottomNavIndexProvider.notifier).state = index;
 
       // Open Camera
@@ -41,8 +42,12 @@ class _MainScreenState extends ConsumerState<MainScreen> {
       );
 
       // Restore previous tab upon return
-      ref.read(bottomNavIndexProvider.notifier).state = previousIndex;
+      ref.read(bottomNavIndexProvider.notifier).state = currentIndex;
     } else {
+      if (index == 0 && currentIndex == 0) {
+        // Already on home, tapping home again -> Reset to For You
+        ref.read(feedTabResetProvider.notifier).state++;
+      }
       ref.read(bottomNavIndexProvider.notifier).state = index;
     }
   }

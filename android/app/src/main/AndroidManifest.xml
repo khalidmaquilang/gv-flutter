@@ -8,7 +8,7 @@
 
     <application
 
-        android:label="test_flutter"
+        android:label="GV Live"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

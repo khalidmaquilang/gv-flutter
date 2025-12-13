@@ -55,7 +55,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               ),
               const SizedBox(height: 48),
               const Text(
-                'Log in to TikTok',
+                'Log in to GV Live',
                 style: TextStyle(
                   color: Colors.white,
                   fontSize: 24,
