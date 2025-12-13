@@ -1,11 +1,14 @@
-import 'dart:math';
 import 'package:flutter/material.dart';
-import 'package:video_player/video_player.dart';
+import 'package:agora_rtc_engine/agora_rtc_engine.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:test_flutter/core/theme/app_theme.dart';
+import 'package:test_flutter/core/constants/api_constants.dart';
 import '../../data/services/live_service.dart';
 import '../../data/models/live_interaction_model.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../features/feed/presentation/providers/feed_audio_provider.dart';
 
-class LiveStreamScreen extends StatefulWidget {
+class LiveStreamScreen extends ConsumerStatefulWidget {
   final bool isBroadcaster;
   final String channelId;
 
@@ -16,42 +19,34 @@ class LiveStreamScreen extends StatefulWidget {
   });
 
   @override
-  State<LiveStreamScreen> createState() => _LiveStreamScreenState();
+  ConsumerState<LiveStreamScreen> createState() => _LiveStreamScreenState();
 }
 
-class _LiveStreamScreenState extends State<LiveStreamScreen>
+class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen>
     with TickerProviderStateMixin {
-  final _liveService = LiveService(); // Should use provider
+  final _liveService = LiveService();
   bool _joined = false;
+  int? _remoteUid;
+  late RtcEngine _engine;
   final List<LiveMessage> _messages = [];
   final TextEditingController _commentController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
-
-  // Dummy Video
-  late VideoPlayerController _videoController;
+  bool _isEngineReady = false;
 
   // Animations
   late AnimationController _heartAnimController;
-  final List<Widget> _floatingHearts = [];
 
   @override
   void initState() {
     super.initState();
-    // Agora logic preserved but disabled for now to prevent errors
-    // _initAgora();
-    // Simulate joined state for UI
-    Future.delayed(const Duration(seconds: 1), () {
-      if (mounted) setState(() => _joined = true);
-    });
-
-    _initDummyVideo();
+    _initAgora();
 
     _heartAnimController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 2),
     );
 
-    // Listen to Streams
+    // Listen to Streams (Mock for now)
     _liveService.messageStream.listen((msg) {
       if (mounted) {
         setState(() {
@@ -72,22 +67,86 @@ class _LiveStreamScreenState extends State<LiveStreamScreen>
     });
   }
 
-  void _initDummyVideo() {
-    // Using a sample video URL for demo purposes
-    _videoController =
-        VideoPlayerController.networkUrl(
-            Uri.parse(
-              'https://flutter.github.io/assets-for-api-docs/assets/videos/butterfly.mp4',
-            ),
-          )
-          ..initialize().then((_) {
-            // Ensure the first frame is shown after the video is initialized
-            if (mounted) {
-              setState(() {});
-              _videoController.play();
-              _videoController.setLooping(true);
-            }
-          });
+  Future<void> _initAgora() async {
+    // Request permissions
+    await [Permission.microphone, Permission.camera].request();
+
+    // Create Engine
+    _engine = createAgoraRtcEngine();
+
+    // Initialize
+    await _engine.initialize(
+      const RtcEngineContext(
+        appId: ApiConstants.agoraAppId,
+        channelProfile: ChannelProfileType.channelProfileLiveBroadcasting,
+      ),
+    );
+
+    // Define handlers
+    _engine.registerEventHandler(
+      RtcEngineEventHandler(
+        onJoinChannelSuccess: (RtcConnection connection, int elapsed) {
+          debugPrint("local user ${connection.localUid} joined");
+          if (mounted) {
+            setState(() {
+              _joined = true;
+            });
+          }
+        },
+        onUserJoined: (RtcConnection connection, int remoteUid, int elapsed) {
+          debugPrint("remote user $remoteUid joined");
+          if (mounted) {
+            setState(() {
+              _remoteUid = remoteUid;
+            });
+          }
+        },
+        onUserOffline:
+            (
+              RtcConnection connection,
+              int remoteUid,
+              UserOfflineReasonType reason,
+            ) {
+              debugPrint("remote user $remoteUid left channel");
+              if (mounted) {
+                setState(() {
+                  _remoteUid = null;
+                });
+              }
+            },
+        onTokenPrivilegeWillExpire: (RtcConnection connection, String token) {
+          debugPrint('On Token Privilege Will Expire: $token');
+        },
+        onError: (ErrorCodeType err, String msg) {
+          debugPrint('Agora Error: $err, $msg');
+        },
+      ),
+    );
+
+    // Set Client Role
+    await _engine.setClientRole(
+      role: widget.isBroadcaster
+          ? ClientRoleType.clientRoleBroadcaster
+          : ClientRoleType.clientRoleAudience,
+    );
+
+    // Enable Video
+    await _engine.enableVideo();
+    await _engine.startPreview();
+
+    if (mounted) {
+      setState(() {
+        _isEngineReady = true;
+      });
+    }
+
+    // Join Channel
+    await _engine.joinChannel(
+      token: ApiConstants.agoraTempToken,
+      channelId: widget.channelId,
+      uid: 0, // 0 means Let Agora assign one
+      options: const ChannelMediaOptions(),
+    );
   }
 
   void _scrollToBottom() {
@@ -100,163 +159,54 @@ class _LiveStreamScreenState extends State<LiveStreamScreen>
     }
   }
 
+  @override
+  void dispose() {
+    _heartAnimController.dispose();
+    _commentController.dispose();
+    _scrollController.dispose();
+    try {
+      _engine.leaveChannel();
+      _engine.release();
+    } catch (e) {
+      // ignore
+    }
+
+    // Restore Feed Audio when leaving the stream
+    ref.read(isFeedAudioEnabledProvider.notifier).state = true;
+
+    super.dispose();
+  }
+
+  // Helper to show heart animation
   void _showHeartAnimation() {
-    final animation = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 2),
-    );
-    Widget heart = Positioned(
-      bottom: 100,
-      right: 16 + (Random().nextInt(20).toDouble()),
-      child: FadeTransition(
-        opacity: Tween<double>(
-          begin: 1.0,
-          end: 0.0,
-        ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOut)),
-        child: SlideTransition(
-          position: Tween<Offset>(
-            begin: Offset.zero,
-            end: const Offset(0, -5),
-          ).animate(animation),
-          child: const Icon(
-            Icons.favorite,
-            color: AppColors.neonPink,
-            size: 30,
-          ),
-        ),
-      ),
-    );
-
-    setState(() {
-      _floatingHearts.add(heart);
-    });
-
-    animation.forward().then((value) {
-      if (mounted) {
-        setState(() {
-          _floatingHearts.remove(heart);
-        });
-      }
-      animation.dispose();
+    _heartAnimController.forward(from: 0).then((_) {
+      _heartAnimController.reset();
     });
   }
 
   void _showGiftAnimation(LiveGift gift) {
-    final animation = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 3),
+    // Gift animation logic
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text("${gift.username} sent ${gift.giftName}!")),
     );
-
-    // Simple mapping for icons based on name (should be consistent with bottom sheet)
-    String icon = '🎁';
-    switch (gift.giftName) {
-      case 'Rose':
-        icon = '🌹';
-        break;
-      case 'Heart':
-        icon = '❤️';
-        break;
-      case 'Mic':
-        icon = '🎤';
-        break;
-      case 'Panda':
-        icon = '🐼';
-        break;
-      case 'Car':
-        icon = '🏎️';
-        break;
-      case 'Castle':
-        icon = '🏰';
-        break;
-      case 'Rocket':
-        icon = '🚀';
-        break;
-      case 'Planet':
-        icon = '🪐';
-        break;
-    }
-
-    Widget giftWidget = Center(
-      child: FadeTransition(
-        opacity: Tween<double>(begin: 1.0, end: 0.0).animate(
-          CurvedAnimation(parent: animation, curve: const Interval(0.7, 1.0)),
-        ),
-        child: ScaleTransition(
-          scale: Tween<double>(begin: 0.0, end: 1.5).animate(
-            CurvedAnimation(parent: animation, curve: Curves.elasticOut),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(icon, style: const TextStyle(fontSize: 100)),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 5,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.black54,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Text(
-                  "${gift.username} sent ${gift.giftName}",
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-
-    setState(() {
-      _floatingHearts.add(
-        giftWidget,
-      ); // Reusing _floatingHearts list for simplicity
-    });
-
-    animation.forward().then((value) {
-      if (mounted) {
-        setState(() {
-          _floatingHearts.remove(giftWidget);
-        });
-      }
-      animation.dispose();
-    });
-  }
-
-  Future<void> _initAgora() async {
-    // Mock init
-    await _liveService.initialize(onEvent: (event) {});
-    await _liveService.joinChannel(
-      widget.channelId,
-      "TOKEN",
-      widget.isBroadcaster,
-    );
-    setState(() {
-      _joined = true;
-    });
   }
 
   void _sendMessage() {
-    if (_commentController.text.isNotEmpty) {
-      _liveService.sendComment(_commentController.text);
-      _commentController.clear();
-    }
+    if (_commentController.text.trim().isEmpty) return;
+
+    // Correct Model Usage
+    final msg = LiveMessage(username: 'Me', message: _commentController.text);
+
+    setState(() {
+      _messages.add(msg);
+    });
+    _commentController.clear();
+    _scrollToBottom();
   }
 
-  @override
-  void dispose() {
-    // _liveService.leaveChannel(); // logic preserved
-    _videoController.dispose();
-    _heartAnimController.dispose();
-    _commentController.dispose();
-    _scrollController.dispose();
-    super.dispose();
+  void _sendHeart() {
+    _liveService.sendReaction();
+    _showHeartAnimation();
   }
 
   @override
@@ -265,143 +215,239 @@ class _LiveStreamScreenState extends State<LiveStreamScreen>
       backgroundColor: Colors.black,
       body: Stack(
         children: [
-          // Dummy Video Layer
-          Center(
-            child: _videoController.value.isInitialized
-                ? AspectRatio(
-                    aspectRatio: _videoController.value.aspectRatio,
-                    child: VideoPlayer(_videoController),
-                  )
-                : const CircularProgressIndicator(),
-          ),
+          // Video Layer
+          Center(child: _renderVideo()),
 
-          // Agora Placeholder / Status (Preserved but hidden or repurposed)
-          if (!_joined)
-            Center(
-              child: Text(
-                "Joining Channel...",
-                style: const TextStyle(color: Colors.white, fontSize: 16),
-              ),
-            ),
-
-          // Floating Hearts
-          ..._floatingHearts,
-
-          // Close Button (Top Right)
+          // Close/End Button
           Positioned(
             top: 40,
-            right: 16,
-            child: IconButton(
-              icon: const Icon(Icons.close, color: Colors.white, size: 30),
-              onPressed: () => Navigator.pop(context),
-            ),
-          ),
-
-          // Live Chat Overlay
-          Positioned(
-            bottom: 100,
-            left: 16,
-            height: 250,
-            width: 250,
-            child: Column(
-              children: [
-                Expanded(
-                  child: ListView.builder(
-                    controller: _scrollController,
-                    itemCount: _messages.length,
-                    itemBuilder: (context, index) {
-                      final msg = _messages[index];
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 2.0),
-                        child: Text.rich(
-                          TextSpan(
-                            children: [
-                              TextSpan(
-                                text: "${msg.username}: ",
-                                style: TextStyle(
-                                  color: Colors.white.withValues(alpha: 0.7),
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              TextSpan(
-                                text: msg.message,
-                                style: const TextStyle(color: Colors.white),
-                              ),
-                            ],
+            right: 20,
+            child: widget.isBroadcaster
+                ? GestureDetector(
+                    onTap: () {
+                      // Confirm End Live
+                      showDialog(
+                        context: context,
+                        builder: (ctx) => AlertDialog(
+                          title: const Text("End Live Stream?"),
+                          content: const Text(
+                            "Are you sure you want to end your live?",
                           ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(ctx),
+                              child: const Text("Cancel"),
+                            ),
+                            TextButton(
+                              onPressed: () {
+                                Navigator.pop(ctx); // Close dialog
+                                Navigator.pop(context); // Close screen
+                              },
+                              child: const Text(
+                                "End",
+                                style: TextStyle(color: Colors.red),
+                              ),
+                            ),
+                          ],
                         ),
                       );
                     },
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // Bottom Input Bar (Audience)
-          if (!widget.isBroadcaster)
-            Positioned(
-              bottom: 20,
-              left: 16,
-              right: 16,
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _commentController,
-                      style: const TextStyle(color: Colors.white),
-                      textInputAction: TextInputAction.send,
-                      decoration: InputDecoration(
-                        hintText: "Say something...",
-                        hintStyle: TextStyle(color: Colors.grey[400]),
-                        filled: true,
-                        fillColor: Colors.grey[900],
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(25),
-                          borderSide: BorderSide.none,
-                        ),
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 20,
-                          vertical: 10,
-                        ),
-                        suffixIcon: IconButton(
-                          icon: const Icon(
-                            Icons.send,
-                            color: AppColors.neonPink,
-                          ),
-                          onPressed: _sendMessage,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.red.withOpacity(0.8),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: const Text(
+                        "End Live",
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
-                      onSubmitted: (_) => _sendMessage(),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  IconButton(
+                  )
+                : IconButton(
                     icon: const Icon(
-                      Icons.favorite,
-                      color: AppColors.neonPink,
-                      size: 40,
-                    ),
-                    onPressed: () {
-                      _liveService.sendReaction();
-                    },
-                  ),
-                  IconButton(
-                    icon: const Icon(
-                      Icons.card_giftcard,
-                      color: AppColors.neonPink,
+                      Icons.close,
+                      color: Colors.white,
                       size: 30,
                     ),
                     onPressed: () {
-                      _showGiftPicker(context);
+                      Navigator.of(context).pop();
                     },
+                  ),
+          ),
+
+          // Live Tag
+          Positioned(
+            top: 40,
+            left: 20,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: AppColors.neonPink,
+                borderRadius: BorderRadius.circular(5),
+              ),
+              child: const Text(
+                'LIVE',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ),
+
+          // Bottom Content Overlay
+          Positioned(
+            bottom: 0,
+            left: 0,
+            right: 0,
+            height: 300,
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.bottomCenter,
+                  end: Alignment.topCenter,
+                  colors: [Colors.black.withOpacity(0.8), Colors.transparent],
+                ),
+              ),
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.end,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Comments Area
+                  Expanded(
+                    child: ListView.builder(
+                      controller: _scrollController,
+                      itemCount: _messages.length,
+                      itemBuilder: (context, index) {
+                        final msg = _messages[index];
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 4.0),
+                          child: RichText(
+                            text: TextSpan(
+                              children: [
+                                TextSpan(
+                                  text: "${msg.username}: ",
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white70,
+                                  ),
+                                ),
+                                TextSpan(
+                                  text: msg.message,
+                                  style: const TextStyle(color: Colors.white),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+
+                  // Input Area
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _commentController,
+                          style: const TextStyle(color: Colors.white),
+                          decoration: InputDecoration(
+                            hintText: 'Say something...',
+                            hintStyle: TextStyle(
+                              color: Colors.white.withOpacity(0.5),
+                            ),
+                            filled: true,
+                            fillColor: Colors.white.withOpacity(0.1),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(20),
+                              borderSide: BorderSide.none,
+                            ),
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                            ),
+                          ),
+                          onSubmitted: (_) => _sendMessage(),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      // Heart Button (Visible to all)
+                      IconButton(
+                        icon: const Icon(
+                          Icons.favorite,
+                          color: AppColors.neonPink,
+                        ),
+                        onPressed: _sendHeart,
+                      ),
+                      // Gift Button (Hidden for Broadcaster)
+                      if (!widget.isBroadcaster)
+                        IconButton(
+                          icon: const Icon(
+                            Icons.card_giftcard,
+                            color: Colors.amber,
+                          ),
+                          onPressed: () => _showGiftPicker(context),
+                        ),
+                    ],
                   ),
                 ],
               ),
             ),
+          ),
         ],
       ),
     );
+  }
+
+  Widget _renderVideo() {
+    if (widget.isBroadcaster) {
+      if (_isEngineReady) {
+        return AgoraVideoView(
+          controller: VideoViewController(
+            rtcEngine: _engine,
+            canvas: const VideoCanvas(uid: 0), // 0 for local user
+          ),
+        );
+      } else {
+        return const Center(child: CircularProgressIndicator());
+      }
+    } else {
+      // Audience Logic
+      if (_remoteUid != null) {
+        return AgoraVideoView(
+          controller: VideoViewController.remote(
+            rtcEngine: _engine,
+            canvas: VideoCanvas(uid: _remoteUid),
+            connection: RtcConnection(channelId: widget.channelId),
+          ),
+        );
+      } else {
+        return const Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 10),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Text(
+                  "The host didn't start the live yet, please follow to get real updates",
+                  style: const TextStyle(color: Colors.white),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ],
+          ),
+        );
+      }
+    }
   }
 
   void _showGiftPicker(BuildContext context) {
@@ -429,7 +475,7 @@ class GiftPickerBottomSheet extends StatefulWidget {
 
 class _GiftPickerBottomSheetState extends State<GiftPickerBottomSheet> {
   int _selectedIndex = -1;
-  int _balance = 20; // Reduced initial balance for testing
+  int _balance = 20;
 
   final List<Map<String, dynamic>> _gifts = [
     {'name': 'Rose', 'value': 1, 'icon': '🌹'},
@@ -467,7 +513,7 @@ class _GiftPickerBottomSheetState extends State<GiftPickerBottomSheet> {
             onPressed: () {
               // Placeholder for In-App Payment Logic
               setState(() {
-                _balance += 1000; // Mock Recharge
+                _balance += 1000;
               });
               Navigator.pop(context);
               ScaffoldMessenger.of(context).showSnackBar(
@@ -621,7 +667,7 @@ class _GiftPickerBottomSheetState extends State<GiftPickerBottomSheet> {
                     ? null
                     : () {
                         final gift = _gifts[_selectedIndex];
-                        if (_balance >= gift['value']) {
+                        if (_balance >= (gift['value'] as int)) {
                           setState(() {
                             _balance -= gift['value'] as int;
                           });

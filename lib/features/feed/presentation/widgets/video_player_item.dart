@@ -8,6 +8,9 @@ import 'package:test_flutter/core/theme/app_theme.dart';
 import '../../data/services/video_service.dart';
 import 'comment_bottom_sheet.dart';
 
+import 'package:test_flutter/core/utils/route_observer.dart';
+import '../providers/feed_audio_provider.dart';
+
 class VideoPlayerItem extends ConsumerStatefulWidget {
   final Video video;
   const VideoPlayerItem({super.key, required this.video});
@@ -16,15 +19,45 @@ class VideoPlayerItem extends ConsumerStatefulWidget {
   ConsumerState<VideoPlayerItem> createState() => _VideoPlayerItemState();
 }
 
-class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem> {
+class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
+    with RouteAware {
   late VideoPlayerController _controller;
+  // ... (keep existing fields)
   bool _isLoading = true;
   bool _isLiked = false;
   int _likesCount = 0;
-  final VideoService _videoService = VideoService(); // Should use provider
+  final VideoService _videoService = VideoService();
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    routeObserver.subscribe(this, ModalRoute.of(context)!);
+  }
+
+  @override
+  void didPushNext() {
+    // Route pushed on top (e.g. LiveSetup)
+    _controller.pause();
+  }
+
+  @override
+  void didPopNext() {
+    // Top route popped, we are back
+    if (ref.read(bottomNavIndexProvider) == 0) {
+      _controller.play();
+    }
+  }
+
+  @override
+  void dispose() {
+    routeObserver.unsubscribe(this);
+    _controller.dispose();
+    super.dispose();
+  }
 
   @override
   void initState() {
+    // ... existing initState
     super.initState();
     _isLiked = widget.video.isLiked;
     _likesCount = widget.video.likesCount;
@@ -32,26 +65,18 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem> {
         VideoPlayerController.networkUrl(Uri.parse(widget.video.videoUrl))
           ..initialize()
               .then((_) {
-                if (!mounted) {
-                  // Widget was disposed while loading
-                  return;
-                }
+                if (!mounted) return;
                 setState(() {
                   _isLoading = false;
                 });
-                _controller.play();
+                if (ref.read(bottomNavIndexProvider) == 0) {
+                  _controller.play();
+                }
                 _controller.setLooping(true);
               })
               .catchError((error) {
-                // Handle error
                 debugPrint("Video Error: $error");
               });
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
   }
 
   Future<void> _toggleLike() async {
@@ -94,16 +119,26 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem> {
 
   @override
   Widget build(BuildContext context) {
-    ref.listen(bottomNavIndexProvider, (previous, next) {
-      if (!_controller.value.isInitialized) return;
+    ref.listen(isFeedAudioEnabledProvider, (previous, next) {
+      if (next) {
+        if (ref.read(bottomNavIndexProvider) == 0 &&
+            !_controller.value.isPlaying) {
+          _controller.play();
+        }
+      } else {
+        _controller.pause();
+      }
+    });
 
+    ref.listen(bottomNavIndexProvider, (previous, next) {
+      // Logic managed by isFeedAudioEnabledProvider for main switches,
+      // but we still need standard tab switching logic.
       if (next != 0) {
-        // Not on Feed
         _controller.pause();
       } else {
-        // Returned to Feed - Resume
-        // Note: For better UX, we might want to check if it was manually paused
-        _controller.play();
+        if (ref.read(isFeedAudioEnabledProvider)) {
+          _controller.play();
+        }
       }
     });
 

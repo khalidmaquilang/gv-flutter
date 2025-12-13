@@ -13,6 +13,7 @@ import '../../data/models/sound_model.dart';
 import 'sound_selection_screen.dart';
 import '../../data/services/deepar_service.dart';
 import 'package:path_provider/path_provider.dart';
+import '../../../live/presentation/screens/live_stream_setup_screen.dart';
 
 class VideoRecorderScreen extends ConsumerStatefulWidget {
   const VideoRecorderScreen({super.key});
@@ -88,15 +89,29 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
     super.dispose();
   }
 
-  void _onModeChanged(int index) {
+  void _onModeChanged(int index) async {
     if (isRecording || isPaused) return;
     setState(() {
       _selectedModeIndex = index;
     });
 
     if (_modes[index] == 'Live') {
+      // Stop DeepAR camera before pushing to LiveStreamSetupScreen
+      if (_deepArController != null) {
+        try {
+          await _deepArController!.destroy();
+        } catch (e) {
+          debugPrint("DeepAR destroy error: $e");
+        }
+        _deepArController = null;
+        setState(() {
+          _isDeepArInitialized = false;
+        });
+      }
+
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (context) => const LiveStreamSetupScreen()),
+        result: 'live_mode',
       );
       return;
     }
@@ -1019,25 +1034,6 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-// Dummy screen for Live Setup (unchanged)
-class LiveStreamSetupScreen extends StatelessWidget {
-  const LiveStreamSetupScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      appBar: AppBar(
-        title: const Text("Go Live"),
-        backgroundColor: Colors.transparent,
-      ),
-      body: const Center(
-        child: Text("Live Stream Setup", style: TextStyle(color: Colors.white)),
       ),
     );
   }

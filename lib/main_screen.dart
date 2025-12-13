@@ -8,7 +8,8 @@ import 'package:test_flutter/features/discover/presentation/screens/discover_scr
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../core/providers/navigation_provider.dart';
+import 'features/feed/presentation/providers/feed_audio_provider.dart';
+import 'core/providers/navigation_provider.dart';
 
 class MainScreen extends ConsumerStatefulWidget {
   const MainScreen({super.key});
@@ -18,9 +19,6 @@ class MainScreen extends ConsumerStatefulWidget {
 }
 
 class _MainScreenState extends ConsumerState<MainScreen> {
-  // We use the provider for state execution, but local state for the indexed stack rendering is tied to the provider?
-  // Actually simpler: Just watch the provider for index.
-
   final List<Widget> _pages = [
     const FeedScreen(),
     const DiscoverScreen(),
@@ -37,12 +35,21 @@ class _MainScreenState extends ConsumerState<MainScreen> {
       ref.read(bottomNavIndexProvider.notifier).state = index;
 
       // Open Camera
-      await Navigator.of(context).push(
+      final result = await Navigator.of(context).push(
         MaterialPageRoute(builder: (context) => const VideoRecorderScreen()),
       );
 
-      // Restore previous tab upon return
-      ref.read(bottomNavIndexProvider.notifier).state = currentIndex;
+      if (result == 'live_mode') {
+        // User went to Live Setup (which replaced Recorder).
+        // Keep Feed Audio MUTED.
+        ref.read(isFeedAudioEnabledProvider.notifier).state = false;
+        // But restore index to 0 so we are "back home" visually behind the live screen
+        ref.read(bottomNavIndexProvider.notifier).state = currentIndex;
+      } else {
+        // Standard return (Back button from Recorder)
+        // Restore previous tab
+        ref.read(bottomNavIndexProvider.notifier).state = currentIndex;
+      }
     } else {
       if (index == 0 && currentIndex == 0) {
         // Already on home, tapping home again -> Reset to For You

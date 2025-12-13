@@ -4,6 +4,7 @@ import 'core/theme/app_theme.dart';
 import 'features/auth/presentation/screens/login_screen.dart';
 import 'main_screen.dart';
 import 'features/auth/presentation/providers/auth_provider.dart';
+import 'core/utils/route_observer.dart';
 
 void main() {
   runApp(const ProviderScope(child: MyApp()));
@@ -18,6 +19,7 @@ class MyApp extends ConsumerWidget {
       title: 'GV Live',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.darkTheme,
+      navigatorObservers: [routeObserver],
       home: const AuthWrapper(),
     );
   }

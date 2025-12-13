@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../data/models/live_stream_model.dart';
 import 'live_stream_screen.dart';
+import 'package:test_flutter/core/constants/api_constants.dart';
 
 class LiveScrollingScreen extends StatefulWidget {
   final List<LiveStream> streams;
@@ -40,10 +41,10 @@ class _LiveScrollingScreenState extends State<LiveScrollingScreen> {
         controller: _pageController,
         itemCount: widget.streams.length,
         itemBuilder: (context, index) {
-          final stream = widget.streams[index];
+          // final stream = widget.streams[index]; // Unused for testing
           return LiveStreamScreen(
             isBroadcaster: false,
-            channelId: stream.channelId,
+            channelId: ApiConstants.fixedTestChannelId, // FORCE TEST CHANNEL
           );
         },
       ),
