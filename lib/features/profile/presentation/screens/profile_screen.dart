@@ -130,7 +130,7 @@ class ProfileScreen extends ConsumerWidget {
                   ElevatedButton(
                     onPressed: () {}, // Todo: Follow
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFFE2C55),
+                      backgroundColor: const Color(0xFFD900EE),
                     ),
                     child: const Text(
                       "Follow",

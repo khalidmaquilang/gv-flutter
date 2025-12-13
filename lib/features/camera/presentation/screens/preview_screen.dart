@@ -173,7 +173,7 @@ class _PreviewScreenState extends State<PreviewScreen> {
                 }
               },
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFFE2C55),
+                backgroundColor: const Color(0xFFD900EE),
               ),
               child: const Text("Post", style: TextStyle(color: Colors.white)),
             ),

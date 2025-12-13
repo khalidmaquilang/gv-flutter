@@ -45,7 +45,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                     margin: const EdgeInsets.all(8),
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: isMe ? const Color(0xFFFE2C55) : Colors.grey[800],
+                      color: isMe ? const Color(0xFFD900EE) : Colors.grey[800],
                       borderRadius: BorderRadius.circular(16),
                     ),
                     child: Text(
@@ -77,7 +77,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                   ),
                 ),
                 IconButton(
-                  icon: const Icon(Icons.send, color: Color(0xFFFE2C55)),
+                  icon: const Icon(Icons.send, color: Color(0xFFD900EE)),
                   onPressed: _send,
                 ),
               ],

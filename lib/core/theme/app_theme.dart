@@ -5,12 +5,14 @@ class AppTheme {
     useMaterial3: true,
     brightness: Brightness.dark,
     scaffoldBackgroundColor: Colors.black,
-    primaryColor: const Color(0xFFFE2C55), // TikTok Red
+    primaryColor: const Color(0xFFD900EE), // Neon Pink
     colorScheme: const ColorScheme.dark(
-      primary: Color(0xFFFE2C55),
-      secondary: Color(0xFF25F4EE), // TikTok Cyan
+      primary: Color(0xFFD900EE), // Neon Pink
+      secondary: Color(0xFF00D2FF), // Neon Blue
       surface: Colors.black,
       background: Colors.black,
+      // Add tertiary for other accents if needed
+      tertiary: Color(0xFF00D2FF),
     ),
     appBarTheme: const AppBarTheme(
       backgroundColor: Colors.black,
@@ -24,6 +26,12 @@ class AppTheme {
     textTheme: const TextTheme(
       bodyLarge: TextStyle(color: Colors.white),
       bodyMedium: TextStyle(color: Colors.white),
+    ),
+    // Customize floating action button to use the gradient aesthetic if possible (via container),
+    // otherwise fallback to primary pink.
+    floatingActionButtonTheme: const FloatingActionButtonThemeData(
+      backgroundColor: Color(0xFFD900EE),
+      foregroundColor: Colors.white,
     ),
   );
 }

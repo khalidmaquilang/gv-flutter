@@ -624,7 +624,7 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
                               icon: Container(
                                 padding: const EdgeInsets.all(8),
                                 decoration: const BoxDecoration(
-                                  color: Color(0xFFFE2C55),
+                                  color: Color(0xFFD900EE),
                                   shape: BoxShape.circle,
                                 ),
                                 child: const Icon(

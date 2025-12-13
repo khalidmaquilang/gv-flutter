@@ -128,7 +128,7 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem> {
               _buildAction(
                 _isLiked ? Icons.favorite : Icons.favorite_border,
                 "$_likesCount",
-                color: _isLiked ? const Color(0xFFFE2C55) : Colors.white,
+                color: _isLiked ? const Color(0xFFD900EE) : Colors.white,
                 onTap: _toggleLike,
               ),
               const SizedBox(height: 16),

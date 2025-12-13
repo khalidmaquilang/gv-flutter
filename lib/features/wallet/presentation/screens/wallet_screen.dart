@@ -59,7 +59,7 @@ class WalletScreen extends ConsumerWidget {
                 Expanded(
                   child: ElevatedButton(
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFFE2C55),
+                      backgroundColor: const Color(0xFFD900EE),
                       padding: const EdgeInsets.symmetric(vertical: 16),
                     ),
                     onPressed: () {},

@@ -117,7 +117,7 @@ class _LiveStreamScreenState extends State<LiveStreamScreen>
             begin: Offset.zero,
             end: const Offset(0, -5),
           ).animate(animation),
-          child: const Icon(Icons.favorite, color: Color(0xFFFE2C55), size: 30),
+          child: const Icon(Icons.favorite, color: Color(0xFFD900EE), size: 30),
         ),
       ),
     );
@@ -362,7 +362,7 @@ class _LiveStreamScreenState extends State<LiveStreamScreen>
                         suffixIcon: IconButton(
                           icon: const Icon(
                             Icons.send,
-                            color: Color(0xFFFE2C55),
+                            color: Color(0xFFD900EE),
                           ),
                           onPressed: _sendMessage,
                         ),
@@ -374,7 +374,7 @@ class _LiveStreamScreenState extends State<LiveStreamScreen>
                   IconButton(
                     icon: const Icon(
                       Icons.favorite,
-                      color: Color(0xFFFE2C55),
+                      color: Color(0xFFD900EE),
                       size: 40,
                     ),
                     onPressed: () {
@@ -384,7 +384,7 @@ class _LiveStreamScreenState extends State<LiveStreamScreen>
                   IconButton(
                     icon: const Icon(
                       Icons.card_giftcard,
-                      color: Color(0xFFFE2C55),
+                      color: Color(0xFFD900EE),
                       size: 30,
                     ),
                     onPressed: () {
@@ -457,7 +457,7 @@ class _GiftPickerBottomSheetState extends State<GiftPickerBottomSheet> {
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFFE2C55),
+              backgroundColor: const Color(0xFFD900EE),
             ),
             onPressed: () {
               // Placeholder for In-App Payment Logic
@@ -468,7 +468,7 @@ class _GiftPickerBottomSheetState extends State<GiftPickerBottomSheet> {
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
                   content: Text("Recharge Successful! +1000 Coins"),
-                  backgroundColor: Color(0xFFFE2C55),
+                  backgroundColor: Color(0xFFD900EE),
                 ),
               );
             },
@@ -546,11 +546,11 @@ class _GiftPickerBottomSheetState extends State<GiftPickerBottomSheet> {
                   child: Container(
                     decoration: BoxDecoration(
                       color: isSelected
-                          ? const Color(0xFFFE2C55).withOpacity(0.1)
+                          ? const Color(0xFFD900EE).withOpacity(0.1)
                           : Colors.transparent,
                       border: Border.all(
                         color: isSelected
-                            ? const Color(0xFFFE2C55)
+                            ? const Color(0xFFD900EE)
                             : Colors.transparent,
                         width: 2,
                       ),
@@ -606,7 +606,7 @@ class _GiftPickerBottomSheetState extends State<GiftPickerBottomSheet> {
               height: 50,
               child: ElevatedButton(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFFE2C55),
+                  backgroundColor: const Color(0xFFD900EE),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(25),
                   ),

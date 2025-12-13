@@ -144,7 +144,7 @@ class _CommentBottomSheetState extends ConsumerState<CommentBottomSheet> {
                   ),
                 ),
                 IconButton(
-                  icon: const Icon(Icons.send, color: Color(0xFFFE2C55)),
+                  icon: const Icon(Icons.send, color: Color(0xFFD900EE)),
                   onPressed: _postComment,
                 ),
               ],

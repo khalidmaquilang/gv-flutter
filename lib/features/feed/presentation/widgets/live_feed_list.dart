@@ -105,7 +105,7 @@ class _LiveFeedListState extends State<LiveFeedList> {
                         vertical: 2,
                       ),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFFE2C55),
+                        color: const Color(0xFFD900EE),
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: const Text(
