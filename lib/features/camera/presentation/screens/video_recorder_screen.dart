@@ -34,7 +34,7 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
   final List<String> _modes = ['Photo', '15s', '60s', 'Live'];
 
   // Effects
-  final List<String> _effects = ['none', 'beats-headphones-ad'];
+  final List<String> _effects = ['none', 'beats-headphones-ad', 'makeup-kim'];
   int _selectedEffectIndex = 0;
 
   List<XFile> _recordedFiles = [];
@@ -145,7 +145,7 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
 
     final effect = _effects[index];
     if (effect == 'none') {
-      _deepArController?.switchEffect("");
+      _deepArController?.switchEffect(null as dynamic);
     } else {
       String assetPath = "assets/deepar/$effect.deepar";
       try {
