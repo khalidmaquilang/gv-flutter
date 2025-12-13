@@ -19,11 +19,11 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
   int _selectedModeIndex = 1; // 0: Photo, 1: 15s, 2: 60s, 3: Live
   final List<String> _modes = ['Photo', '15s', '60s', 'Live'];
 
-  // Timer logic
+  List<XFile> _recordedFiles = [];
   Timer? _timer;
-  List<double> _segments = []; // Progress of each completed segment
+  List<double> _segments = [];
   double _currentSegmentProgress = 0.0;
-  int _maxDuration = 15; // seconds
+  int _maxDuration = 15;
   bool isPaused = false;
 
   @override
@@ -33,8 +33,7 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
   }
 
   void _onModeChanged(int index) {
-    if (isRecording || isPaused)
-      return; // Disable mode switching during recording
+    if (isRecording || isPaused) return;
     setState(() {
       _selectedModeIndex = index;
     });
@@ -46,19 +45,14 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
       return;
     }
 
-    // Update max duration based on mode
     if (_modes[index] == '15s') {
       _maxDuration = 15;
     } else if (_modes[index] == '60s') {
       _maxDuration = 60;
     } else {
-      _maxDuration = 0; // Photo or other
+      _maxDuration = 0;
     }
 
-    // If recording and we switch to a shorter duration that we passed, stop.
-    // Simplified check: if we are over the new structure
-    // Since we track progress 0.0-1.0, we just reset or stop if needed.
-    // For now, let's just stop if we switch modes while recording to be safe.
     if (isRecording) {
       _recordVideo();
     }
@@ -67,76 +61,130 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
   void _startTimer() {
     _timer?.cancel();
     int ticks = 0;
-    int totalTicks = _maxDuration * 10; // 100ms intervals
+    int totalTicks = _maxDuration * 10;
 
     _timer = Timer.periodic(const Duration(milliseconds: 100), (timer) {
       if (!mounted) return;
+
       setState(() {
         ticks++;
-        _currentSegmentProgress = ticks / totalTicks;
+        if (totalTicks > 0) {
+          _currentSegmentProgress = ticks / totalTicks;
+        } else {
+          _currentSegmentProgress = 0.0;
+        }
       });
 
       double totalProgress =
           _segments.fold(0.0, (sum, seg) => sum + seg) +
           _currentSegmentProgress;
+
       if (_maxDuration > 0 && totalProgress >= 1.0) {
-        _finishRecording(); // Auto finish
+        _pauseTimer();
+        if (totalProgress >= 1.0) {
+          _finishRecording();
+        }
       }
     });
   }
 
   void _pauseTimer() async {
     _timer?.cancel();
-    await ref.read(cameraControllerProvider.notifier).pauseRecording();
+    debugPrint("Recorder: Pausing... Stopping current segment.");
+    final file = await ref
+        .read(cameraControllerProvider.notifier)
+        .stopRecording();
+
     if (!mounted) return;
     setState(() {
-      _segments.add(_currentSegmentProgress);
+      if (file != null) {
+        debugPrint("Recorder: Segment saved. Path: ${file.path}");
+        _recordedFiles.add(file);
+        _segments.add(_currentSegmentProgress);
+      } else {
+        debugPrint("Recorder: Stop returned NULL file!");
+      }
       _currentSegmentProgress = 0.0;
       isPaused = true;
-      isRecording = false; // Physically paused
+      isRecording = false;
     });
   }
 
-  void _resumeTimer() {
+  void _resumeTimer() async {
+    debugPrint("Recorder: Resuming... Starting new segment.");
+    await ref.read(cameraControllerProvider.notifier).startRecording();
+
+    if (!mounted) return;
     setState(() {
       isPaused = false;
       isRecording = true;
     });
-    ref.read(cameraControllerProvider.notifier).resumeRecording();
     _startTimer();
   }
 
-  void _discardAll() async {
-    _timer?.cancel();
-    final notifier = ref.read(cameraControllerProvider.notifier);
-    await notifier.stopRecording(); // Discard result
+  void _discardLastSegment() async {
+    if (_recordedFiles.isEmpty) return;
+
+    debugPrint("Recorder: Discarding last segment.");
     setState(() {
-      isRecording = false;
-      isPaused = false;
-      _segments.clear();
-      _currentSegmentProgress = 0.0;
+      _recordedFiles.removeLast();
+      if (_segments.isNotEmpty) {
+        _segments.removeLast();
+      }
+      if (_recordedFiles.isEmpty) {
+        isPaused = false;
+        isRecording = false;
+        _currentSegmentProgress = 0.0;
+      }
     });
   }
 
   Future<void> _finishRecording() async {
     _timer?.cancel();
-    final notifier = ref.read(cameraControllerProvider.notifier);
+    debugPrint(
+      "Recorder: Finishing... Files count before stop: ${_recordedFiles.length}",
+    );
 
-    final file = await notifier.stopRecording();
+    if (isRecording) {
+      final file = await ref
+          .read(cameraControllerProvider.notifier)
+          .stopRecording();
+      if (file != null) {
+        debugPrint("Recorder: Saved final segment: ${file.path}");
+        _recordedFiles.add(file);
+      } else {
+        debugPrint("Recorder: Final segment stop returned NULL");
+      }
+    }
+
+    debugPrint("Recorder: Total Files to Preview: ${_recordedFiles.length}");
+
+    if (!mounted) return;
+
+    final filesToPreview = List<XFile>.from(_recordedFiles);
 
     setState(() {
       isRecording = false;
       isPaused = false;
       _segments.clear();
       _currentSegmentProgress = 0.0;
+      _recordedFiles.clear();
     });
 
-    if (file != null && mounted) {
+    if (filesToPreview.isNotEmpty) {
       Navigator.of(context).push(
         MaterialPageRoute(
-          builder: (context) => PreviewScreen(file: file, isVideo: true),
+          builder: (context) =>
+              PreviewScreen(files: filesToPreview, isVideo: true),
         ),
       );
+    } else {
+      debugPrint(
+        "Recorder: ERROR - filesToPreview is EMPTY! Cannot push preview.",
+      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text("No video recorded!")));
     }
   }
 
@@ -149,7 +197,7 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
       if (file != null && mounted) {
         Navigator.of(context).push(
           MaterialPageRoute(
-            builder: (context) => PreviewScreen(file: file, isVideo: false),
+            builder: (context) => PreviewScreen(files: [file], isVideo: false),
           ),
         );
       }
@@ -158,17 +206,15 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
 
     // Video Mode
     if (isRecording) {
-      // Currently recording -> Pause
       _pauseTimer();
     } else if (isPaused) {
-      // Currently paused -> Resume
       _resumeTimer();
     } else {
-      // Not recording, Not paused -> Start
       await notifier.startRecording();
       setState(() {
         isRecording = true;
         isPaused = false;
+        _recordedFiles.clear();
         _segments.clear();
         _currentSegmentProgress = 0.0;
       });
@@ -177,7 +223,6 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
   }
 
   void _pickFromGallery() async {
-    // Todo: Implement Gallery Picker
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(const SnackBar(content: Text("Open Gallery")));
@@ -202,13 +247,9 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
           }
           return Stack(
             children: [
-              // Camera Preview
               Center(child: CameraPreview(controller)),
 
-              // Segmented Progress Bar (Top) - REMOVED per user request
-              // if ((isRecording || isPaused) && _maxDuration > 0) ...
-
-              // Top Actions (Close, Sound, Flip)
+              // Top Actions
               Positioned(
                 top: 48,
                 left: 16,
@@ -218,7 +259,7 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
                 ),
               ),
 
-              // Select Sound (Top Center)
+              // Select Sound
               Positioned(
                 top: 48,
                 left: 0,
@@ -275,7 +316,7 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
                 ),
               ),
 
-              // Bottom Area: Record Button, Gallery, Modes
+              // Bottom Area
               Positioned(
                 bottom: 20,
                 left: 0,
@@ -289,10 +330,10 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
-                          // Left Button: Gallery or Backspace (Discard)
+                          // Gallery/Discard
                           if (!isRecording && !isPaused)
                             GestureDetector(
-                              onTap: _pickFromGallery, // Original Gallery
+                              onTap: _pickFromGallery,
                               child: Column(
                                 children: [
                                   Container(
@@ -325,8 +366,7 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
                             )
                           else if (isPaused && _segments.isNotEmpty)
                             IconButton(
-                              onPressed:
-                                  _discardAll, // Simplified to Discard All for now
+                              onPressed: _discardLastSegment,
                               icon: const Icon(
                                 Icons.backspace,
                                 color: Colors.white,
@@ -360,7 +400,6 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
                                       ),
                                     ),
                                   ),
-                                  // Ring Progress if recording or paused (Segmented)
                                   if (isRecording || isPaused)
                                     SizedBox(
                                       height: 80,
@@ -375,8 +414,6 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
                                         ),
                                       ),
                                     ),
-
-                                  // Inner Button
                                   Center(
                                     child: AnimatedContainer(
                                       duration: const Duration(
@@ -392,7 +429,6 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
                                       ),
                                     ),
                                   ),
-                                  // Play Icon if Paused
                                   if (isPaused)
                                     const Center(
                                       child: Icon(
@@ -406,7 +442,7 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
                             ),
                           ),
 
-                          // Right Button: Checkmark (Finish) if Paused/Recording
+                          // Checkmark
                           if (isPaused && _segments.isNotEmpty)
                             IconButton(
                               onPressed: _finishRecording,
@@ -424,7 +460,7 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
                               ),
                             )
                           else
-                            const SizedBox(width: 36), // Placeholder/Effects
+                            const SizedBox(width: 36),
                         ],
                       ),
                     ),
