@@ -145,7 +145,7 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
 
     final effect = _effects[index];
     if (effect == 'none') {
-      _deepArController?.switchEffect('');
+      _deepArController?.switchEffect("");
     } else {
       String assetPath = "assets/deepar/$effect.deepar";
       try {
@@ -964,7 +964,7 @@ class SegmentedRingPainter extends CustomPainter {
       ..color = color
       ..strokeWidth = strokeWidth
       ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round;
+      ..strokeCap = StrokeCap.butt;
 
     final double radius = (size.width - strokeWidth) / 2;
     final Offset center = Offset(size.width / 2, size.height / 2);
@@ -982,8 +982,26 @@ class SegmentedRingPainter extends CustomPainter {
         false,
         paint,
       );
-      // Small gap between segments
-      currentAngle += sweepAngle + 0.05;
+
+      currentAngle += sweepAngle;
+
+      // Draw white separator (gap indicator)
+      final Paint separatorPaint = Paint()
+        ..color = Colors.white
+        ..strokeWidth = strokeWidth
+        ..style = PaintingStyle.stroke
+        ..strokeCap = StrokeCap.butt;
+
+      double gap = 0.08; // Check visible gap size
+      canvas.drawArc(
+        Rect.fromCircle(center: center, radius: radius),
+        currentAngle,
+        gap,
+        false,
+        separatorPaint,
+      );
+
+      currentAngle += gap;
     }
 
     // Draw active segment
