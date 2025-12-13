@@ -48,12 +48,22 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(
-                FontAwesomeIcons.tiktok,
-                size: 80,
-                color: Colors.white,
+              Hero(
+                tag: 'app_logo',
+                child: Image.asset(
+                  'assets/images/logo.png',
+                  height: 200,
+                  width: 200,
+                  fit: BoxFit.contain,
+                  errorBuilder: (context, error, stackTrace) {
+                    return const Icon(
+                      FontAwesomeIcons.tiktok,
+                      size: 80,
+                      color: Colors.white,
+                    );
+                  },
+                ),
               ),
-              const SizedBox(height: 48),
               const Text(
                 'Log in to GV Live',
                 style: TextStyle(
