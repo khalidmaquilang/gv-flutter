@@ -424,6 +424,7 @@ class GiftPickerBottomSheet extends StatefulWidget {
 
 class _GiftPickerBottomSheetState extends State<GiftPickerBottomSheet> {
   int _selectedIndex = -1;
+  int _balance = 20; // Reduced initial balance for testing
 
   final List<Map<String, dynamic>> _gifts = [
     {'name': 'Rose', 'value': 1, 'icon': '🌹'},
@@ -435,6 +436,51 @@ class _GiftPickerBottomSheetState extends State<GiftPickerBottomSheet> {
     {'name': 'Rocket', 'value': 1000, 'icon': '🚀'},
     {'name': 'Planet', 'value': 5000, 'icon': '🪐'},
   ];
+
+  void _showRechargeDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.grey[900],
+        title: const Text(
+          "Insufficient Coins",
+          style: TextStyle(color: Colors.white),
+        ),
+        content: const Text(
+          "You don't have enough coins to send this gift. Recharge now?",
+          style: TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Cancel"),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFFE2C55),
+            ),
+            onPressed: () {
+              // Placeholder for In-App Payment Logic
+              setState(() {
+                _balance += 1000; // Mock Recharge
+              });
+              Navigator.pop(context);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text("Recharge Successful! +1000 Coins"),
+                  backgroundColor: Color(0xFFFE2C55),
+                ),
+              );
+            },
+            child: const Text(
+              "Recharge",
+              style: TextStyle(color: Colors.white),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -471,9 +517,9 @@ class _GiftPickerBottomSheetState extends State<GiftPickerBottomSheet> {
                       size: 20,
                     ),
                     const SizedBox(width: 5),
-                    const Text(
-                      "Balance: 1250", // Mock Balance
-                      style: TextStyle(color: Colors.white),
+                    Text(
+                      "Balance: $_balance",
+                      style: const TextStyle(color: Colors.white),
                     ),
                   ],
                 ),
@@ -570,7 +616,14 @@ class _GiftPickerBottomSheetState extends State<GiftPickerBottomSheet> {
                     ? null
                     : () {
                         final gift = _gifts[_selectedIndex];
-                        widget.onGiftSent(gift['name'], gift['value']);
+                        if (_balance >= gift['value']) {
+                          setState(() {
+                            _balance -= gift['value'] as int;
+                          });
+                          widget.onGiftSent(gift['name'], gift['value']);
+                        } else {
+                          _showRechargeDialog();
+                        }
                       },
                 child: const Text(
                   "Send",
