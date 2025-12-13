@@ -26,6 +26,11 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
   int _maxDuration = 15;
   bool isPaused = false;
 
+  // New State for Side Menu
+  FlashMode _flashMode = FlashMode.off;
+  int _timerDelay = 0; // 0, 3, 10 seconds
+  int _countdown = 0; // Current countdown value
+
   @override
   void dispose() {
     _timer?.cancel();
@@ -56,6 +61,42 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
     if (isRecording) {
       _recordVideo();
     }
+  }
+
+  void _toggleFlash() async {
+    final controller = ref.read(cameraControllerProvider).value;
+    if (controller == null) return;
+
+    FlashMode nextMode;
+    if (_flashMode == FlashMode.off) {
+      nextMode =
+          FlashMode.torch; // For video usually torch is better visualization
+    } else if (_flashMode == FlashMode.torch) {
+      nextMode = FlashMode.auto;
+    } else {
+      nextMode = FlashMode.off;
+    }
+
+    try {
+      await controller.setFlashMode(nextMode);
+      setState(() {
+        _flashMode = nextMode;
+      });
+    } catch (e) {
+      debugPrint("Error setting flash mode: $e");
+    }
+  }
+
+  void _toggleTimer() {
+    setState(() {
+      if (_timerDelay == 0) {
+        _timerDelay = 3;
+      } else if (_timerDelay == 3) {
+        _timerDelay = 10;
+      } else {
+        _timerDelay = 0;
+      }
+    });
   }
 
   void _startTimer() {
@@ -203,20 +244,54 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
     }
 
     // Video Mode
+    if (_countdown > 0) return; // Ignore taps during countdown
+
     if (isRecording) {
       _pauseTimer();
     } else if (isPaused) {
       _resumeTimer();
     } else {
-      await notifier.startRecording();
-      setState(() {
-        isRecording = true;
-        isPaused = false;
-        _recordedFiles.clear();
-        _segments.clear();
-        _currentSegmentProgress = 0.0;
-      });
-      _startTimer();
+      // Handle Timer Delay
+      if (_timerDelay > 0) {
+        setState(() {
+          _countdown = _timerDelay;
+        });
+        Timer.periodic(const Duration(seconds: 1), (timer) async {
+          if (!mounted) {
+            timer.cancel();
+            return;
+          }
+
+          setState(() {
+            _countdown--;
+          });
+
+          if (_countdown <= 0) {
+            timer.cancel();
+            // Start actual recording
+            await notifier.startRecording();
+            setState(() {
+              isRecording = true;
+              isPaused = false;
+              _recordedFiles.clear();
+              _segments.clear();
+              _currentSegmentProgress = 0.0;
+            });
+            _startTimer();
+          }
+        });
+      } else {
+        // Immediate Start
+        await notifier.startRecording();
+        setState(() {
+          isRecording = true;
+          isPaused = false;
+          _recordedFiles.clear();
+          _segments.clear();
+          _currentSegmentProgress = 0.0;
+        });
+        _startTimer();
+      }
     }
   }
 
@@ -246,6 +321,20 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
           return Stack(
             children: [
               Center(child: CameraPreview(controller)),
+
+              // Countdown Overlay
+              if (_countdown > 0)
+                Center(
+                  child: Text(
+                    "$_countdown",
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 100,
+                      fontWeight: FontWeight.bold,
+                      shadows: [Shadow(color: Colors.black, blurRadius: 10)],
+                    ),
+                  ),
+                ),
 
               // Top Actions
               Positioned(
@@ -290,27 +379,59 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
                 ),
               ),
 
+              // Floating Side Menu
               Positioned(
                 top: 48,
                 right: 16,
-                child: Column(
-                  children: [
-                    IconButton(
-                      icon: const Icon(
-                        Icons.flip_camera_ios,
-                        color: Colors.white,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 8,
+                    horizontal: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.4),
+                    borderRadius: BorderRadius.circular(24),
+                  ),
+                  child: Column(
+                    children: [
+                      // Flip Camera
+                      _buildMenuIcon(
+                        icon: Icons.flip_camera_ios,
+                        label: "Flip",
+                        onTap: () {
+                          ref
+                              .read(cameraControllerProvider.notifier)
+                              .switchCamera();
+                        },
                       ),
-                      onPressed: () {
-                        ref
-                            .read(cameraControllerProvider.notifier)
-                            .switchCamera();
-                      },
-                    ),
-                    const Text(
-                      "Flip",
-                      style: TextStyle(color: Colors.white, fontSize: 12),
-                    ),
-                  ],
+                      const SizedBox(height: 16),
+
+                      // Flash Toggle
+                      _buildMenuIcon(
+                        icon: _flashMode == FlashMode.off
+                            ? Icons.flash_off
+                            : (_flashMode == FlashMode.auto
+                                  ? Icons.flash_auto
+                                  : Icons.flash_on),
+                        label: "Flash",
+                        onTap: _toggleFlash,
+                        isActive: _flashMode != FlashMode.off,
+                      ),
+                      const SizedBox(height: 16),
+
+                      // Timer Toggle
+                      _buildMenuIcon(
+                        icon: _timerDelay == 0
+                            ? Icons.timer_off_outlined
+                            : (_timerDelay == 3
+                                  ? Icons.timer_3
+                                  : Icons.timer_10),
+                        label: "Timer",
+                        onTap: _toggleTimer,
+                        isActive: _timerDelay > 0,
+                      ),
+                    ],
+                  ),
                 ),
               ),
 
@@ -505,6 +626,38 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
         },
         error: (err, st) => Center(child: Text("Error: $err")),
         loading: () => const Center(child: CircularProgressIndicator()),
+      ),
+    );
+  }
+
+  Widget _buildMenuIcon({
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+    bool isActive = false,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        children: [
+          Icon(
+            icon,
+            color: isActive ? Colors.yellow : Colors.white,
+            size: 28,
+            shadows: [
+              Shadow(color: Colors.black.withOpacity(0.5), blurRadius: 4),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 10,
+              shadows: [Shadow(color: Colors.black, blurRadius: 2)],
+            ),
+          ),
+        ],
       ),
     );
   }
