@@ -58,6 +58,7 @@ dependencies:
   font_awesome_flutter: ^10.6.0
   share_plus: ^7.2.1
   audioplayers: ^5.2.1
+  photo_manager: ^3.8.3
 
 
 

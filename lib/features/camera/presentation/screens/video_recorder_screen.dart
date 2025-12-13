@@ -9,6 +9,9 @@ import '../providers/camera_provider.dart';
 import 'preview_screen.dart';
 import 'package:test_flutter/core/theme/app_theme.dart';
 
+import 'package:photo_manager/photo_manager.dart';
+import 'package:image_picker/image_picker.dart';
+
 class VideoRecorderScreen extends ConsumerStatefulWidget {
   const VideoRecorderScreen({super.key});
 
@@ -35,6 +38,15 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
   FlashMode _flashMode = FlashMode.off;
   int _timerDelay = 0; // 0, 3, 10 seconds
   int _countdown = 0; // Current countdown value
+
+  // Media Picker State
+  Uint8List? _lastImageBytes;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchLastImage();
+  }
 
   @override
   void dispose() {
@@ -341,10 +353,48 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
     }
   }
 
+  Future<void> _fetchLastImage() async {
+    final PermissionState ps = await PhotoManager.requestPermissionExtend();
+    if (ps.isAuth) {
+      final List<AssetPathEntity> paths = await PhotoManager.getAssetPathList(
+        type: RequestType.image,
+        onlyAll: true,
+      );
+      if (paths.isNotEmpty) {
+        final List<AssetEntity> assets = await paths[0].getAssetListPaged(
+          page: 0,
+          size: 1,
+        );
+        if (assets.isNotEmpty) {
+          final Uint8List? bytes = await assets[0].thumbnailData;
+          if (mounted) {
+            setState(() {
+              _lastImageBytes = bytes;
+            });
+          }
+        }
+      }
+    }
+  }
+
   void _pickFromGallery() async {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text("Open Gallery")));
+    final ImagePicker picker = ImagePicker();
+    final XFile? media = await picker.pickMedia();
+
+    if (media != null && mounted) {
+      // Determine if it is a video based on extension seems flaky, but pickMedia returns video or image.
+      // We can check mime type or extension.
+      final bool isVideo =
+          media.path.toLowerCase().endsWith('.mp4') ||
+          media.path.toLowerCase().endsWith('.mov') ||
+          media.path.toLowerCase().endsWith('.avi');
+
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (context) => PreviewScreen(files: [media], isVideo: isVideo),
+        ),
+      );
+    }
   }
 
   void _selectSound() {
@@ -521,13 +571,25 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
                                         width: 2,
                                       ),
                                       borderRadius: BorderRadius.circular(8),
-                                      image: const DecorationImage(
-                                        image: NetworkImage(
-                                          "https://dummyimage.com/50",
-                                        ),
-                                        fit: BoxFit.cover,
-                                      ),
+                                      image: _lastImageBytes != null
+                                          ? DecorationImage(
+                                              image: MemoryImage(
+                                                _lastImageBytes!,
+                                              ),
+                                              fit: BoxFit.cover,
+                                            )
+                                          : null,
+                                      color: _lastImageBytes == null
+                                          ? Colors.grey[800]
+                                          : null,
                                     ),
+                                    child: _lastImageBytes == null
+                                        ? const Icon(
+                                            Icons.image,
+                                            color: Colors.white,
+                                            size: 20,
+                                          )
+                                        : null,
                                   ),
                                   const SizedBox(height: 5),
                                   const Text(
