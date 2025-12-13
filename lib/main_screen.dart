@@ -7,15 +7,19 @@ import 'package:test_flutter/features/discover/presentation/screens/discover_scr
 
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
-class MainScreen extends StatefulWidget {
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../core/providers/navigation_provider.dart';
+
+class MainScreen extends ConsumerStatefulWidget {
   const MainScreen({super.key});
 
   @override
-  State<MainScreen> createState() => _MainScreenState();
+  ConsumerState<MainScreen> createState() => _MainScreenState();
 }
 
-class _MainScreenState extends State<MainScreen> {
-  int _selectedIndex = 0;
+class _MainScreenState extends ConsumerState<MainScreen> {
+  // We use the provider for state execution, but local state for the indexed stack rendering is tied to the provider?
+  // Actually simpler: Just watch the provider for index.
 
   final List<Widget> _pages = [
     const FeedScreen(),
@@ -25,32 +29,39 @@ class _MainScreenState extends State<MainScreen> {
     const ProfileScreen(userId: 1, isCurrentUser: true), // Mock current user
   ];
 
-  void _onItemTapped(int index) {
+  void _onItemTapped(int index) async {
     if (index == 2) {
+      // Pause feed by setting index to 2 (Camera)
+      final previousIndex = ref.read(bottomNavIndexProvider);
+      ref.read(bottomNavIndexProvider.notifier).state = index;
+
       // Open Camera
-      Navigator.of(context).push(
+      await Navigator.of(context).push(
         MaterialPageRoute(builder: (context) => const VideoRecorderScreen()),
       );
+
+      // Restore previous tab upon return
+      ref.read(bottomNavIndexProvider.notifier).state = previousIndex;
     } else {
-      setState(() {
-        _selectedIndex = index;
-      });
+      ref.read(bottomNavIndexProvider.notifier).state = index;
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final selectedIndex = ref.watch(bottomNavIndexProvider);
+
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
-        children: [IndexedStack(index: _selectedIndex, children: _pages)],
+        children: [IndexedStack(index: selectedIndex, children: _pages)],
       ),
       bottomNavigationBar: BottomNavigationBar(
         backgroundColor: Colors.black,
         selectedItemColor: Colors.white,
         unselectedItemColor: Colors.grey,
         type: BottomNavigationBarType.fixed,
-        currentIndex: _selectedIndex,
+        currentIndex: selectedIndex,
         onTap: _onItemTapped,
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),

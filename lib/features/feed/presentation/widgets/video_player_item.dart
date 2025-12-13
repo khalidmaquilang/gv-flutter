@@ -1,19 +1,21 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:video_player/video_player.dart';
+import '../../../../core/providers/navigation_provider.dart';
 import '../../data/models/video_model.dart';
 import '../../data/services/video_service.dart';
 import 'comment_bottom_sheet.dart';
 
-class VideoPlayerItem extends StatefulWidget {
+class VideoPlayerItem extends ConsumerStatefulWidget {
   final Video video;
   const VideoPlayerItem({super.key, required this.video});
 
   @override
-  State<VideoPlayerItem> createState() => _VideoPlayerItemState();
+  ConsumerState<VideoPlayerItem> createState() => _VideoPlayerItemState();
 }
 
-class _VideoPlayerItemState extends State<VideoPlayerItem> {
+class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem> {
   late VideoPlayerController _controller;
   bool _isLoading = true;
   bool _isLiked = false;
@@ -87,6 +89,19 @@ class _VideoPlayerItemState extends State<VideoPlayerItem> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen(bottomNavIndexProvider, (previous, next) {
+      if (!_controller.value.isInitialized) return;
+
+      if (next != 0) {
+        // Not on Feed
+        _controller.pause();
+      } else {
+        // Returned to Feed - Resume
+        // Note: For better UX, we might want to check if it was manually paused
+        _controller.play();
+      }
+    });
+
     return Stack(
       children: [
         // Video Layer
