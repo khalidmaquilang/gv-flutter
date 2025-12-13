@@ -56,6 +56,16 @@ class CameraService {
     await _controller!.startVideoRecording();
   }
 
+  Future<void> pauseRecording() async {
+    if (_controller == null || !_controller!.value.isRecordingVideo) return;
+    await _controller!.pauseVideoRecording();
+  }
+
+  Future<void> resumeRecording() async {
+    if (_controller == null || !_controller!.value.isRecordingVideo) return;
+    await _controller!.resumeVideoRecording();
+  }
+
   Future<XFile?> stopRecording() async {
     if (_controller == null || !_controller!.value.isRecordingVideo)
       return null;

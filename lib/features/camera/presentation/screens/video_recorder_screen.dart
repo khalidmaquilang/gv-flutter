@@ -21,8 +21,10 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
 
   // Timer logic
   Timer? _timer;
-  double _progress = 0.0;
+  List<double> _segments = []; // Progress of each completed segment
+  double _currentSegmentProgress = 0.0;
   int _maxDuration = 15; // seconds
+  bool isPaused = false;
 
   @override
   void dispose() {
@@ -31,6 +33,8 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
   }
 
   void _onModeChanged(int index) {
+    if (isRecording || isPaused)
+      return; // Disable mode switching during recording
     setState(() {
       _selectedModeIndex = index;
     });
@@ -62,8 +66,6 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
 
   void _startTimer() {
     _timer?.cancel();
-    _progress = 0.0;
-
     int ticks = 0;
     int totalTicks = _maxDuration * 10; // 100ms intervals
 
@@ -71,23 +73,77 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
       if (!mounted) return;
       setState(() {
         ticks++;
-        _progress = ticks / totalTicks;
+        _currentSegmentProgress = ticks / totalTicks;
       });
 
-      if (_maxDuration > 0 && _progress >= 1.0) {
-        _recordVideo(); // Stop automatically
+      double totalProgress =
+          _segments.fold(0.0, (sum, seg) => sum + seg) +
+          _currentSegmentProgress;
+      if (_maxDuration > 0 && totalProgress >= 1.0) {
+        _finishRecording(); // Auto finish
       }
     });
   }
 
-  void _stopTimer() {
+  void _pauseTimer() async {
     _timer?.cancel();
-    _progress = 0.0;
+    await ref.read(cameraControllerProvider.notifier).pauseRecording();
+    if (!mounted) return;
+    setState(() {
+      _segments.add(_currentSegmentProgress);
+      _currentSegmentProgress = 0.0;
+      isPaused = true;
+      isRecording = false; // Physically paused
+    });
+  }
+
+  void _resumeTimer() {
+    setState(() {
+      isPaused = false;
+      isRecording = true;
+    });
+    ref.read(cameraControllerProvider.notifier).resumeRecording();
+    _startTimer();
+  }
+
+  void _discardAll() async {
+    _timer?.cancel();
+    final notifier = ref.read(cameraControllerProvider.notifier);
+    await notifier.stopRecording(); // Discard result
+    setState(() {
+      isRecording = false;
+      isPaused = false;
+      _segments.clear();
+      _currentSegmentProgress = 0.0;
+    });
+  }
+
+  Future<void> _finishRecording() async {
+    _timer?.cancel();
+    final notifier = ref.read(cameraControllerProvider.notifier);
+
+    final file = await notifier.stopRecording();
+
+    setState(() {
+      isRecording = false;
+      isPaused = false;
+      _segments.clear();
+      _currentSegmentProgress = 0.0;
+    });
+
+    if (file != null && mounted) {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (context) => PreviewScreen(file: file, isVideo: true),
+        ),
+      );
+    }
   }
 
   void _recordVideo() async {
     final notifier = ref.read(cameraControllerProvider.notifier);
 
+    // Photo Mode
     if (_modes[_selectedModeIndex] == 'Photo') {
       final file = await notifier.takePicture();
       if (file != null && mounted) {
@@ -100,22 +156,22 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
       return;
     }
 
+    // Video Mode
     if (isRecording) {
-      // Stop
-      _stopTimer();
-      final file = await notifier.stopRecording();
-      setState(() => isRecording = false);
-      if (file != null && mounted) {
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (context) => PreviewScreen(file: file, isVideo: true),
-          ),
-        );
-      }
+      // Currently recording -> Pause
+      _pauseTimer();
+    } else if (isPaused) {
+      // Currently paused -> Resume
+      _resumeTimer();
     } else {
-      // Start
+      // Not recording, Not paused -> Start
       await notifier.startRecording();
-      setState(() => isRecording = true);
+      setState(() {
+        isRecording = true;
+        isPaused = false;
+        _segments.clear();
+        _currentSegmentProgress = 0.0;
+      });
       _startTimer();
     }
   }
@@ -148,6 +204,9 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
             children: [
               // Camera Preview
               Center(child: CameraPreview(controller)),
+
+              // Segmented Progress Bar (Top) - REMOVED per user request
+              // if ((isRecording || isPaused) && _maxDuration > 0) ...
 
               // Top Actions (Close, Sound, Flip)
               Positioned(
@@ -230,39 +289,52 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
-                          // Gallery Button
-                          GestureDetector(
-                            onTap: _pickFromGallery,
-                            child: Column(
-                              children: [
-                                Container(
-                                  height: 36,
-                                  width: 36,
-                                  decoration: BoxDecoration(
-                                    border: Border.all(
+                          // Left Button: Gallery or Backspace (Discard)
+                          if (!isRecording && !isPaused)
+                            GestureDetector(
+                              onTap: _pickFromGallery, // Original Gallery
+                              child: Column(
+                                children: [
+                                  Container(
+                                    height: 36,
+                                    width: 36,
+                                    decoration: BoxDecoration(
+                                      border: Border.all(
+                                        color: Colors.white,
+                                        width: 2,
+                                      ),
+                                      borderRadius: BorderRadius.circular(8),
+                                      image: const DecorationImage(
+                                        image: NetworkImage(
+                                          "https://picsum.photos/50",
+                                        ),
+                                        fit: BoxFit.cover,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 5),
+                                  const Text(
+                                    "Upload",
+                                    style: TextStyle(
                                       color: Colors.white,
-                                      width: 2,
-                                    ),
-                                    borderRadius: BorderRadius.circular(8),
-                                    image: const DecorationImage(
-                                      image: NetworkImage(
-                                        "https://picsum.photos/50",
-                                      ), // Placeholder
-                                      fit: BoxFit.cover,
+                                      fontSize: 10,
                                     ),
                                   ),
-                                ),
-                                const SizedBox(height: 5),
-                                const Text(
-                                  "Upload",
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 10,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
+                                ],
+                              ),
+                            )
+                          else if (isPaused && _segments.isNotEmpty)
+                            IconButton(
+                              onPressed:
+                                  _discardAll, // Simplified to Discard All for now
+                              icon: const Icon(
+                                Icons.backspace,
+                                color: Colors.white,
+                                size: 30,
+                              ),
+                            )
+                          else
+                            const SizedBox(width: 36),
 
                           // Record Button
                           GestureDetector(
@@ -273,31 +345,33 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
                               child: Stack(
                                 alignment: Alignment.center,
                                 children: [
-                                  // Outer Ring: Static or Progress
-                                  if (isRecording && _maxDuration > 0)
+                                  Container(
+                                    height: 80,
+                                    width: 80,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      border: Border.all(
+                                        color: isRecording
+                                            ? Colors.transparent
+                                            : const Color(
+                                                0xFFFE2C55,
+                                              ).withOpacity(0.5),
+                                        width: 6,
+                                      ),
+                                    ),
+                                  ),
+                                  // Ring Progress if recording or paused (Segmented)
+                                  if (isRecording || isPaused)
                                     SizedBox(
                                       height: 80,
                                       width: 80,
-                                      child: CircularProgressIndicator(
-                                        value: _progress,
-                                        valueColor:
-                                            const AlwaysStoppedAnimation<Color>(
-                                              Color(0xFFFE2C55),
-                                            ),
-                                        strokeWidth: 6,
-                                      ),
-                                    )
-                                  else
-                                    Container(
-                                      height: 80,
-                                      width: 80,
-                                      decoration: BoxDecoration(
-                                        shape: BoxShape.circle,
-                                        border: Border.all(
-                                          color: const Color(
-                                            0xFFFE2C55,
-                                          ).withOpacity(0.5),
-                                          width: 6,
+                                      child: CustomPaint(
+                                        painter: SegmentedRingPainter(
+                                          segments: _segments,
+                                          currentProgress:
+                                              _currentSegmentProgress,
+                                          color: const Color(0xFFFE2C55),
+                                          strokeWidth: 6,
                                         ),
                                       ),
                                     ),
@@ -318,13 +392,39 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
                                       ),
                                     ),
                                   ),
+                                  // Play Icon if Paused
+                                  if (isPaused)
+                                    const Center(
+                                      child: Icon(
+                                        Icons.play_arrow,
+                                        color: Colors.white,
+                                        size: 20,
+                                      ),
+                                    ),
                                 ],
                               ),
                             ),
                           ),
 
-                          // Placeholder for right side symmetry (Effects?)
-                          const SizedBox(width: 36),
+                          // Right Button: Checkmark (Finish) if Paused/Recording
+                          if (isPaused && _segments.isNotEmpty)
+                            IconButton(
+                              onPressed: _finishRecording,
+                              icon: Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: const BoxDecoration(
+                                  color: Color(0xFFFE2C55),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(
+                                  Icons.check,
+                                  color: Colors.white,
+                                  size: 20,
+                                ),
+                              ),
+                            )
+                          else
+                            const SizedBox(width: 36), // Placeholder/Effects
                         ],
                       ),
                     ),
@@ -388,5 +488,67 @@ class LiveStreamSetupScreen extends StatelessWidget {
         child: Text("Live Stream Setup", style: TextStyle(color: Colors.white)),
       ),
     );
+  }
+}
+
+class SegmentedRingPainter extends CustomPainter {
+  final List<double> segments;
+  final double currentProgress;
+  final Color color;
+  final double strokeWidth;
+
+  SegmentedRingPainter({
+    required this.segments,
+    required this.currentProgress,
+    required this.color,
+    required this.strokeWidth,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = (size.width - strokeWidth) / 2;
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth
+      ..strokeCap = StrokeCap.butt; // Butt cap for cleaner segments
+
+    // Draw completed segments
+    double startAngle = -3.14159 / 2; // Start from top (-90 degrees)
+
+    // Draw each completed segment
+    for (final segment in segments) {
+      final sweepAngle = segment * 2 * 3.14159;
+      // Subtract a small gap if it's not the very end
+      final drawAngle = sweepAngle > 0.02 ? sweepAngle - 0.05 : sweepAngle;
+
+      canvas.drawArc(
+        Rect.fromCircle(center: center, radius: radius),
+        startAngle,
+        drawAngle,
+        false,
+        paint,
+      );
+      startAngle += sweepAngle;
+    }
+
+    // Draw current progress
+    if (currentProgress > 0) {
+      final sweepAngle = currentProgress * 2 * 3.14159;
+      canvas.drawArc(
+        Rect.fromCircle(center: center, radius: radius),
+        startAngle,
+        sweepAngle,
+        false,
+        paint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant SegmentedRingPainter oldDelegate) {
+    return oldDelegate.currentProgress != currentProgress ||
+        oldDelegate.segments != segments;
   }
 }
