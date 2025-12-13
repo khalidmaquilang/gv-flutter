@@ -20,7 +20,10 @@ class CameraService {
   }
 
   Future<void> _initController(CameraDescription description) async {
-    final oldController = _controller;
+    if (_controller != null) {
+      await _controller!.dispose();
+      _controller = null;
+    }
 
     _controller = CameraController(
       description,
@@ -29,10 +32,6 @@ class CameraService {
     );
 
     await _controller!.initialize();
-
-    if (oldController != null) {
-      await oldController.dispose();
-    }
   }
 
   Future<void> switchCamera() async {
