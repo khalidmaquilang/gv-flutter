@@ -292,8 +292,8 @@ class _LiveStreamScreenState extends State<LiveStreamScreen>
                   IconButton(
                     icon: const Icon(
                       Icons.favorite,
-                      color: Colors.white,
-                      size: 30,
+                      color: Color(0xFFFE2C55),
+                      size: 40,
                     ),
                     onPressed: () {
                       _liveService.sendReaction();
