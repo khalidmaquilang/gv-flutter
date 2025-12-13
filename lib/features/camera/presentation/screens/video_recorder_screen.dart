@@ -161,6 +161,31 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
     _startTimer();
   }
 
+  void _confirmDiscard() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Discard Clip?"),
+        content: const Text(
+          "Are you sure you want to delete the last recorded segment?",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text("Cancel"),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              _discardLastSegment();
+            },
+            child: const Text("Discard", style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _discardLastSegment() async {
     if (_recordedFiles.isEmpty) return;
 
@@ -496,7 +521,7 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
                             )
                           else if (isPaused && _segments.isNotEmpty)
                             IconButton(
-                              onPressed: _discardLastSegment,
+                              onPressed: _confirmDiscard,
                               icon: const Icon(
                                 Icons.backspace,
                                 color: Colors.white,
