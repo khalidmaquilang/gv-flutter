@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:audioplayers/audioplayers.dart'; // Add import
 import '../providers/camera_provider.dart';
 import 'preview_screen.dart';
+import 'package:test_flutter/core/theme/app_theme.dart';
 
 class VideoRecorderScreen extends ConsumerStatefulWidget {
   const VideoRecorderScreen({super.key});
@@ -624,7 +625,7 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
                               icon: Container(
                                 padding: const EdgeInsets.all(8),
                                 decoration: const BoxDecoration(
-                                  color: Color(0xFFD900EE),
+                                  color: AppColors.neonPink,
                                   shape: BoxShape.circle,
                                 ),
                                 child: const Icon(

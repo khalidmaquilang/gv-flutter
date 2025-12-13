@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
+import 'package:test_flutter/core/theme/app_theme.dart';
 import '../../../feed/data/services/video_service.dart';
 
 class PreviewScreen extends StatefulWidget {
@@ -173,7 +174,7 @@ class _PreviewScreenState extends State<PreviewScreen> {
                 }
               },
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFD900EE),
+                backgroundColor: AppColors.neonPink,
               ),
               child: const Text("Post", style: TextStyle(color: Colors.white)),
             ),

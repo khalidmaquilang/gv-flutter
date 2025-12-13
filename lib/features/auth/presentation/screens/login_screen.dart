@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:test_flutter/core/theme/app_theme.dart';
 import '../providers/auth_provider.dart';
 import '../../../../../main_screen.dart';
 import 'register_screen.dart';
@@ -119,7 +120,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         child: const Text(
                           'Sign up',
                           style: TextStyle(
-                            color: Color(0xFFD900EE),
+                            color: AppColors.neonPink,
                             fontWeight: FontWeight.bold,
                           ),
                         ),

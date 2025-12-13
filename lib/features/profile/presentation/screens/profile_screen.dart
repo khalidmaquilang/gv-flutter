@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../auth/data/models/user_model.dart';
+import 'package:test_flutter/core/theme/app_theme.dart';
 import '../../data/services/profile_service.dart';
 import '../../../wallet/presentation/screens/wallet_screen.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
@@ -130,7 +131,7 @@ class ProfileScreen extends ConsumerWidget {
                   ElevatedButton(
                     onPressed: () {}, // Todo: Follow
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFD900EE),
+                      backgroundColor: AppColors.neonPink,
                     ),
                     child: const Text(
                       "Follow",

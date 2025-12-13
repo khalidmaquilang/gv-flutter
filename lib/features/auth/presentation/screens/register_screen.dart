@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:test_flutter/core/theme/app_theme.dart';
 import '../providers/auth_provider.dart';
 import '../widgets/auth_text_field.dart';
 import '../widgets/auth_button.dart';
@@ -111,7 +112,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                     child: const Text(
                       'Log in',
                       style: TextStyle(
-                        color: Color(0xFFD900EE),
+                        color: AppColors.neonPink,
                         fontWeight: FontWeight.bold,
                       ),
                     ),

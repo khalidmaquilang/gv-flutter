@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:test_flutter/core/theme/app_theme.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/services/wallet_service.dart';
 
@@ -59,7 +60,7 @@ class WalletScreen extends ConsumerWidget {
                 Expanded(
                   child: ElevatedButton(
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFD900EE),
+                      backgroundColor: AppColors.neonPink,
                       padding: const EdgeInsets.symmetric(vertical: 16),
                     ),
                     onPressed: () {},

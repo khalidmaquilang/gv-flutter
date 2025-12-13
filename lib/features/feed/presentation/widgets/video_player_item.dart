@@ -4,6 +4,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:video_player/video_player.dart';
 import '../../../../core/providers/navigation_provider.dart';
 import '../../data/models/video_model.dart';
+import 'package:test_flutter/core/theme/app_theme.dart';
 import '../../data/services/video_service.dart';
 import 'comment_bottom_sheet.dart';
 
@@ -128,7 +129,7 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem> {
               _buildAction(
                 _isLiked ? Icons.favorite : Icons.favorite_border,
                 "$_likesCount",
-                color: _isLiked ? const Color(0xFFD900EE) : Colors.white,
+                color: _isLiked ? AppColors.neonPink : Colors.white,
                 onTap: _toggleLike,
               ),
               const SizedBox(height: 16),

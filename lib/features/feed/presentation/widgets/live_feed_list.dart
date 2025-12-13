@@ -3,6 +3,7 @@ import '../../../../features/live/data/services/live_service.dart';
 import '../../../../features/live/data/models/live_stream_model.dart';
 import '../../../../features/live/presentation/screens/live_stream_screen.dart';
 import '../../../../features/live/presentation/screens/live_scrolling_screen.dart';
+import 'package:test_flutter/core/theme/app_theme.dart';
 
 class LiveFeedList extends StatefulWidget {
   const LiveFeedList({super.key});
@@ -105,7 +106,7 @@ class _LiveFeedListState extends State<LiveFeedList> {
                         vertical: 2,
                       ),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFD900EE),
+                        color: AppColors.neonPink,
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: const Text(
