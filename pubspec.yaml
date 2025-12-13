@@ -57,6 +57,9 @@ dependencies:
   cached_network_image: ^3.3.0
   font_awesome_flutter: ^10.6.0
   share_plus: ^7.2.1
+  audioplayers: ^5.2.1
+
+
 
 dev_dependencies:
   flutter_test:
@@ -81,6 +84,10 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+
+  # Assets
+  assets:
+    - assets/sounds/
 
   # To add assets to your application, add an assets section, like this:
   # assets:

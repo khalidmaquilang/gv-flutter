@@ -3,6 +3,8 @@ import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:flutter/services.dart';
+import 'package:audioplayers/audioplayers.dart'; // Add import
 import '../providers/camera_provider.dart';
 import 'preview_screen.dart';
 
@@ -15,6 +17,8 @@ class VideoRecorderScreen extends ConsumerStatefulWidget {
 }
 
 class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
+  final AudioPlayer _audioPlayer = AudioPlayer();
+
   bool isRecording = false;
   int _selectedModeIndex = 1; // 0: Photo, 1: 15s, 2: 60s, 3: Live
   final List<String> _modes = ['Photo', '15s', '60s', 'Live'];
@@ -34,6 +38,7 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
   @override
   void dispose() {
     _timer?.cancel();
+    _audioPlayer.dispose();
     super.dispose();
   }
 
@@ -299,6 +304,9 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
         setState(() {
           _countdown = _timerDelay;
         });
+        // Play immediate sound for the first second
+        _audioPlayer.play(AssetSource('sounds/beep.wav'));
+
         Timer.periodic(const Duration(seconds: 1), (timer) {
           if (!mounted) {
             timer.cancel();
@@ -308,6 +316,10 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
           setState(() {
             _countdown--;
           });
+
+          if (_countdown > 0) {
+            _audioPlayer.play(AssetSource('sounds/beep.wav'));
+          }
 
           if (_countdown <= 0) {
             timer.cancel();
