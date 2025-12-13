@@ -11,6 +11,8 @@ import 'package:test_flutter/core/theme/app_theme.dart';
 
 import 'package:photo_manager/photo_manager.dart';
 import 'package:image_picker/image_picker.dart';
+import '../../data/models/sound_model.dart';
+import 'sound_selection_screen.dart';
 
 class VideoRecorderScreen extends ConsumerStatefulWidget {
   const VideoRecorderScreen({super.key});
@@ -41,6 +43,9 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
 
   // Media Picker State
   Uint8List? _lastImageBytes;
+
+  // Sound
+  Sound? _selectedSound;
 
   @override
   void initState() {
@@ -152,6 +157,9 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
         .read(cameraControllerProvider.notifier)
         .stopRecording();
 
+    // Pause Music
+    await _audioPlayer.pause();
+
     if (!mounted) return;
     setState(() {
       if (file != null) {
@@ -171,6 +179,11 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
     debugPrint("Recorder: Resuming... Starting new segment.");
     await ref.read(cameraControllerProvider.notifier).startRecording();
 
+    // Resume Music
+    if (_selectedSound != null) {
+      await _audioPlayer.resume();
+    }
+
     if (!mounted) return;
     setState(() {
       isPaused = false;
@@ -178,6 +191,11 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
     });
     _startTimer();
   }
+
+  // discard Last Segment logic usually implies we might want to rewind audio?
+  // For MVP, handling audio seeking complexity is skipped.
+  // Simply resuming will resume from where paused.
+  // If user discards, they might expect audio to jump back, but let's keep it simple for now.
 
   void _confirmDiscard() {
     showDialog(
@@ -223,6 +241,9 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
 
   Future<void> _finishRecording() async {
     _timer?.cancel();
+    // Stop Music
+    await _audioPlayer.stop();
+
     debugPrint(
       "Recorder: Finishing... Files count before stop: ${_recordedFiles.length}",
     );
@@ -239,6 +260,7 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
       }
     }
 
+    // ... rest of finish logic ...
     debugPrint("Recorder: Total Files to Preview: ${_recordedFiles.length}");
 
     if (!mounted) return;
@@ -251,6 +273,8 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
       _segments.clear();
       _currentSegmentProgress = 0.0;
       _recordedFiles.clear();
+      _selectedSound = null; // Reset selection or keep? Usually reset or keep.
+      // If we keep, we need to stop audio. Done above.
     });
 
     if (filesToPreview.isNotEmpty) {
@@ -300,6 +324,20 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
       } else {
         startAction = () async {
           await notifier.startRecording();
+
+          // Start Music
+          if (_selectedSound != null) {
+            String url = _selectedSound!.url;
+            if (url.isNotEmpty) {
+              if (url.startsWith('assets/')) {
+                url = url.substring(7); // Remove 'assets/' for AssetSource
+                await _audioPlayer.play(AssetSource(url));
+              } else {
+                await _audioPlayer.play(UrlSource(url));
+              }
+            }
+          }
+
           if (!mounted) return;
           setState(() {
             isRecording = true;
@@ -397,10 +435,16 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
     }
   }
 
-  void _selectSound() {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text("Select Sound")));
+  void _selectSound() async {
+    final Sound? result = await Navigator.of(context).push(
+      MaterialPageRoute(builder: (context) => const SoundSelectionScreen()),
+    );
+
+    if (result != null && mounted) {
+      setState(() {
+        _selectedSound = result;
+      });
+    }
   }
 
   @override
@@ -465,19 +509,34 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
                           color: Colors.black.withOpacity(0.5),
                           borderRadius: BorderRadius.circular(20),
                         ),
-                        child: const Row(
+                        child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(
+                            const Icon(
                               Icons.music_note,
                               color: Colors.white,
                               size: 16,
                             ),
-                            SizedBox(width: 5),
+                            const SizedBox(width: 5),
                             Text(
-                              "Add Sound",
-                              style: TextStyle(color: Colors.white),
+                              _selectedSound?.title ?? "Add Sound",
+                              style: const TextStyle(color: Colors.white),
                             ),
+                            if (_selectedSound != null) ...[
+                              const SizedBox(width: 5),
+                              GestureDetector(
+                                onTap: () {
+                                  setState(() {
+                                    _selectedSound = null;
+                                  });
+                                },
+                                child: const Icon(
+                                  Icons.close,
+                                  color: Colors.white,
+                                  size: 14,
+                                ),
+                              ),
+                            ],
                           ],
                         ),
                       ),
