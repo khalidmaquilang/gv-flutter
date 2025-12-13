@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -19,7 +20,15 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
   final List<String> _modes = ['Photo', '15s', '60s', 'Live'];
 
   // Timer logic
-  // int _recordDuration = 0; // Removed unused field
+  Timer? _timer;
+  double _progress = 0.0;
+  int _maxDuration = 15; // seconds
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
 
   void _onModeChanged(int index) {
     setState(() {
@@ -30,7 +39,50 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (context) => const LiveStreamSetupScreen()),
       );
+      return;
     }
+
+    // Update max duration based on mode
+    if (_modes[index] == '15s') {
+      _maxDuration = 15;
+    } else if (_modes[index] == '60s') {
+      _maxDuration = 60;
+    } else {
+      _maxDuration = 0; // Photo or other
+    }
+
+    // If recording and we switch to a shorter duration that we passed, stop.
+    // Simplified check: if we are over the new structure
+    // Since we track progress 0.0-1.0, we just reset or stop if needed.
+    // For now, let's just stop if we switch modes while recording to be safe.
+    if (isRecording) {
+      _recordVideo();
+    }
+  }
+
+  void _startTimer() {
+    _timer?.cancel();
+    _progress = 0.0;
+
+    int ticks = 0;
+    int totalTicks = _maxDuration * 10; // 100ms intervals
+
+    _timer = Timer.periodic(const Duration(milliseconds: 100), (timer) {
+      if (!mounted) return;
+      setState(() {
+        ticks++;
+        _progress = ticks / totalTicks;
+      });
+
+      if (_maxDuration > 0 && _progress >= 1.0) {
+        _recordVideo(); // Stop automatically
+      }
+    });
+  }
+
+  void _stopTimer() {
+    _timer?.cancel();
+    _progress = 0.0;
   }
 
   void _recordVideo() async {
@@ -50,6 +102,7 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
 
     if (isRecording) {
       // Stop
+      _stopTimer();
       final file = await notifier.stopRecording();
       setState(() => isRecording = false);
       if (file != null && mounted) {
@@ -63,17 +116,7 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
       // Start
       await notifier.startRecording();
       setState(() => isRecording = true);
-
-      // Handle Auto Stop for 15s/60s
-      if (_modes[_selectedModeIndex] == '15s' ||
-          _modes[_selectedModeIndex] == '60s') {
-        int limit = _modes[_selectedModeIndex] == '15s' ? 15 : 60;
-        Future.delayed(Duration(seconds: limit), () {
-          if (mounted && isRecording) {
-            _recordVideo(); // Stop automatically
-          }
-        });
-      }
+      _startTimer();
     }
   }
 
@@ -224,31 +267,58 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
                           // Record Button
                           GestureDetector(
                             onTap: _recordVideo,
-                            child: Container(
+                            child: SizedBox(
                               height: 80,
                               width: 80,
-                              decoration: BoxDecoration(
-                                color: Colors.transparent,
-                                shape: BoxShape.circle,
-                                border: Border.all(
-                                  color: const Color(
-                                    0xFFFE2C55,
-                                  ).withOpacity(0.5),
-                                  width: 6,
-                                ),
-                              ),
-                              child: Center(
-                                child: AnimatedContainer(
-                                  duration: const Duration(milliseconds: 200),
-                                  height: isRecording ? 30 : 60,
-                                  width: isRecording ? 30 : 60,
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFFE2C55),
-                                    borderRadius: BorderRadius.circular(
-                                      isRecording ? 6 : 30,
+                              child: Stack(
+                                alignment: Alignment.center,
+                                children: [
+                                  // Outer Ring: Static or Progress
+                                  if (isRecording && _maxDuration > 0)
+                                    SizedBox(
+                                      height: 80,
+                                      width: 80,
+                                      child: CircularProgressIndicator(
+                                        value: _progress,
+                                        valueColor:
+                                            const AlwaysStoppedAnimation<Color>(
+                                              Color(0xFFFE2C55),
+                                            ),
+                                        strokeWidth: 6,
+                                      ),
+                                    )
+                                  else
+                                    Container(
+                                      height: 80,
+                                      width: 80,
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        border: Border.all(
+                                          color: const Color(
+                                            0xFFFE2C55,
+                                          ).withOpacity(0.5),
+                                          width: 6,
+                                        ),
+                                      ),
+                                    ),
+
+                                  // Inner Button
+                                  Center(
+                                    child: AnimatedContainer(
+                                      duration: const Duration(
+                                        milliseconds: 200,
+                                      ),
+                                      height: isRecording ? 30 : 60,
+                                      width: isRecording ? 30 : 60,
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFFE2C55),
+                                        borderRadius: BorderRadius.circular(
+                                          isRecording ? 6 : 30,
+                                        ),
+                                      ),
                                     ),
                                   ),
-                                ),
+                                ],
                               ),
                             ),
                           ),
