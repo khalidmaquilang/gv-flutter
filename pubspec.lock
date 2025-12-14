@@ -1357,6 +1357,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "6.6.0"
+  video_player_rtmp_ext:
+    dependency: "direct main"
+    description:
+      name: video_player_rtmp_ext
+      sha256: "3a369576d4b764cf6738c89c0ca54f862b0dc9b1ca1a4fb6eed516bcb1c8d216"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.2.7"
   video_player_web:
     dependency: transitive
     description:

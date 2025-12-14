@@ -7,6 +7,7 @@ import '../../data/services/live_service.dart';
 import '../../data/models/live_interaction_model.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../features/feed/presentation/providers/feed_audio_provider.dart';
+import 'package:video_player/video_player.dart';
 
 class LiveStreamScreen extends ConsumerStatefulWidget {
   final bool isBroadcaster;
@@ -25,13 +26,14 @@ class LiveStreamScreen extends ConsumerStatefulWidget {
 class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen>
     with TickerProviderStateMixin {
   final _liveService = LiveService();
-  bool _joined = false;
-  int? _remoteUid;
   late RtcEngine _engine;
   final List<LiveMessage> _messages = [];
   final TextEditingController _commentController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   bool _isEngineReady = false;
+
+  // Video Player for Audience
+  VideoPlayerController? _videoController;
 
   // Animations
   late AnimationController _heartAnimController;
@@ -39,7 +41,11 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen>
   @override
   void initState() {
     super.initState();
-    _initAgora();
+    if (widget.isBroadcaster) {
+      _initAgora();
+    } else {
+      _initPlayer();
+    }
 
     _heartAnimController = AnimationController(
       vsync: this,
@@ -67,6 +73,21 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen>
     });
   }
 
+  Future<void> _initPlayer() async {
+    try {
+      _videoController = VideoPlayerController.networkUrl(
+        Uri.parse(ApiConstants.hlsPlayUrl),
+      );
+      await _videoController!.initialize();
+      await _videoController!.play();
+      if (mounted) {
+        setState(() {});
+      }
+    } catch (e) {
+      debugPrint("Error initializing video player: $e");
+    }
+  }
+
   Future<void> _initAgora() async {
     // Request permissions
     await [Permission.microphone, Permission.camera].request();
@@ -87,19 +108,9 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen>
       RtcEngineEventHandler(
         onJoinChannelSuccess: (RtcConnection connection, int elapsed) {
           debugPrint("local user ${connection.localUid} joined");
-          if (mounted) {
-            setState(() {
-              _joined = true;
-            });
-          }
         },
         onUserJoined: (RtcConnection connection, int remoteUid, int elapsed) {
           debugPrint("remote user $remoteUid joined");
-          if (mounted) {
-            setState(() {
-              _remoteUid = remoteUid;
-            });
-          }
         },
         onUserOffline:
             (
@@ -108,11 +119,6 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen>
               UserOfflineReasonType reason,
             ) {
               debugPrint("remote user $remoteUid left channel");
-              if (mounted) {
-                setState(() {
-                  _remoteUid = null;
-                });
-              }
             },
         onTokenPrivilegeWillExpire: (RtcConnection connection, String token) {
           debugPrint('On Token Privilege Will Expire: $token');
@@ -164,11 +170,15 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen>
     _heartAnimController.dispose();
     _commentController.dispose();
     _scrollController.dispose();
-    try {
-      _engine.leaveChannel();
-      _engine.release();
-    } catch (e) {
-      // ignore
+    _videoController?.dispose();
+
+    if (widget.isBroadcaster) {
+      try {
+        _engine.leaveChannel();
+        _engine.release();
+      } catch (e) {
+        // ignore
+      }
     }
 
     // Restore Feed Audio when leaving the stream
@@ -216,7 +226,11 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen>
       body: Stack(
         children: [
           // Video Layer
-          Center(child: _renderVideo()),
+          Center(
+            child: widget.isBroadcaster
+                ? _renderBroadcasterVideo()
+                : _renderAudienceVideo(),
+          ),
 
           // Close/End Button
           Positioned(
@@ -406,47 +420,29 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen>
     );
   }
 
-  Widget _renderVideo() {
-    if (widget.isBroadcaster) {
-      if (_isEngineReady) {
-        return AgoraVideoView(
-          controller: VideoViewController(
-            rtcEngine: _engine,
-            canvas: const VideoCanvas(uid: 0), // 0 for local user
-          ),
-        );
-      } else {
-        return const Center(child: CircularProgressIndicator());
-      }
+  Widget _renderBroadcasterVideo() {
+    if (_isEngineReady) {
+      return AgoraVideoView(
+        controller: VideoViewController(
+          rtcEngine: _engine,
+          canvas: const VideoCanvas(uid: 0), // 0 for local user
+        ),
+      );
     } else {
-      // Audience Logic
-      if (_remoteUid != null) {
-        return AgoraVideoView(
-          controller: VideoViewController.remote(
-            rtcEngine: _engine,
-            canvas: VideoCanvas(uid: _remoteUid),
-            connection: RtcConnection(channelId: widget.channelId),
-          ),
-        );
-      } else {
-        return const Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              CircularProgressIndicator(),
-              SizedBox(height: 10),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Text(
-                  "The host didn't start the live yet, please follow to get real updates",
-                  style: const TextStyle(color: Colors.white),
-                  textAlign: TextAlign.center,
-                ),
-              ),
-            ],
-          ),
-        );
-      }
+      return const Center(child: CircularProgressIndicator());
+    }
+  }
+
+  Widget _renderAudienceVideo() {
+    if (_videoController != null && _videoController!.value.isInitialized) {
+      return AspectRatio(
+        aspectRatio: _videoController!.value.aspectRatio,
+        child: VideoPlayer(_videoController!),
+      );
+    } else {
+      return const Center(
+        child: CircularProgressIndicator(color: Colors.white),
+      );
     }
   }
 
