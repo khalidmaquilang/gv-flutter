@@ -20,4 +20,8 @@ class ApiConstants {
   static const String agoraTempToken = ""; // Add your temporary token here
   static const String fixedTestChannelId =
       "test_channel"; // Fixed channel for testing
+
+  // Streaming
+  static const String rtmpUrl = "rtmp://rtmp.maralabs.ph/live/test";
+  static const String hlsPlayUrl = "http://rtmp.maralabs.ph/hls/test.m3u8";
 }
