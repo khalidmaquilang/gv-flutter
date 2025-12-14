@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:rtmp_broadcaster/camera.dart';
+import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:test_flutter/core/theme/app_theme.dart';
 import 'package:test_flutter/core/constants/api_constants.dart';
@@ -10,6 +9,7 @@ import '../../data/models/live_interaction_model.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../features/feed/presentation/providers/feed_audio_provider.dart';
 import 'package:video_player/video_player.dart';
+import '../../data/services/media_push_service.dart';
 
 class LiveStreamScreen extends ConsumerStatefulWidget {
   final bool isBroadcaster;
@@ -32,14 +32,17 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen>
   final TextEditingController _commentController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
 
+  // Agora Engine
+  late RtcEngine _engine;
   bool _isBroadcasterReady = false;
-  String _statusMessage = "Initializing...";
+  String _statusMessage = "Initializing Agora...";
+  int? _localUid;
 
-  // Video Player for Audience
+  // Services
+  final MediaPushService _mediaPushService = MediaPushService();
+
+  // Video Player for Audience (HLS)
   VideoPlayerController? _videoController;
-
-  // Camera Controller for Broadcaster
-  CameraController? _cameraController;
 
   // Animations
   late AnimationController _heartAnimController;
@@ -58,147 +61,100 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen>
       duration: const Duration(seconds: 2),
     );
 
-    // Listen to Streams (Mock for now)
+    // Stream Listeners
     _liveService.messageStream.listen((msg) {
       if (mounted) {
-        setState(() {
-          _messages.add(msg);
-        });
+        setState(() => _messages.add(msg));
         _scrollToBottom();
       }
     });
 
-    _liveService.reactionStream.listen((reaction) {
+    _liveService.reactionStream.listen((_) {
       if (mounted) _showHeartAnimation();
     });
 
     _liveService.giftStream.listen((gift) {
-      if (mounted) {
-        _showGiftAnimation(gift);
-      }
+      if (mounted) _showGiftAnimation(gift);
     });
   }
 
   Future<void> _initBroadcaster() async {
-    try {
-      setState(() => _statusMessage = "Requesting Permissions...");
-      // 1. Request Runtime Permissions
-      Map<Permission, PermissionStatus> statuses = await [
-        Permission.camera,
-        Permission.microphone,
-      ].request();
+    await [Permission.camera, Permission.microphone].request();
 
-      if (statuses[Permission.camera] != PermissionStatus.granted ||
-          statuses[Permission.microphone] != PermissionStatus.granted) {
-        if (mounted) {
-          setState(() => _statusMessage = "Permissions Denied");
-        }
-        return;
-      }
+    _engine = createAgoraRtcEngine();
+    await _engine.initialize(
+      const RtcEngineContext(
+        appId: ApiConstants.agoraAppId,
+        channelProfile: ChannelProfileType.channelProfileLiveBroadcasting,
+        audioScenario: AudioScenarioType.audioScenarioDefault,
+      ),
+    );
 
-      setState(() => _statusMessage = "Finding Camera...");
-      final cameras = await availableCameras();
-      if (cameras.isEmpty) {
-        debugPrint("No cameras available");
-        if (mounted) {
-          setState(() => _statusMessage = "No Camera Found");
-        }
-        return;
-      }
-
-      // Select front camera
-      final frontCamera = cameras.firstWhere(
-        (camera) => camera.lensDirection == CameraLensDirection.front,
-        orElse: () => cameras.first,
-      );
-
-      _cameraController = CameraController(
-        frontCamera,
-        ResolutionPreset.medium, // Restored to Medium
-        enableAudio: true,
-      );
-
-      setState(() => _statusMessage = "Initializing Camera...");
-      await _cameraController!.initialize();
-
-      if (mounted) {
-        setState(() {
-          _isBroadcasterReady = true;
-          _statusMessage = "Ready to Stream";
-        });
-
-        // Delay to ensure camera is ready
-        await Future.delayed(const Duration(seconds: 2));
-
-        // Start RTMP Stream (Extension Method)
-        try {
-          setState(() => _statusMessage = "Connecting...");
-          await _cameraController!.startVideoStreaming(
-            ApiConstants.rtmpUrl,
-            // androidUseOpenGL: true, // Let's keep this ON for now as standard
-            // bitrate: 1536 * 1024, // 1.5 Mbps
+    _engine.registerEventHandler(
+      RtcEngineEventHandler(
+        onJoinChannelSuccess: (RtcConnection connection, int elapsed) {
+          debugPrint(
+            "Agora: Joined Channel ${connection.channelId} uid=${connection.localUid}",
           );
-
-          // Status polling
-          Timer.periodic(const Duration(seconds: 2), (timer) {
-            if (!mounted) {
-              timer.cancel();
-              return;
-            }
-
-            final isStreaming =
-                _cameraController?.value.isStreamingVideoRtmp ?? false;
-            final error = _cameraController?.value.errorDescription;
-
-            debugPrint("Status Poll: Streaming=$isStreaming, Error=$error");
-
-            if (isStreaming && _statusMessage != "LIVE") {
-              setState(() => _statusMessage = "LIVE");
-            }
+          setState(() {
+            _localUid = connection.localUid;
+            _statusMessage = "Joined. Triggering Media Push API...";
           });
-
-          debugPrint("RTMP Start called for ${ApiConstants.rtmpUrl}");
-
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Connecting to Server...')),
-            );
+          // Call REST API instead of SDK Method
+          if (connection.localUid != null) {
+            _triggerMediaPushApi(connection.localUid!);
           }
-        } catch (streamError) {
-          debugPrint("Error starting stream: $streamError");
+        },
+        onUserJoined: (connection, remoteUid, elapsed) {
+          debugPrint("Remote user joined: $remoteUid");
+        },
+        onRtmpStreamingStateChanged:
+            (
+              String url,
+              RtmpStreamPublishState state,
+              RtmpStreamPublishReason errCode,
+            ) {
+              // Providing visibility on SDK state, though REST API governs it now
+              debugPrint("SDK State: $state, $errCode");
+            },
+        onError: (ErrorCodeType err, String msg) {
+          debugPrint("Agora Error: $err $msg");
+        },
+      ),
+    );
 
-          String errorMsg = streamError.toString();
+    await _engine.setClientRole(role: ClientRoleType.clientRoleBroadcaster);
+    await _engine.enableVideo();
+    await _engine.enableAudio(); // Explicitly enable audio
 
-          if (streamError is CameraException) {
-            debugPrint(
-              "CameraException: Code=${streamError.code} Description=${streamError.description}",
-            );
-            errorMsg =
-                "CamError: ${streamError.code} - ${streamError.description}";
-          }
+    await _engine.startPreview();
+    setState(() => _isBroadcasterReady = true);
 
-          if (mounted) {
-            setState(() => _statusMessage = errorMsg);
-            // setState(() => _statusMessage = "Stream Error: $streamError"); // Redundant
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Failed to start stream: $streamError'),
-                backgroundColor: Colors.red,
-              ),
-            );
-          }
-        }
+    await _engine.joinChannel(
+      token: ApiConstants.agoraTempToken,
+      channelId: ApiConstants.fixedTestChannelId, // Using the fixed ID
+      uid: 0,
+      options: const ChannelMediaOptions(
+        publishCameraTrack: true,
+        publishMicrophoneTrack: true,
+      ),
+    );
+  }
+
+  Future<void> _triggerMediaPushApi(int uid) async {
+    try {
+      await _mediaPushService.startMediaPush(
+        channelId: ApiConstants.fixedTestChannelId,
+        uid: uid,
+        rtmpUrl: ApiConstants.rtmpUrl,
+      );
+      if (mounted) {
+        setState(() => _statusMessage = "LIVE! (API Request Sent)");
       }
     } catch (e) {
-      debugPrint("Error initializing camera/broadcaster: $e");
+      debugPrint("API Failure: $e");
       if (mounted) {
-        setState(() => _statusMessage = "Init Error: $e");
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Broadcaster Init Error: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        setState(() => _statusMessage = "API Failed: $e");
       }
     }
   }
@@ -210,12 +166,28 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen>
       );
       await _videoController!.initialize();
       await _videoController!.play();
-      if (mounted) {
-        setState(() {});
-      }
+      if (mounted) setState(() {});
     } catch (e) {
-      debugPrint("Error initializing video player: $e");
+      debugPrint("Error init player: $e");
     }
+  }
+
+  @override
+  void dispose() {
+    _heartAnimController.dispose();
+    _commentController.dispose();
+    _scrollController.dispose();
+    _videoController?.dispose();
+
+    if (widget.isBroadcaster) {
+      _engine.stopRtmpStream(ApiConstants.rtmpUrl);
+      _engine.stopDirectCdnStreaming(); // Stop both just in case
+      _engine.leaveChannel();
+      _engine.release();
+    }
+
+    ref.read(isFeedAudioEnabledProvider.notifier).state = true;
+    super.dispose();
   }
 
   void _scrollToBottom() {
@@ -228,25 +200,6 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen>
     }
   }
 
-  @override
-  void dispose() {
-    _heartAnimController.dispose();
-    _commentController.dispose();
-    _scrollController.dispose();
-    _videoController?.dispose();
-
-    if (widget.isBroadcaster) {
-      _cameraController?.stopVideoStreaming();
-      _cameraController?.dispose();
-    }
-
-    // Restore Feed Audio when leaving the stream
-    ref.read(isFeedAudioEnabledProvider.notifier).state = true;
-
-    super.dispose();
-  }
-
-  // Helper to show heart animation
   void _showHeartAnimation() {
     _heartAnimController.forward(from: 0).then((_) {
       _heartAnimController.reset();
@@ -262,9 +215,7 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen>
   void _sendMessage() {
     if (_commentController.text.trim().isEmpty) return;
     final msg = LiveMessage(username: 'Me', message: _commentController.text);
-    setState(() {
-      _messages.add(msg);
-    });
+    setState(() => _messages.add(msg));
     _commentController.clear();
     _scrollToBottom();
   }
@@ -287,7 +238,7 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen>
                 : _renderAudienceVideo(),
           ),
 
-          // Status Overlay (Debug)
+          // Status Overlay
           if (widget.isBroadcaster)
             Positioned(
               top: 100,
@@ -305,46 +256,23 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen>
               ),
             ),
 
-          // Close/End Button
+          // Close Button
           Positioned(
             top: 40,
             right: 20,
-            child: widget.isBroadcaster
-                ? GestureDetector(
-                    onTap: () {
-                      _showEndLiveDialog(context);
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 8,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.red.withOpacity(0.8),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: const Text(
-                        "End Live",
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  )
-                : IconButton(
-                    icon: const Icon(
-                      Icons.close,
-                      color: Colors.white,
-                      size: 30,
-                    ),
-                    onPressed: () {
-                      Navigator.of(context).pop();
-                    },
-                  ),
+            child: IconButton(
+              icon: const Icon(Icons.close, color: Colors.white, size: 30),
+              onPressed: () {
+                if (widget.isBroadcaster) {
+                  _showEndLiveDialog(context);
+                } else {
+                  Navigator.pop(context);
+                }
+              },
+            ),
           ),
 
-          // Live Tag
+          // LIVE Tag
           Positioned(
             top: 40,
             left: 20,
@@ -364,7 +292,7 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen>
             ),
           ),
 
-          // Bottom Content Overlay
+          // Bottom Controls
           Positioned(
             bottom: 0,
             left: 0,
@@ -383,7 +311,7 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen>
                 mainAxisAlignment: MainAxisAlignment.end,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Comments Area
+                  // Messages
                   Expanded(
                     child: ListView.builder(
                       controller: _scrollController,
@@ -413,8 +341,7 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen>
                       },
                     ),
                   ),
-
-                  // Input Area
+                  // Input & Buttons
                   Row(
                     children: [
                       Expanded(
@@ -467,10 +394,13 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen>
   }
 
   Widget _renderBroadcasterVideo() {
-    if (_isBroadcasterReady &&
-        _cameraController != null &&
-        _cameraController!.value.isInitialized == true) {
-      return CameraPreview(_cameraController!);
+    if (_isBroadcasterReady) {
+      return AgoraVideoView(
+        controller: VideoViewController(
+          rtcEngine: _engine,
+          canvas: const VideoCanvas(uid: 0),
+        ),
+      );
     } else {
       return const Center(child: CircularProgressIndicator());
     }
@@ -528,9 +458,7 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen>
 
 class GiftPickerBottomSheet extends StatefulWidget {
   final Function(String name, int value) onGiftSent;
-
   const GiftPickerBottomSheet({super.key, required this.onGiftSent});
-
   @override
   State<GiftPickerBottomSheet> createState() => _GiftPickerBottomSheetState();
 }
@@ -550,51 +478,6 @@ class _GiftPickerBottomSheetState extends State<GiftPickerBottomSheet> {
     {'name': 'Planet', 'value': 5000, 'icon': '🪐'},
   ];
 
-  void _showRechargeDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: Colors.grey[900],
-        title: const Text(
-          "Insufficient Coins",
-          style: TextStyle(color: Colors.white),
-        ),
-        content: const Text(
-          "You don't have enough coins to send this gift. Recharge now?",
-          style: TextStyle(color: Colors.white70),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("Cancel"),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.neonPink,
-            ),
-            onPressed: () {
-              // Placeholder for In-App Payment Logic
-              setState(() {
-                _balance += 1000;
-              });
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text("Recharge Successful! +1000 Coins"),
-                  backgroundColor: AppColors.neonPink,
-                ),
-              );
-            },
-            child: const Text(
-              "Recharge",
-              style: TextStyle(color: Colors.white),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -608,7 +491,6 @@ class _GiftPickerBottomSheetState extends State<GiftPickerBottomSheet> {
       ),
       child: Column(
         children: [
-          // Header
           Padding(
             padding: const EdgeInsets.all(16.0),
             child: Row(
@@ -639,8 +521,6 @@ class _GiftPickerBottomSheetState extends State<GiftPickerBottomSheet> {
               ],
             ),
           ),
-
-          // Grid
           Expanded(
             child: GridView.builder(
               padding: const EdgeInsets.all(10),
@@ -659,7 +539,7 @@ class _GiftPickerBottomSheetState extends State<GiftPickerBottomSheet> {
                   child: Container(
                     decoration: BoxDecoration(
                       color: isSelected
-                          ? AppColors.neonPink.withValues(alpha: 0.1)
+                          ? AppColors.neonPink.withAlpha(25)
                           : Colors.transparent,
                       border: Border.all(
                         color: isSelected
@@ -710,8 +590,6 @@ class _GiftPickerBottomSheetState extends State<GiftPickerBottomSheet> {
               },
             ),
           ),
-
-          // Send Button
           Padding(
             padding: const EdgeInsets.all(16.0),
             child: SizedBox(
@@ -720,22 +598,14 @@ class _GiftPickerBottomSheetState extends State<GiftPickerBottomSheet> {
               child: ElevatedButton(
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.neonPink,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(25),
-                  ),
-                  disabledBackgroundColor: Colors.grey[800],
                 ),
                 onPressed: _selectedIndex == -1
                     ? null
                     : () {
                         final gift = _gifts[_selectedIndex];
                         if (_balance >= (gift['value'] as int)) {
-                          setState(() {
-                            _balance -= gift['value'] as int;
-                          });
+                          setState(() => _balance -= gift['value'] as int);
                           widget.onGiftSent(gift['name'], gift['value']);
-                        } else {
-                          _showRechargeDialog();
                         }
                       },
                 child: const Text(
