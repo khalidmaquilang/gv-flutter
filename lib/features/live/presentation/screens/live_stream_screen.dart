@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:agora_rtc_engine/agora_rtc_engine.dart';
+import 'package:flutter/services.dart';
+import 'package:rtmp_broadcaster/camera.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:test_flutter/core/theme/app_theme.dart';
 import 'package:test_flutter/core/constants/api_constants.dart';
@@ -26,14 +28,18 @@ class LiveStreamScreen extends ConsumerStatefulWidget {
 class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen>
     with TickerProviderStateMixin {
   final _liveService = LiveService();
-  late RtcEngine _engine;
   final List<LiveMessage> _messages = [];
   final TextEditingController _commentController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
-  bool _isEngineReady = false;
+
+  bool _isBroadcasterReady = false;
+  String _statusMessage = "Initializing...";
 
   // Video Player for Audience
   VideoPlayerController? _videoController;
+
+  // Camera Controller for Broadcaster
+  CameraController? _cameraController;
 
   // Animations
   late AnimationController _heartAnimController;
@@ -42,7 +48,7 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen>
   void initState() {
     super.initState();
     if (widget.isBroadcaster) {
-      _initAgora();
+      _initBroadcaster();
     } else {
       _initPlayer();
     }
@@ -73,6 +79,139 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen>
     });
   }
 
+  Future<void> _initBroadcaster() async {
+    try {
+      setState(() => _statusMessage = "Requesting Permissions...");
+      // 1. Request Runtime Permissions
+      Map<Permission, PermissionStatus> statuses = await [
+        Permission.camera,
+        Permission.microphone,
+      ].request();
+
+      if (statuses[Permission.camera] != PermissionStatus.granted ||
+          statuses[Permission.microphone] != PermissionStatus.granted) {
+        if (mounted) {
+          setState(() => _statusMessage = "Permissions Denied");
+        }
+        return;
+      }
+
+      setState(() => _statusMessage = "Finding Camera...");
+      final cameras = await availableCameras();
+      if (cameras.isEmpty) {
+        debugPrint("No cameras available");
+        if (mounted) {
+          setState(() => _statusMessage = "No Camera Found");
+        }
+        return;
+      }
+
+      // Select front camera
+      final frontCamera = cameras.firstWhere(
+        (camera) => camera.lensDirection == CameraLensDirection.front,
+        orElse: () => cameras.first,
+      );
+
+      _cameraController = CameraController(
+        frontCamera,
+        ResolutionPreset.medium, // Restored to Medium
+        enableAudio: true,
+      );
+
+      setState(() => _statusMessage = "Initializing Camera...");
+      await _cameraController!.initialize();
+
+      print("RTMP Camera initialized");
+
+      if (mounted) {
+        setState(() {
+          _isBroadcasterReady = true;
+          _statusMessage = "Ready to Stream";
+        });
+
+        print("RTMP Ready to stream");
+
+        // Delay to ensure camera is ready
+        await Future.delayed(const Duration(seconds: 2));
+
+        // Start RTMP Stream (Extension Method)
+        try {
+          setState(() => _statusMessage = "Connecting...");
+          await _cameraController!.startVideoStreaming(
+            ApiConstants.rtmpUrl,
+            // androidUseOpenGL: true, // Let's keep this ON for now as standard
+            // bitrate: 1536 * 1024, // 1.5 Mbps
+          );
+
+          // Status polling
+          Timer.periodic(const Duration(seconds: 2), (timer) {
+            print("RTMP Periodic");
+            if (!mounted) {
+              timer.cancel();
+              return;
+            }
+
+            final isStreaming =
+                _cameraController?.value.isStreamingVideoRtmp ?? false;
+            final error = _cameraController?.value.errorDescription;
+
+            debugPrint("Status Poll: Streaming=$isStreaming, Error=$error");
+            print("Status Poll: Streaming=$isStreaming, Error=$error");
+
+            if (isStreaming && _statusMessage != "LIVE") {
+              setState(() => _statusMessage = "LIVE");
+            }
+          });
+
+          debugPrint("RTMP Start called for ${ApiConstants.rtmpUrl}");
+          print("RTMP Start called for ${ApiConstants.rtmpUrl}");
+
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Connecting to Server...')),
+            );
+          }
+        } catch (streamError) {
+          debugPrint("Error starting stream: $streamError");
+
+          String errorMsg = streamError.toString();
+
+          print("RTMPError starting stream: $errorMsg");
+
+          if (streamError is CameraException) {
+            debugPrint(
+              "CameraException: Code=${streamError.code} Description=${streamError.description}",
+            );
+            errorMsg =
+                "CamError: ${streamError.code} - ${streamError.description}";
+          }
+
+          if (mounted) {
+            setState(() => _statusMessage = errorMsg);
+            // setState(() => _statusMessage = "Stream Error: $streamError"); // Redundant
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Failed to start stream: $streamError'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint("Error initializing camera/broadcaster: $e");
+      if (mounted) {
+        setState(() => _statusMessage = "Init Error: $e");
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Broadcaster Init Error: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   Future<void> _initPlayer() async {
     try {
       _videoController = VideoPlayerController.networkUrl(
@@ -86,73 +225,6 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen>
     } catch (e) {
       debugPrint("Error initializing video player: $e");
     }
-  }
-
-  Future<void> _initAgora() async {
-    // Request permissions
-    await [Permission.microphone, Permission.camera].request();
-
-    // Create Engine
-    _engine = createAgoraRtcEngine();
-
-    // Initialize
-    await _engine.initialize(
-      const RtcEngineContext(
-        appId: ApiConstants.agoraAppId,
-        channelProfile: ChannelProfileType.channelProfileLiveBroadcasting,
-      ),
-    );
-
-    // Define handlers
-    _engine.registerEventHandler(
-      RtcEngineEventHandler(
-        onJoinChannelSuccess: (RtcConnection connection, int elapsed) {
-          debugPrint("local user ${connection.localUid} joined");
-        },
-        onUserJoined: (RtcConnection connection, int remoteUid, int elapsed) {
-          debugPrint("remote user $remoteUid joined");
-        },
-        onUserOffline:
-            (
-              RtcConnection connection,
-              int remoteUid,
-              UserOfflineReasonType reason,
-            ) {
-              debugPrint("remote user $remoteUid left channel");
-            },
-        onTokenPrivilegeWillExpire: (RtcConnection connection, String token) {
-          debugPrint('On Token Privilege Will Expire: $token');
-        },
-        onError: (ErrorCodeType err, String msg) {
-          debugPrint('Agora Error: $err, $msg');
-        },
-      ),
-    );
-
-    // Set Client Role
-    await _engine.setClientRole(
-      role: widget.isBroadcaster
-          ? ClientRoleType.clientRoleBroadcaster
-          : ClientRoleType.clientRoleAudience,
-    );
-
-    // Enable Video
-    await _engine.enableVideo();
-    await _engine.startPreview();
-
-    if (mounted) {
-      setState(() {
-        _isEngineReady = true;
-      });
-    }
-
-    // Join Channel
-    await _engine.joinChannel(
-      token: ApiConstants.agoraTempToken,
-      channelId: widget.channelId,
-      uid: 0, // 0 means Let Agora assign one
-      options: const ChannelMediaOptions(),
-    );
   }
 
   void _scrollToBottom() {
@@ -173,12 +245,8 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen>
     _videoController?.dispose();
 
     if (widget.isBroadcaster) {
-      try {
-        _engine.leaveChannel();
-        _engine.release();
-      } catch (e) {
-        // ignore
-      }
+      _cameraController?.stopVideoStreaming();
+      _cameraController?.dispose();
     }
 
     // Restore Feed Audio when leaving the stream
@@ -195,7 +263,6 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen>
   }
 
   void _showGiftAnimation(LiveGift gift) {
-    // Gift animation logic
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text("${gift.username} sent ${gift.giftName}!")),
     );
@@ -203,10 +270,7 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen>
 
   void _sendMessage() {
     if (_commentController.text.trim().isEmpty) return;
-
-    // Correct Model Usage
     final msg = LiveMessage(username: 'Me', message: _commentController.text);
-
     setState(() {
       _messages.add(msg);
     });
@@ -232,6 +296,24 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen>
                 : _renderAudienceVideo(),
           ),
 
+          // Status Overlay (Debug)
+          if (widget.isBroadcaster)
+            Positioned(
+              top: 100,
+              left: 20,
+              child: Container(
+                padding: const EdgeInsets.all(8),
+                color: Colors.black54,
+                child: Text(
+                  _statusMessage,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ),
+
           // Close/End Button
           Positioned(
             top: 40,
@@ -239,32 +321,7 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen>
             child: widget.isBroadcaster
                 ? GestureDetector(
                     onTap: () {
-                      // Confirm End Live
-                      showDialog(
-                        context: context,
-                        builder: (ctx) => AlertDialog(
-                          title: const Text("End Live Stream?"),
-                          content: const Text(
-                            "Are you sure you want to end your live?",
-                          ),
-                          actions: [
-                            TextButton(
-                              onPressed: () => Navigator.pop(ctx),
-                              child: const Text("Cancel"),
-                            ),
-                            TextButton(
-                              onPressed: () {
-                                Navigator.pop(ctx); // Close dialog
-                                Navigator.pop(context); // Close screen
-                              },
-                              child: const Text(
-                                "End",
-                                style: TextStyle(color: Colors.red),
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
+                      _showEndLiveDialog(context);
                     },
                     child: Container(
                       padding: const EdgeInsets.symmetric(
@@ -392,7 +449,6 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen>
                         ),
                       ),
                       const SizedBox(width: 8),
-                      // Heart Button (Visible to all)
                       IconButton(
                         icon: const Icon(
                           Icons.favorite,
@@ -400,7 +456,6 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen>
                         ),
                         onPressed: _sendHeart,
                       ),
-                      // Gift Button (Hidden for Broadcaster)
                       if (!widget.isBroadcaster)
                         IconButton(
                           icon: const Icon(
@@ -421,13 +476,10 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen>
   }
 
   Widget _renderBroadcasterVideo() {
-    if (_isEngineReady) {
-      return AgoraVideoView(
-        controller: VideoViewController(
-          rtcEngine: _engine,
-          canvas: const VideoCanvas(uid: 0), // 0 for local user
-        ),
-      );
+    if (_isBroadcasterReady &&
+        _cameraController != null &&
+        _cameraController!.value.isInitialized == true) {
+      return CameraPreview(_cameraController!);
     } else {
       return const Center(child: CircularProgressIndicator());
     }
@@ -444,6 +496,29 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen>
         child: CircularProgressIndicator(color: Colors.white),
       );
     }
+  }
+
+  void _showEndLiveDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("End Live Stream?"),
+        content: const Text("Are you sure you want to end your live?"),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text("Cancel"),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              Navigator.pop(context);
+            },
+            child: const Text("End", style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
   }
 
   void _showGiftPicker(BuildContext context) {
@@ -593,7 +668,7 @@ class _GiftPickerBottomSheetState extends State<GiftPickerBottomSheet> {
                   child: Container(
                     decoration: BoxDecoration(
                       color: isSelected
-                          ? AppColors.neonPink.withOpacity(0.1)
+                          ? AppColors.neonPink.withValues(alpha: 0.1)
                           : Colors.transparent,
                       border: Border.all(
                         color: isSelected

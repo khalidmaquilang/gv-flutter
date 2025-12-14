@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:agora_rtc_engine/agora_rtc_engine.dart';
+import 'package:camera/camera.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:test_flutter/core/theme/app_theme.dart';
 import 'package:test_flutter/core/constants/api_constants.dart';
@@ -17,35 +17,38 @@ class LiveStreamSetupScreen extends ConsumerStatefulWidget {
 
 class _LiveStreamSetupScreenState extends ConsumerState<LiveStreamSetupScreen> {
   final TextEditingController _titleController = TextEditingController();
-  late RtcEngine _engine;
+  CameraController? _cameraController;
   bool _isPermissionGranted = false;
   bool _isGoingToLive = false;
 
   @override
   void initState() {
     super.initState();
-    _initAgora();
+    _initCamera();
   }
 
-  Future<void> _initAgora() async {
+  Future<void> _initCamera() async {
     // Wait for DeepAR to release camera (VideoRecorderScreen disposal overlap)
     await Future.delayed(const Duration(milliseconds: 500));
 
     // Request permissions
     await [Permission.microphone, Permission.camera].request();
 
-    // Create & Init Engine
-    _engine = createAgoraRtcEngine();
-    await _engine.initialize(
-      const RtcEngineContext(
-        appId: ApiConstants.agoraAppId,
-        channelProfile: ChannelProfileType.channelProfileLiveBroadcasting,
-      ),
+    final cameras = await availableCameras();
+    if (cameras.isEmpty) return;
+
+    final frontCamera = cameras.firstWhere(
+      (camera) => camera.lensDirection == CameraLensDirection.front,
+      orElse: () => cameras.first,
     );
 
-    await _engine.setClientRole(role: ClientRoleType.clientRoleBroadcaster);
-    await _engine.enableVideo();
-    await _engine.startPreview();
+    _cameraController = CameraController(
+      frontCamera,
+      ResolutionPreset.high,
+      enableAudio: false, // Audio not needed for setup preview
+    );
+
+    await _cameraController!.initialize();
 
     if (mounted) {
       setState(() {
@@ -54,7 +57,7 @@ class _LiveStreamSetupScreenState extends ConsumerState<LiveStreamSetupScreen> {
     }
   }
 
-  void _startLiveStream() async {
+  Future<void> _startLiveStream() async {
     if (_titleController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please enter a title for your stream')),
@@ -62,14 +65,15 @@ class _LiveStreamSetupScreenState extends ConsumerState<LiveStreamSetupScreen> {
       return;
     }
 
-    // Navigate and Dispose local preview engine
     _isGoingToLive = true;
-    try {
-      await _engine.leaveChannel();
-      await _engine.release();
-    } catch (e) {
-      debugPrint("Error releasing setup engine: $e");
+
+    // Dispose local controller before navigating to release camera
+    if (_cameraController != null) {
+      await _cameraController!.dispose();
+      _cameraController = null;
     }
+
+    if (!mounted) return;
 
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(
@@ -84,27 +88,10 @@ class _LiveStreamSetupScreenState extends ConsumerState<LiveStreamSetupScreen> {
   @override
   void dispose() {
     _titleController.dispose();
-    // Engine might be released in _startLiveStream, check validity or try catch if needed
-    // But safely:
-    // _engine.release(); // verify if already released?
-    // Simplified: Just release if not navigating?
-    // Since we await release in startLiveStream, standard dispose is tricky.
-    // Let's rely on standard lifecycle if user backs out.
-    // If we pop, dispose is called.
-    // If we pushReplacement, dispose is called.
-    // So we should release here only if we didn't already.
-    // Making it simple: Re-init in next screen implies we must release here.
-    try {
-      _engine.leaveChannel();
-      _engine.release();
-    } catch (e) {
-      // already released
-    }
+    _cameraController?.dispose();
 
     // If we are NOT going to live stream (e.g. back button), restore feed audio
     if (!_isGoingToLive) {
-      // We need to use ProviderContainer or similar if context is not valid,
-      // but ref.read is valid in dispose.
       ref.read(isFeedAudioEnabledProvider.notifier).state = true;
     }
     super.dispose();
@@ -117,13 +104,10 @@ class _LiveStreamSetupScreenState extends ConsumerState<LiveStreamSetupScreen> {
       body: Stack(
         children: [
           // Background Camera Preview
-          if (_isPermissionGranted)
-            AgoraVideoView(
-              controller: VideoViewController(
-                rtcEngine: _engine,
-                canvas: const VideoCanvas(uid: 0),
-              ),
-            )
+          if (_isPermissionGranted &&
+              _cameraController != null &&
+              _cameraController!.value.isInitialized)
+            SizedBox.expand(child: CameraPreview(_cameraController!))
           else
             const Center(child: CircularProgressIndicator()),
 
