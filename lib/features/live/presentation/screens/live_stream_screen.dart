@@ -121,15 +121,11 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen>
       setState(() => _statusMessage = "Initializing Camera...");
       await _cameraController!.initialize();
 
-      print("RTMP Camera initialized");
-
       if (mounted) {
         setState(() {
           _isBroadcasterReady = true;
           _statusMessage = "Ready to Stream";
         });
-
-        print("RTMP Ready to stream");
 
         // Delay to ensure camera is ready
         await Future.delayed(const Duration(seconds: 2));
@@ -145,7 +141,6 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen>
 
           // Status polling
           Timer.periodic(const Duration(seconds: 2), (timer) {
-            print("RTMP Periodic");
             if (!mounted) {
               timer.cancel();
               return;
@@ -156,7 +151,6 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen>
             final error = _cameraController?.value.errorDescription;
 
             debugPrint("Status Poll: Streaming=$isStreaming, Error=$error");
-            print("Status Poll: Streaming=$isStreaming, Error=$error");
 
             if (isStreaming && _statusMessage != "LIVE") {
               setState(() => _statusMessage = "LIVE");
@@ -164,7 +158,6 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen>
           });
 
           debugPrint("RTMP Start called for ${ApiConstants.rtmpUrl}");
-          print("RTMP Start called for ${ApiConstants.rtmpUrl}");
 
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
@@ -175,8 +168,6 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen>
           debugPrint("Error starting stream: $streamError");
 
           String errorMsg = streamError.toString();
-
-          print("RTMPError starting stream: $errorMsg");
 
           if (streamError is CameraException) {
             debugPrint(
