@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:test_flutter/core/theme/app_theme.dart';
+import '../../../../core/errors/exceptions.dart';
 import '../providers/auth_provider.dart';
 import '../../../../../main_screen.dart';
 import 'register_screen.dart';
@@ -19,10 +20,50 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
 
-  void _login() {
-    ref
+  @override
+  void initState() {
+    super.initState();
+  }
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  String? _getFieldError(Object? error, String field) {
+    if (error == null) return null;
+    if (error is ValidationException) {
+      final errors = error.errors;
+      if (errors.containsKey(field)) {
+        final fieldErrors = errors[field];
+        if (fieldErrors is List && fieldErrors.isNotEmpty) {
+          return fieldErrors.first.toString();
+        } else if (fieldErrors is String) {
+          return fieldErrors;
+        }
+      }
+    }
+    return null;
+  }
+
+  bool _isLoading = false;
+
+  void _login() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    await ref
         .read(authControllerProvider.notifier)
         .login(_emailController.text, _passwordController.text);
+
+    if (mounted) {
+      setState(() {
+        _isLoading = false;
+      });
+    }
   }
 
   @override
@@ -30,11 +71,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     final authState = ref.watch(authControllerProvider);
 
     ref.listen(authControllerProvider, (previous, next) {
-      if (next.hasError) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(next.error.toString())));
-      } else if (next.value != null) {
+      if (next is AsyncError) {
+        // Only show SnackBar for non-validation errors (e.g. Network Error)
+        if (next.error is! ValidationException) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text(next.error.toString())));
+        }
+      } else if (next is AsyncData && next.value != null) {
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(builder: (context) => const MainScreen()),
         );
@@ -87,6 +131,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     hintText: 'Email',
                     keyboardType: TextInputType.emailAddress,
                     icon: Icons.email_outlined,
+                    errorText: _getFieldError(authState.error, 'email'),
                   ),
                   const SizedBox(height: 16),
                   AuthTextField(
@@ -94,12 +139,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     hintText: 'Password',
                     isObscure: true,
                     icon: Icons.lock_outline,
+                    errorText: _getFieldError(authState.error, 'password'),
                   ),
                   const SizedBox(height: 24),
                   AuthButton(
                     text: 'Log in',
-                    onPressed: authState.isLoading ? null : _login,
-                    isLoading: authState.isLoading,
+                    onPressed: _isLoading ? null : _login,
+                    isLoading: _isLoading,
                   ),
                   const SizedBox(height: 24),
                   Row(

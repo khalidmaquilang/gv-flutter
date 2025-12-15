@@ -15,7 +15,6 @@ class AuthController extends StateNotifier<AsyncValue<User?>> {
   AuthController(this._authService) : super(const AsyncValue.data(null));
 
   Future<void> login(String email, String password) async {
-    state = const AsyncValue.loading();
     try {
       final user = await _authService.login(email, password);
       state = AsyncValue.data(user);
@@ -25,7 +24,6 @@ class AuthController extends StateNotifier<AsyncValue<User?>> {
   }
 
   Future<void> register(String name, String email, String password) async {
-    state = const AsyncValue.loading();
     try {
       final user = await _authService.register(name, email, password);
       state = AsyncValue.data(user);
