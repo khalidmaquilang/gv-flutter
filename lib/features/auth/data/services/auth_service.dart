@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import '../../../../core/constants/api_constants.dart';
 import '../models/user_model.dart';
+import '../../../../core/errors/exceptions.dart';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
@@ -16,6 +17,7 @@ class AuthService {
               baseUrl: ApiConstants.baseUrl,
               connectTimeout: const Duration(seconds: 10),
               receiveTimeout: const Duration(seconds: 10),
+              headers: {'Accept': 'application/json'},
             ),
           );
 
@@ -38,6 +40,19 @@ class AuthService {
         ApiConstants.baseUrl + ApiConstants.user,
       );
       return User.fromJson(userResponse.data);
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 422) {
+        final data = e.response?.data;
+        if (data is Map<String, dynamic>) {
+          throw ValidationException(
+            data['message']?.toString() ?? 'Validation Error',
+            data['errors'] is Map
+                ? Map<String, dynamic>.from(data['errors'])
+                : {},
+          );
+        }
+      }
+      throw Exception('Login Failed: ${e.message}');
     } catch (e) {
       throw Exception('Login Failed: $e');
     }
