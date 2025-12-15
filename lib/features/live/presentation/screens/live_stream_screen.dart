@@ -10,6 +10,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../features/feed/presentation/providers/feed_audio_provider.dart';
 import 'package:video_player/video_player.dart';
 import '../../data/services/media_push_service.dart';
+import '../widgets/gift_overlay.dart';
+import '../widgets/floating_hearts_overlay.dart';
+
+import 'package:wakelock_plus/wakelock_plus.dart';
 
 class LiveStreamScreen extends ConsumerStatefulWidget {
   final bool isBroadcaster;
@@ -36,7 +40,6 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen>
   late RtcEngine _engine;
   bool _isBroadcasterReady = false;
   String _statusMessage = "Initializing Agora...";
-  int? _localUid;
 
   // Services
   final MediaPushService _mediaPushService = MediaPushService();
@@ -50,6 +53,9 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen>
   @override
   void initState() {
     super.initState();
+    // Keep screen on
+    WakelockPlus.enable();
+
     // Mute feed audio when entering live stream
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(isFeedAudioEnabledProvider.notifier).state = false;
@@ -60,6 +66,13 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen>
     } else {
       _initPlayer();
     }
+
+    // Initialize RTM Service
+    // Using a random int for UID (string format) since we don't have real auth
+    _liveService.initialize(
+      uid: (1000 + DateTime.now().millisecondsSinceEpoch % 10000).toString(),
+      channelId: widget.channelId,
+    );
 
     _heartAnimController = AnimationController(
       vsync: this,
@@ -102,7 +115,6 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen>
             "Agora: Joined Channel ${connection.channelId} uid=${connection.localUid}",
           );
           setState(() {
-            _localUid = connection.localUid;
             _statusMessage = "Joined. Triggering Media Push API...";
           });
           // Call REST API instead of SDK Method
@@ -180,6 +192,7 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen>
 
   @override
   void dispose() {
+    WakelockPlus.disable();
     _heartAnimController.dispose();
     _commentController.dispose();
     _scrollController.dispose();
@@ -220,9 +233,7 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen>
   }
 
   void _showGiftAnimation(LiveGift gift) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text("${gift.username} sent ${gift.giftName}!")),
-    );
+    // Handled by GiftOverlay stream listener
   }
 
   void _sendMessage() {
@@ -305,6 +316,14 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen>
             ),
           ),
 
+          // Floating Hearts
+          FloatingHeartsOverlay(
+            triggerStream: _liveService.reactionStream.map((_) {}),
+          ),
+
+          // Gift Overlay
+          GiftOverlay(giftStream: _liveService.giftStream),
+
           // Bottom Controls
           Positioned(
             bottom: 0,
@@ -316,7 +335,10 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen>
                 gradient: LinearGradient(
                   begin: Alignment.bottomCenter,
                   end: Alignment.topCenter,
-                  colors: [Colors.black.withOpacity(0.8), Colors.transparent],
+                  colors: [
+                    Colors.black.withValues(alpha: 0.8),
+                    Colors.transparent,
+                  ],
                 ),
               ),
               padding: const EdgeInsets.all(16),
@@ -364,10 +386,10 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen>
                           decoration: InputDecoration(
                             hintText: 'Say something...',
                             hintStyle: TextStyle(
-                              color: Colors.white.withOpacity(0.5),
+                              color: Colors.white.withValues(alpha: 0.5),
                             ),
                             filled: true,
-                            fillColor: Colors.white.withOpacity(0.1),
+                            fillColor: Colors.white.withValues(alpha: 0.1),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(20),
                               borderSide: BorderSide.none,
@@ -619,6 +641,9 @@ class _GiftPickerBottomSheetState extends State<GiftPickerBottomSheet> {
                         if (_balance >= (gift['value'] as int)) {
                           setState(() => _balance -= gift['value'] as int);
                           widget.onGiftSent(gift['name'], gift['value']);
+                        } else {
+                          // Show Recharge Dialog
+                          _showRechargeDialog(context);
                         }
                       },
                 child: const Text(
@@ -626,6 +651,49 @@ class _GiftPickerBottomSheetState extends State<GiftPickerBottomSheet> {
                   style: TextStyle(color: Colors.white, fontSize: 16),
                 ),
               ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showRechargeDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
+        title: const Text(
+          "Insufficient Coins",
+          style: TextStyle(color: Colors.white),
+        ),
+        content: const Text(
+          "You don't have enough coins to send this gift. Recharge now?",
+          style: TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text("Cancel"),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.neonPink,
+            ),
+            onPressed: () {
+              // Mock recharge
+              setState(() => _balance += 100);
+              Navigator.pop(ctx);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text("Recharged 100 Coins!"),
+                  backgroundColor: Colors.green,
+                ),
+              );
+            },
+            child: const Text(
+              "Buy 100 Coins",
+              style: TextStyle(color: Colors.white),
             ),
           ),
         ],
