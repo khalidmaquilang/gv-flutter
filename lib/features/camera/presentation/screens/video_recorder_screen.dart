@@ -13,7 +13,7 @@ import '../../data/models/sound_model.dart';
 import 'sound_selection_screen.dart';
 import '../../data/services/deepar_service.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:path_provider/path_provider.dart';
+
 import '../../../live/presentation/screens/live_stream_setup_screen.dart';
 import 'package:test_flutter/core/widgets/neon_border_container.dart';
 import '../widgets/glass_action_button.dart';
@@ -837,35 +837,35 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
                           onTap: _pickFromGallery,
                           child: Column(
                             children: [
-                              NeonBorderContainer(
+                              SizedBox(
                                 width: 36,
                                 height: 36,
-                                borderRadius: 8,
-                                padding: EdgeInsets.zero,
-                                showGlow:
-                                    false, // Less glow for inactive gallery
-                                child: Container(
-                                  decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(8),
-                                    image: _lastImageBytes != null
-                                        ? DecorationImage(
-                                            image: MemoryImage(
-                                              _lastImageBytes!,
-                                            ),
-                                            fit: BoxFit.cover,
+                                child: NeonBorderContainer(
+                                  borderRadius: 8,
+                                  padding: EdgeInsets.zero,
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(8),
+                                      image: _lastImageBytes != null
+                                          ? DecorationImage(
+                                              image: MemoryImage(
+                                                _lastImageBytes!,
+                                              ),
+                                              fit: BoxFit.cover,
+                                            )
+                                          : null,
+                                      color: _lastImageBytes == null
+                                          ? Colors.grey[800]
+                                          : null,
+                                    ),
+                                    child: _lastImageBytes == null
+                                        ? const Icon(
+                                            Icons.image,
+                                            color: Colors.white,
+                                            size: 20,
                                           )
                                         : null,
-                                    color: _lastImageBytes == null
-                                        ? Colors.grey[800]
-                                        : null,
                                   ),
-                                  child: _lastImageBytes == null
-                                      ? const Icon(
-                                          Icons.image,
-                                          color: Colors.white,
-                                          size: 20,
-                                        )
-                                      : null,
                                 ),
                               ),
                               const SizedBox(height: 5),
@@ -1058,8 +1058,7 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
       ),
     );
   }
-
-
+}
 
 // SegmentedRingPainter (unchanged)
 class SegmentedRingPainter extends CustomPainter {
