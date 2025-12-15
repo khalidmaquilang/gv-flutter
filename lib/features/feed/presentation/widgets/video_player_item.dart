@@ -10,10 +10,19 @@ import 'comment_bottom_sheet.dart';
 
 import 'package:test_flutter/core/utils/route_observer.dart';
 import '../providers/feed_audio_provider.dart';
+import 'dart:async';
 
 class VideoPlayerItem extends ConsumerStatefulWidget {
   final Video video;
-  const VideoPlayerItem({super.key, required this.video});
+  final VoidCallback? onInteractionStart;
+  final VoidCallback? onInteractionEnd;
+
+  const VideoPlayerItem({
+    super.key,
+    required this.video,
+    this.onInteractionStart,
+    this.onInteractionEnd,
+  });
 
   @override
   ConsumerState<VideoPlayerItem> createState() => _VideoPlayerItemState();
@@ -22,46 +31,20 @@ class VideoPlayerItem extends ConsumerStatefulWidget {
 class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
     with RouteAware {
   late VideoPlayerController _controller;
-  // ... (keep existing fields)
+
   bool _isLoading = true;
   bool _isLiked = false;
   int _likesCount = 0;
   final VideoService _videoService = VideoService();
 
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    routeObserver.subscribe(this, ModalRoute.of(context)!);
-  }
-
-  @override
-  void didPushNext() {
-    // Route pushed on top (e.g. LiveSetup)
-    _controller.pause();
-  }
-
-  @override
-  void didPopNext() {
-    // Top route popped, we are back
-    if (ref.read(bottomNavIndexProvider) == 0 &&
-        ref.read(isFeedAudioEnabledProvider)) {
-      _controller.play();
-    }
-  }
-
-  @override
-  void dispose() {
-    routeObserver.unsubscribe(this);
-    _controller.dispose();
-    super.dispose();
-  }
+  bool _isUiVisible = true;
 
   @override
   void initState() {
-    // ... existing initState
     super.initState();
     _isLiked = widget.video.isLiked;
     _likesCount = widget.video.likesCount;
+
     _controller =
         VideoPlayerController.networkUrl(Uri.parse(widget.video.videoUrl))
           ..initialize()
@@ -79,6 +62,137 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
               .catchError((error) {
                 debugPrint("Video Error: $error");
               });
+  }
+
+  @override
+  void dispose() {
+    routeObserver.unsubscribe(this);
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  void didPushNext() {
+    _controller.pause();
+  }
+
+  @override
+  void didPopNext() {
+    if (ref.read(bottomNavIndexProvider) == 0 &&
+        ref.read(isFeedAudioEnabledProvider)) {
+      _controller.play();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    ref.listen(isFeedAudioEnabledProvider, (previous, next) {
+      if (next) {
+        if (ref.read(bottomNavIndexProvider) == 0 &&
+            !_controller.value.isPlaying) {
+          _controller.play();
+        }
+      } else {
+        _controller.pause();
+      }
+    });
+
+    ref.listen(bottomNavIndexProvider, (previous, next) {
+      if (next != 0) {
+        _controller.pause();
+      } else {
+        if (ref.read(isFeedAudioEnabledProvider)) {
+          _controller.play();
+        }
+      }
+    });
+
+    return Stack(
+      children: [
+        // Video Layer (Zoomable)
+        _ZoomableContent(
+          onInteractionStart: () {
+            widget.onInteractionStart?.call();
+            setState(() {
+              _isUiVisible = false;
+            });
+          },
+          onInteractionEnd: () {
+            widget.onInteractionEnd?.call();
+          },
+          onTap: _togglePlay,
+          child: Container(
+            color: Colors.black,
+            child: Center(
+              child: _isLoading
+                  ? const CircularProgressIndicator()
+                  : AspectRatio(
+                      aspectRatio: _controller.value.aspectRatio,
+                      child: VideoPlayer(_controller),
+                    ),
+            ),
+          ),
+        ),
+
+        // UI Overlay (Fades out when zooming)
+        AnimatedOpacity(
+          duration: const Duration(milliseconds: 200),
+          opacity: _isUiVisible ? 1.0 : 0.0,
+          child: Stack(
+            children: [
+              // Right Side Actions (Avatar, Like, Comment, Share)
+              Positioned(
+                bottom: 100,
+                right: 10,
+                child: Column(
+                  children: [
+                    _buildAction(
+                      _isLiked ? Icons.favorite : Icons.favorite_border,
+                      "$_likesCount",
+                      color: _isLiked ? AppColors.neonPink : Colors.white,
+                      onTap: _toggleLike,
+                    ),
+                    const SizedBox(height: 16),
+                    _buildAction(
+                      Icons.comment,
+                      "${widget.video.commentsCount}",
+                      onTap: _showComments,
+                    ),
+                    const SizedBox(height: 16),
+                    _buildAction(Icons.share, "Share", onTap: _shareVideo),
+                  ],
+                ),
+              ),
+
+              // Bottom Info (Name, Caption)
+              Positioned(
+                bottom: 20,
+                left: 10,
+                right: 80,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      "@${widget.video.user.name}",
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      widget.video.caption,
+                      style: const TextStyle(fontSize: 14, color: Colors.white),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
   }
 
   Future<void> _toggleLike() async {
@@ -102,10 +216,16 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
 
   void _togglePlay() {
     setState(() {
-      if (_controller.value.isPlaying) {
-        _controller.pause();
+      if (!_isUiVisible) {
+        // If UI is hidden, tapping just brings it back
+        _isUiVisible = true;
       } else {
-        _controller.play();
+        // Normal toggle play behavior
+        if (_controller.value.isPlaying) {
+          _controller.pause();
+        } else {
+          _controller.play();
+        }
       }
     });
   }
@@ -116,100 +236,6 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) => CommentBottomSheet(videoId: widget.video.id),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    ref.listen(isFeedAudioEnabledProvider, (previous, next) {
-      if (next) {
-        if (ref.read(bottomNavIndexProvider) == 0 &&
-            !_controller.value.isPlaying) {
-          _controller.play();
-        }
-      } else {
-        _controller.pause();
-      }
-    });
-
-    ref.listen(bottomNavIndexProvider, (previous, next) {
-      // Logic managed by isFeedAudioEnabledProvider for main switches,
-      // but we still need standard tab switching logic.
-      if (next != 0) {
-        _controller.pause();
-      } else {
-        if (ref.read(isFeedAudioEnabledProvider)) {
-          _controller.play();
-        }
-      }
-    });
-
-    return Stack(
-      children: [
-        // Video Layer
-        GestureDetector(
-          onTap: _togglePlay,
-          child: Container(
-            color: Colors.black,
-            child: Center(
-              child: _isLoading
-                  ? const CircularProgressIndicator()
-                  : AspectRatio(
-                      aspectRatio: _controller.value.aspectRatio,
-                      child: VideoPlayer(_controller),
-                    ),
-            ),
-          ),
-        ),
-        // Right Side Actions (Avatar, Like, Comment, Share)
-        Positioned(
-          bottom: 100,
-          right: 10,
-          child: Column(
-            children: [
-              _buildAction(
-                _isLiked ? Icons.favorite : Icons.favorite_border,
-                "$_likesCount",
-                color: _isLiked ? AppColors.neonPink : Colors.white,
-                onTap: _toggleLike,
-              ),
-              const SizedBox(height: 16),
-              _buildAction(
-                Icons.comment,
-                "${widget.video.commentsCount}",
-                onTap: _showComments,
-              ),
-              const SizedBox(height: 16),
-              _buildAction(Icons.share, "Share", onTap: _shareVideo),
-            ],
-          ),
-        ),
-
-        // Bottom Info (Name, Caption)
-        Positioned(
-          bottom: 20,
-          left: 10,
-          right: 80,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                "@${widget.video.user.name}",
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                  color: Colors.white,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                widget.video.caption,
-                style: const TextStyle(fontSize: 14, color: Colors.white),
-              ),
-            ],
-          ),
-        ),
-      ],
     );
   }
 
@@ -227,6 +253,253 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
           const SizedBox(height: 4),
           Text(text, style: const TextStyle(fontSize: 12, color: Colors.white)),
         ],
+      ),
+    );
+  }
+}
+
+class _ZoomableContent extends StatefulWidget {
+  final Widget child;
+  final VoidCallback? onInteractionStart;
+  final VoidCallback? onInteractionEnd;
+  final VoidCallback? onTap;
+
+  const _ZoomableContent({
+    required this.child,
+    this.onInteractionStart,
+    this.onInteractionEnd,
+    this.onTap,
+  });
+
+  @override
+  State<_ZoomableContent> createState() => _ZoomableContentState();
+}
+
+class _ZoomableContentState extends State<_ZoomableContent>
+    with TickerProviderStateMixin {
+  final TransformationController _transformationController =
+      TransformationController();
+  late AnimationController _animationController;
+  late Animation<Matrix4> _zoomAnimation;
+  int _pointers = 0;
+  bool _canPan = false;
+  Timer? _longPressTimer;
+  Offset? _longPressOrigin;
+
+  @override
+  void initState() {
+    super.initState();
+    _animationController =
+        AnimationController(
+          vsync: this,
+          duration: const Duration(milliseconds: 300),
+        )..addListener(() {
+          _transformationController.value = _zoomAnimation.value;
+        });
+
+    _transformationController.addListener(_onTransformationChange);
+  }
+
+  @override
+  void dispose() {
+    _transformationController.removeListener(_onTransformationChange);
+    _transformationController.dispose();
+    _animationController.dispose();
+    _longPressTimer?.cancel();
+    super.dispose();
+  }
+
+  void _onTransformationChange() {
+    _updatePanEnablement();
+  }
+
+  void _updatePanEnablement() {
+    // Enable pan if zoomed in OR if multiple fingers are down (pinch)
+    final isZoomed = !_transformationController.value.isIdentity();
+    final shouldEnablePan = isZoomed || _pointers >= 2;
+
+    if (shouldEnablePan != _canPan) {
+      if (mounted) {
+        setState(() {
+          _canPan = shouldEnablePan;
+        });
+      }
+    }
+  }
+
+  void _handleDoubleTap() {
+    Matrix4 endMatrix;
+    if (_transformationController.value.isIdentity()) {
+      // Zoom In to 2x at Center
+      final size = MediaQuery.of(context).size;
+      final center = size.center(Offset.zero);
+
+      // Matrix: Translate(Center) * Scale(2) * Translate(-Center)
+      endMatrix = Matrix4.identity()
+        ..translate(center.dx, center.dy)
+        ..scale(2.0)
+        ..translate(-center.dx, -center.dy);
+
+      widget.onInteractionStart?.call(); // Lock scroll
+    } else {
+      // Zoom Out to 1x
+      endMatrix = Matrix4.identity();
+      widget.onInteractionEnd?.call(); // Unlock scroll
+    }
+
+    _zoomAnimation =
+        Matrix4Tween(
+          begin: _transformationController.value,
+          end: endMatrix,
+        ).animate(
+          CurveTween(curve: Curves.easeInOut).animate(_animationController),
+        );
+
+    _animationController.forward(from: 0).then((_) {
+      if (endMatrix.isIdentity()) {
+        widget.onInteractionEnd?.call();
+      }
+    });
+  }
+
+  void _showOptionsMenu() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1E1E1E),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                margin: const EdgeInsets.only(top: 8, bottom: 8),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey[600],
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              ListTile(
+                leading: const Icon(Icons.download, color: Colors.white),
+                title: const Text(
+                  'Download Video',
+                  style: TextStyle(color: Colors.white),
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Downloading video...')),
+                  );
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.flag, color: Colors.white),
+                title: const Text(
+                  'Report',
+                  style: TextStyle(color: Colors.white),
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Unwanted Report submitted.')),
+                  );
+                },
+              ),
+              const SizedBox(height: 16),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Listener(
+      onPointerDown: (event) {
+        _pointers++;
+        _updatePanEnablement(); // Check if we should enable pan (e.g. 2nd finger)
+
+        // Handle Scroll Lock
+        if (_pointers >= 2) {
+          widget.onInteractionStart?.call();
+          _longPressTimer?.cancel(); // Cancel long press if 2 fingers
+        }
+
+        // Handle Manual Long Press (Only if 1 finger and unzoomed)
+        // If we are zoomed, we allow panning instead of long press menu?
+        // TikTok behavior: Long press works even if zoomed? Probably.
+        // But for now, let's keep it simple.
+        if (_pointers == 1) {
+          _longPressOrigin = event.position;
+          _longPressTimer?.cancel();
+          _longPressTimer = Timer(const Duration(milliseconds: 500), () {
+            if (mounted && _pointers == 1) {
+              _showOptionsMenu();
+            }
+          });
+        }
+      },
+      onPointerMove: (event) {
+        // Cancel Long Press if moved significantly
+        if (_longPressOrigin != null) {
+          final distance = (event.position - _longPressOrigin!).distance;
+          if (distance > 10.0) {
+            // 10.0 is a reasonable slop
+            _longPressTimer?.cancel();
+          }
+        }
+      },
+      onPointerUp: (event) {
+        _pointers--;
+        _updatePanEnablement();
+        _longPressTimer?.cancel(); // Cancel on release
+        if (_pointers == 0) {
+          if (_transformationController.value.isIdentity()) {
+            widget.onInteractionEnd?.call();
+          }
+        }
+      },
+      onPointerCancel: (event) {
+        _pointers = 0;
+        _updatePanEnablement();
+        _longPressTimer?.cancel();
+        if (_transformationController.value.isIdentity()) {
+          widget.onInteractionEnd?.call();
+        }
+      },
+      child: InteractiveViewer(
+        key: const ValueKey('interactive_viewer'), // Add Key for stability
+        transformationController: _transformationController,
+        minScale: 1.0,
+        maxScale: 4.0,
+        panEnabled: _canPan,
+        onInteractionStart: (details) {
+          widget.onInteractionStart?.call();
+        },
+        onInteractionEnd: (details) {
+          // No Snap back on simple end?
+          // TikTok behavior: If you release pinch but are zoomed in -> Stay zoomed?
+          // User requested "Snap Back".
+          // Previous code:
+          // _transformationController.value = Matrix4.identity();
+          // widget.onInteractionEnd?.call();
+
+          // Wait, previous code snapped back!
+          // Let's restore Snap Back behavior to be safe.
+          _transformationController.value = Matrix4.identity();
+          widget.onInteractionEnd?.call();
+        },
+        child: GestureDetector(
+          onTap: widget.onTap,
+          onDoubleTap: _handleDoubleTap,
+          behavior: HitTestBehavior.opaque,
+          child: widget.child,
+        ),
       ),
     );
   }
