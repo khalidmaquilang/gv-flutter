@@ -430,10 +430,15 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen>
 
   Widget _renderBroadcasterVideo() {
     if (_isBroadcasterReady) {
-      return AgoraVideoView(
-        controller: VideoViewController(
-          rtcEngine: _engine,
-          canvas: const VideoCanvas(uid: 0),
+      return SizedBox.expand(
+        child: AgoraVideoView(
+          controller: VideoViewController(
+            rtcEngine: _engine,
+            canvas: const VideoCanvas(
+              uid: 0,
+              renderMode: RenderModeType.renderModeHidden, // Fill screen (crop)
+            ),
+          ),
         ),
       );
     } else {
@@ -443,9 +448,15 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen>
 
   Widget _renderAudienceVideo() {
     if (_videoController != null && _videoController!.value.isInitialized) {
-      return AspectRatio(
-        aspectRatio: _videoController!.value.aspectRatio,
-        child: VideoPlayer(_videoController!),
+      return SizedBox.expand(
+        child: FittedBox(
+          fit: BoxFit.cover, // Fill screen (crop)
+          child: SizedBox(
+            width: _videoController!.value.size.width,
+            height: _videoController!.value.size.height,
+            child: VideoPlayer(_videoController!),
+          ),
+        ),
       );
     } else {
       return const Center(
