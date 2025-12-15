@@ -142,19 +142,29 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen>
 
     await _engine.setClientRole(role: ClientRoleType.clientRoleBroadcaster);
     await _engine.enableVideo();
-    await _engine.enableAudio(); // Explicitly enable audio
+    // Set Video Quality to HD (720p) - Landscape Input + Portrait Mode = Standard Vertical
+    await _engine.setVideoEncoderConfiguration(
+      const VideoEncoderConfiguration(
+        // Vertical HD Resolution
+        dimensions: VideoDimensions(width: 720, height: 1280),
+        frameRate: 24,
+        bitrate: 3000,
+        orientationMode: OrientationMode.orientationModeAdaptive,
+      ),
+    );
+    await _engine.enableAudio();
 
     await _engine.startPreview();
     setState(() => _isBroadcasterReady = true);
 
     await _engine.joinChannel(
       token: ApiConstants.agoraTempToken,
-      channelId: ApiConstants.fixedTestChannelId, // Using the fixed ID
-      uid:
-          1000, // Fixed UID for Broadcaster to avoid random ID issues with Converter
+      channelId: ApiConstants.fixedTestChannelId,
+      uid: 1000,
       options: const ChannelMediaOptions(
         publishCameraTrack: true,
         publishMicrophoneTrack: true,
+        clientRoleType: ClientRoleType.clientRoleBroadcaster,
       ),
     );
   }
@@ -437,6 +447,8 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen>
             canvas: const VideoCanvas(
               uid: 0,
               renderMode: RenderModeType.renderModeHidden, // Fill screen (crop)
+              mirrorMode: VideoMirrorModeType
+                  .videoMirrorModeEnabled, // Mirror local preview
             ),
           ),
         ),
