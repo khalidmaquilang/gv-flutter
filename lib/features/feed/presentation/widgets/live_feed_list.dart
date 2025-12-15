@@ -90,7 +90,7 @@ class _LiveFeedListState extends State<LiveFeedList> {
                         end: Alignment.bottomCenter,
                         colors: [
                           Colors.transparent,
-                          Colors.black.withOpacity(0.7),
+                          AppColors.deepVoid.withOpacity(0.8), // Deep Void
                         ],
                       ),
                     ),
@@ -106,8 +106,15 @@ class _LiveFeedListState extends State<LiveFeedList> {
                         vertical: 2,
                       ),
                       decoration: BoxDecoration(
-                        color: AppColors.neonPink,
+                        color: AppColors.neonPink, // Neon Pink
                         borderRadius: BorderRadius.circular(4),
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppColors.neonPink.withOpacity(0.6),
+                            blurRadius: 8,
+                            spreadRadius: 1,
+                          ),
+                        ],
                       ),
                       child: const Text(
                         "LIVE",
@@ -137,7 +144,7 @@ class _LiveFeedListState extends State<LiveFeedList> {
                         children: [
                           const Icon(
                             Icons.remove_red_eye,
-                            color: Colors.white,
+                            color: AppColors.neonCyan, // Neon Cyan Icon
                             size: 10,
                           ),
                           const SizedBox(width: 4),
@@ -168,6 +175,9 @@ class _LiveFeedListState extends State<LiveFeedList> {
                             color: Colors.white,
                             fontSize: 12,
                             fontWeight: FontWeight.bold,
+                            shadows: [
+                              Shadow(color: Colors.black, blurRadius: 2),
+                            ],
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
@@ -175,10 +185,17 @@ class _LiveFeedListState extends State<LiveFeedList> {
                         const SizedBox(height: 4),
                         Row(
                           children: [
-                            CircleAvatar(
-                              radius: 8,
-                              backgroundImage: NetworkImage(
-                                stream.user.avatar ?? '',
+                            Container(
+                              padding: const EdgeInsets.all(1),
+                              decoration: const BoxDecoration(
+                                shape: BoxShape.circle,
+                                gradient: AppColors.primaryGradient,
+                              ),
+                              child: CircleAvatar(
+                                radius: 8,
+                                backgroundImage: NetworkImage(
+                                  stream.user.avatar ?? '',
+                                ),
                               ),
                             ),
                             const SizedBox(width: 4),
