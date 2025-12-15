@@ -10,6 +10,7 @@ import 'comment_bottom_sheet.dart';
 
 import 'package:test_flutter/core/utils/route_observer.dart';
 import '../providers/feed_audio_provider.dart';
+import 'dart:async';
 
 class VideoPlayerItem extends ConsumerStatefulWidget {
   final Video video;
@@ -28,34 +29,21 @@ class VideoPlayerItem extends ConsumerStatefulWidget {
 }
 
 class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
-    with RouteAware, TickerProviderStateMixin {
+    with RouteAware {
   late VideoPlayerController _controller;
-  // ... (keep existing fields)
+
   bool _isLoading = true;
   bool _isLiked = false;
   int _likesCount = 0;
   final VideoService _videoService = VideoService();
 
-  final TransformationController _transformationController =
-      TransformationController();
-  late AnimationController _animationController;
-  late Animation<Matrix4> _zoomAnimation;
   bool _isUiVisible = true;
-  int _pointers = 0;
 
   @override
   void initState() {
     super.initState();
     _isLiked = widget.video.isLiked;
     _likesCount = widget.video.likesCount;
-
-    _animationController =
-        AnimationController(
-          vsync: this,
-          duration: const Duration(milliseconds: 300),
-        )..addListener(() {
-          _transformationController.value = _zoomAnimation.value;
-        });
 
     _controller =
         VideoPlayerController.networkUrl(Uri.parse(widget.video.videoUrl))
@@ -80,63 +68,24 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
   void dispose() {
     routeObserver.unsubscribe(this);
     _controller.dispose();
-    _transformationController.dispose();
-    _animationController.dispose();
     super.dispose();
   }
 
-  // ... (keep listeners and other methods)
-
-  void _handleDoubleTap() {
-    Matrix4 endMatrix;
-    if (_transformationController.value.isIdentity()) {
-      // Zoom In to 2x at Center
-      final size = MediaQuery.of(context).size;
-      final center = size.center(Offset.zero);
-
-      // Matrix: Translate(Center) * Scale(2) * Translate(-Center)
-      endMatrix = Matrix4.identity()
-        ..translate(center.dx, center.dy)
-        ..scale(2.0)
-        ..translate(-center.dx, -center.dy);
-
-      // Hide UI when we start zooming in
-      setState(() {
-        _isUiVisible = false;
-      });
-      widget.onInteractionStart?.call(); // Lock scroll
-    } else {
-      // Zoom Out to 1x
-      endMatrix = Matrix4.identity();
-      widget.onInteractionEnd
-          ?.call(); // Unlock scroll (will be handled by animation completion?)
-      // Actually consistent with pinch behavior: snap back resets state
-    }
-
-    _zoomAnimation =
-        Matrix4Tween(
-          begin: _transformationController.value,
-          end: endMatrix,
-        ).animate(
-          CurveTween(curve: Curves.easeInOut).animate(_animationController),
-        );
-
-    _animationController.forward(from: 0).then((_) {
-      // If we zoomed out completely, ensure state is clean
-      if (endMatrix.isIdentity()) {
-        // We could restore UI here if we wanted "Double Tap to Reset" to also show UI
-        // But based on "Clean Mode", we might let it stay hidden or not?
-        // Let's restore scroll lock at least.
-        widget.onInteractionEnd?.call();
-      }
-    });
+  @override
+  void didPushNext() {
+    _controller.pause();
   }
 
-  // ... (keep _togglePlay)
+  @override
+  void didPopNext() {
+    if (ref.read(bottomNavIndexProvider) == 0 &&
+        ref.read(isFeedAudioEnabledProvider)) {
+      _controller.play();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    // ... (keep listeners)
     ref.listen(isFeedAudioEnabledProvider, (previous, next) {
       if (next) {
         if (ref.read(bottomNavIndexProvider) == 0 &&
@@ -158,118 +107,91 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
       }
     });
 
-    return Listener(
-      onPointerDown: (_) {
-        _pointers++;
-        if (_pointers >= 2) {
-          widget.onInteractionStart?.call();
-        }
-      },
-      onPointerUp: (_) {
-        _pointers--;
-        if (_pointers == 0 && _isUiVisible) {
-          widget.onInteractionEnd?.call();
-        }
-      },
-      onPointerCancel: (_) {
-        _pointers = 0;
-        if (_isUiVisible) widget.onInteractionEnd?.call();
-      },
-      child: Stack(
-        children: [
-          // Video Layer (Zoomable)
-          InteractiveViewer(
-            transformationController: _transformationController,
-            minScale: 1.0,
-            maxScale: 4.0,
-            onInteractionStart: _onInteractionStart,
-            onInteractionEnd: _onInteractionEnd,
-            child: GestureDetector(
-              onTap: _togglePlay,
-              onDoubleTap: _handleDoubleTap,
-              behavior: HitTestBehavior.opaque,
-              child: Container(
-                color: Colors.black,
-                child: Center(
-                  child: _isLoading
-                      ? const CircularProgressIndicator()
-                      : AspectRatio(
-                          aspectRatio: _controller.value.aspectRatio,
-                          child: VideoPlayer(_controller),
-                        ),
+    return Stack(
+      children: [
+        // Video Layer (Zoomable)
+        _ZoomableContent(
+          onInteractionStart: () {
+            widget.onInteractionStart?.call();
+            setState(() {
+              _isUiVisible = false;
+            });
+          },
+          onInteractionEnd: () {
+            widget.onInteractionEnd?.call();
+          },
+          onTap: _togglePlay,
+          child: Container(
+            color: Colors.black,
+            child: Center(
+              child: _isLoading
+                  ? const CircularProgressIndicator()
+                  : AspectRatio(
+                      aspectRatio: _controller.value.aspectRatio,
+                      child: VideoPlayer(_controller),
+                    ),
+            ),
+          ),
+        ),
+
+        // UI Overlay (Fades out when zooming)
+        AnimatedOpacity(
+          duration: const Duration(milliseconds: 200),
+          opacity: _isUiVisible ? 1.0 : 0.0,
+          child: Stack(
+            children: [
+              // Right Side Actions (Avatar, Like, Comment, Share)
+              Positioned(
+                bottom: 100,
+                right: 10,
+                child: Column(
+                  children: [
+                    _buildAction(
+                      _isLiked ? Icons.favorite : Icons.favorite_border,
+                      "$_likesCount",
+                      color: _isLiked ? AppColors.neonPink : Colors.white,
+                      onTap: _toggleLike,
+                    ),
+                    const SizedBox(height: 16),
+                    _buildAction(
+                      Icons.comment,
+                      "${widget.video.commentsCount}",
+                      onTap: _showComments,
+                    ),
+                    const SizedBox(height: 16),
+                    _buildAction(Icons.share, "Share", onTap: _shareVideo),
+                  ],
                 ),
               ),
-            ),
-          ),
 
-          // ... (keep UI Overlay code same as before, just ensure it wraps correctly)
-          // Since I cannot match the huge block easily if I change too much, I will focus on the start of class and build method updates
-          // But I need to include the UI overlay part in ReplacementContent if I replace the whole build method.
-          // Let's try to replace just chunks if possible, or the whole class if easier.
-          // The previous file content tool output shows lines 30-285. I'll replace the state class implementation.
-
-          // UI Overlay (Fades out when zooming)
-          AnimatedOpacity(
-            duration: const Duration(milliseconds: 200),
-            opacity: _isUiVisible ? 1.0 : 0.0,
-            child: Stack(
-              children: [
-                // Right Side Actions (Avatar, Like, Comment, Share)
-                Positioned(
-                  bottom: 100,
-                  right: 10,
-                  child: Column(
-                    children: [
-                      _buildAction(
-                        _isLiked ? Icons.favorite : Icons.favorite_border,
-                        "$_likesCount",
-                        color: _isLiked ? AppColors.neonPink : Colors.white,
-                        onTap: _toggleLike,
+              // Bottom Info (Name, Caption)
+              Positioned(
+                bottom: 20,
+                left: 10,
+                right: 80,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      "@${widget.video.user.name}",
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                        color: Colors.white,
                       ),
-                      const SizedBox(height: 16),
-                      _buildAction(
-                        Icons.comment,
-                        "${widget.video.commentsCount}",
-                        onTap: _showComments,
-                      ),
-                      const SizedBox(height: 16),
-                      _buildAction(Icons.share, "Share", onTap: _shareVideo),
-                    ],
-                  ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      widget.video.caption,
+                      style: const TextStyle(fontSize: 14, color: Colors.white),
+                    ),
+                  ],
                 ),
-
-                // Bottom Info (Name, Caption)
-                Positioned(
-                  bottom: 20,
-                  left: 10,
-                  right: 80,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        "@${widget.video.user.name}",
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                          color: Colors.white,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        widget.video.caption,
-                        style: const TextStyle(
-                          fontSize: 14,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
@@ -317,20 +239,6 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
     );
   }
 
-  void _onInteractionStart(ScaleStartDetails details) {
-    widget.onInteractionStart?.call();
-    setState(() {
-      _isUiVisible = false;
-    });
-  }
-
-  void _onInteractionEnd(ScaleEndDetails details) {
-    widget.onInteractionEnd?.call();
-    // Snap back to original size
-    _transformationController.value = Matrix4.identity();
-    // Note: We do NOT restore UI here, effectively entering "Clean Mode"
-  }
-
   Widget _buildAction(
     IconData icon,
     String text, {
@@ -345,6 +253,253 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
           const SizedBox(height: 4),
           Text(text, style: const TextStyle(fontSize: 12, color: Colors.white)),
         ],
+      ),
+    );
+  }
+}
+
+class _ZoomableContent extends StatefulWidget {
+  final Widget child;
+  final VoidCallback? onInteractionStart;
+  final VoidCallback? onInteractionEnd;
+  final VoidCallback? onTap;
+
+  const _ZoomableContent({
+    required this.child,
+    this.onInteractionStart,
+    this.onInteractionEnd,
+    this.onTap,
+  });
+
+  @override
+  State<_ZoomableContent> createState() => _ZoomableContentState();
+}
+
+class _ZoomableContentState extends State<_ZoomableContent>
+    with TickerProviderStateMixin {
+  final TransformationController _transformationController =
+      TransformationController();
+  late AnimationController _animationController;
+  late Animation<Matrix4> _zoomAnimation;
+  int _pointers = 0;
+  bool _canPan = false;
+  Timer? _longPressTimer;
+  Offset? _longPressOrigin;
+
+  @override
+  void initState() {
+    super.initState();
+    _animationController =
+        AnimationController(
+          vsync: this,
+          duration: const Duration(milliseconds: 300),
+        )..addListener(() {
+          _transformationController.value = _zoomAnimation.value;
+        });
+
+    _transformationController.addListener(_onTransformationChange);
+  }
+
+  @override
+  void dispose() {
+    _transformationController.removeListener(_onTransformationChange);
+    _transformationController.dispose();
+    _animationController.dispose();
+    _longPressTimer?.cancel();
+    super.dispose();
+  }
+
+  void _onTransformationChange() {
+    _updatePanEnablement();
+  }
+
+  void _updatePanEnablement() {
+    // Enable pan if zoomed in OR if multiple fingers are down (pinch)
+    final isZoomed = !_transformationController.value.isIdentity();
+    final shouldEnablePan = isZoomed || _pointers >= 2;
+
+    if (shouldEnablePan != _canPan) {
+      if (mounted) {
+        setState(() {
+          _canPan = shouldEnablePan;
+        });
+      }
+    }
+  }
+
+  void _handleDoubleTap() {
+    Matrix4 endMatrix;
+    if (_transformationController.value.isIdentity()) {
+      // Zoom In to 2x at Center
+      final size = MediaQuery.of(context).size;
+      final center = size.center(Offset.zero);
+
+      // Matrix: Translate(Center) * Scale(2) * Translate(-Center)
+      endMatrix = Matrix4.identity()
+        ..translate(center.dx, center.dy)
+        ..scale(2.0)
+        ..translate(-center.dx, -center.dy);
+
+      widget.onInteractionStart?.call(); // Lock scroll
+    } else {
+      // Zoom Out to 1x
+      endMatrix = Matrix4.identity();
+      widget.onInteractionEnd?.call(); // Unlock scroll
+    }
+
+    _zoomAnimation =
+        Matrix4Tween(
+          begin: _transformationController.value,
+          end: endMatrix,
+        ).animate(
+          CurveTween(curve: Curves.easeInOut).animate(_animationController),
+        );
+
+    _animationController.forward(from: 0).then((_) {
+      if (endMatrix.isIdentity()) {
+        widget.onInteractionEnd?.call();
+      }
+    });
+  }
+
+  void _showOptionsMenu() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1E1E1E),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                margin: const EdgeInsets.only(top: 8, bottom: 8),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey[600],
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              ListTile(
+                leading: const Icon(Icons.download, color: Colors.white),
+                title: const Text(
+                  'Download Video',
+                  style: TextStyle(color: Colors.white),
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Downloading video...')),
+                  );
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.flag, color: Colors.white),
+                title: const Text(
+                  'Report',
+                  style: TextStyle(color: Colors.white),
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Unwanted Report submitted.')),
+                  );
+                },
+              ),
+              const SizedBox(height: 16),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Listener(
+      onPointerDown: (event) {
+        _pointers++;
+        _updatePanEnablement(); // Check if we should enable pan (e.g. 2nd finger)
+
+        // Handle Scroll Lock
+        if (_pointers >= 2) {
+          widget.onInteractionStart?.call();
+          _longPressTimer?.cancel(); // Cancel long press if 2 fingers
+        }
+
+        // Handle Manual Long Press (Only if 1 finger and unzoomed)
+        // If we are zoomed, we allow panning instead of long press menu?
+        // TikTok behavior: Long press works even if zoomed? Probably.
+        // But for now, let's keep it simple.
+        if (_pointers == 1) {
+          _longPressOrigin = event.position;
+          _longPressTimer?.cancel();
+          _longPressTimer = Timer(const Duration(milliseconds: 500), () {
+            if (mounted && _pointers == 1) {
+              _showOptionsMenu();
+            }
+          });
+        }
+      },
+      onPointerMove: (event) {
+        // Cancel Long Press if moved significantly
+        if (_longPressOrigin != null) {
+          final distance = (event.position - _longPressOrigin!).distance;
+          if (distance > 10.0) {
+            // 10.0 is a reasonable slop
+            _longPressTimer?.cancel();
+          }
+        }
+      },
+      onPointerUp: (event) {
+        _pointers--;
+        _updatePanEnablement();
+        _longPressTimer?.cancel(); // Cancel on release
+        if (_pointers == 0) {
+          if (_transformationController.value.isIdentity()) {
+            widget.onInteractionEnd?.call();
+          }
+        }
+      },
+      onPointerCancel: (event) {
+        _pointers = 0;
+        _updatePanEnablement();
+        _longPressTimer?.cancel();
+        if (_transformationController.value.isIdentity()) {
+          widget.onInteractionEnd?.call();
+        }
+      },
+      child: InteractiveViewer(
+        key: const ValueKey('interactive_viewer'), // Add Key for stability
+        transformationController: _transformationController,
+        minScale: 1.0,
+        maxScale: 4.0,
+        panEnabled: _canPan,
+        onInteractionStart: (details) {
+          widget.onInteractionStart?.call();
+        },
+        onInteractionEnd: (details) {
+          // No Snap back on simple end?
+          // TikTok behavior: If you release pinch but are zoomed in -> Stay zoomed?
+          // User requested "Snap Back".
+          // Previous code:
+          // _transformationController.value = Matrix4.identity();
+          // widget.onInteractionEnd?.call();
+
+          // Wait, previous code snapped back!
+          // Let's restore Snap Back behavior to be safe.
+          _transformationController.value = Matrix4.identity();
+          widget.onInteractionEnd?.call();
+        },
+        child: GestureDetector(
+          onTap: widget.onTap,
+          onDoubleTap: _handleDoubleTap,
+          behavior: HitTestBehavior.opaque,
+          child: widget.child,
+        ),
       ),
     );
   }
