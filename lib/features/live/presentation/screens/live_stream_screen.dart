@@ -8,7 +8,7 @@ import '../../data/services/live_service.dart';
 import '../../data/models/live_interaction_model.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../features/feed/presentation/providers/feed_audio_provider.dart';
-import 'package:video_player/video_player.dart';
+import 'package:video_player/video_player.dart' hide VideoFormat;
 import '../../data/services/media_push_service.dart';
 import '../widgets/gift_overlay.dart';
 import '../widgets/floating_hearts_overlay.dart';
@@ -157,6 +157,13 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen>
     await _engine.startPreview();
     setState(() => _isBroadcasterReady = true);
 
+    await _engine.setCameraCapturerConfiguration(
+      const CameraCapturerConfiguration(
+        cameraDirection: CameraDirection.cameraRear,
+        format: VideoFormat(width: 1280, height: 720, fps: 24),
+      ),
+    );
+
     await _engine.joinChannel(
       token: ApiConstants.agoraTempToken,
       channelId: ApiConstants.fixedTestChannelId,
@@ -166,6 +173,11 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen>
         publishMicrophoneTrack: true,
         clientRoleType: ClientRoleType.clientRoleBroadcaster,
       ),
+    );
+
+    // Prioritize Clear Video over Smooth Frame Rate
+    await _engine.setParameters(
+      "{\"che.video.enableLowBitRateStream\": false}",
     );
   }
 
