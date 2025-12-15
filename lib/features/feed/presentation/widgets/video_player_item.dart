@@ -1,27 +1,64 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:video_player/video_player.dart';
+import '../../../../core/providers/navigation_provider.dart';
 import '../../data/models/video_model.dart';
+import 'package:test_flutter/core/theme/app_theme.dart';
 import '../../data/services/video_service.dart';
 import 'comment_bottom_sheet.dart';
 
-class VideoPlayerItem extends StatefulWidget {
+import 'package:test_flutter/core/utils/route_observer.dart';
+import '../providers/feed_audio_provider.dart';
+
+class VideoPlayerItem extends ConsumerStatefulWidget {
   final Video video;
   const VideoPlayerItem({super.key, required this.video});
 
   @override
-  State<VideoPlayerItem> createState() => _VideoPlayerItemState();
+  ConsumerState<VideoPlayerItem> createState() => _VideoPlayerItemState();
 }
 
-class _VideoPlayerItemState extends State<VideoPlayerItem> {
+class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
+    with RouteAware {
   late VideoPlayerController _controller;
+  // ... (keep existing fields)
   bool _isLoading = true;
   bool _isLiked = false;
   int _likesCount = 0;
-  final VideoService _videoService = VideoService(); // Should use provider
+  final VideoService _videoService = VideoService();
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    routeObserver.subscribe(this, ModalRoute.of(context)!);
+  }
+
+  @override
+  void didPushNext() {
+    // Route pushed on top (e.g. LiveSetup)
+    _controller.pause();
+  }
+
+  @override
+  void didPopNext() {
+    // Top route popped, we are back
+    if (ref.read(bottomNavIndexProvider) == 0 &&
+        ref.read(isFeedAudioEnabledProvider)) {
+      _controller.play();
+    }
+  }
+
+  @override
+  void dispose() {
+    routeObserver.unsubscribe(this);
+    _controller.dispose();
+    super.dispose();
+  }
 
   @override
   void initState() {
+    // ... existing initState
     super.initState();
     _isLiked = widget.video.isLiked;
     _likesCount = widget.video.likesCount;
@@ -29,22 +66,19 @@ class _VideoPlayerItemState extends State<VideoPlayerItem> {
         VideoPlayerController.networkUrl(Uri.parse(widget.video.videoUrl))
           ..initialize()
               .then((_) {
+                if (!mounted) return;
                 setState(() {
                   _isLoading = false;
                 });
-                _controller.play();
+                if (ref.read(bottomNavIndexProvider) == 0 &&
+                    ref.read(isFeedAudioEnabledProvider)) {
+                  _controller.play();
+                }
                 _controller.setLooping(true);
               })
               .catchError((error) {
-                // Handle error
                 debugPrint("Video Error: $error");
               });
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
   }
 
   Future<void> _toggleLike() async {
@@ -66,6 +100,16 @@ class _VideoPlayerItemState extends State<VideoPlayerItem> {
     );
   }
 
+  void _togglePlay() {
+    setState(() {
+      if (_controller.value.isPlaying) {
+        _controller.pause();
+      } else {
+        _controller.play();
+      }
+    });
+  }
+
   void _showComments() {
     showModalBottomSheet(
       context: context,
@@ -77,21 +121,46 @@ class _VideoPlayerItemState extends State<VideoPlayerItem> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen(isFeedAudioEnabledProvider, (previous, next) {
+      if (next) {
+        if (ref.read(bottomNavIndexProvider) == 0 &&
+            !_controller.value.isPlaying) {
+          _controller.play();
+        }
+      } else {
+        _controller.pause();
+      }
+    });
+
+    ref.listen(bottomNavIndexProvider, (previous, next) {
+      // Logic managed by isFeedAudioEnabledProvider for main switches,
+      // but we still need standard tab switching logic.
+      if (next != 0) {
+        _controller.pause();
+      } else {
+        if (ref.read(isFeedAudioEnabledProvider)) {
+          _controller.play();
+        }
+      }
+    });
+
     return Stack(
       children: [
         // Video Layer
-        Container(
-          color: Colors.black,
-          child: Center(
-            child: _isLoading
-                ? const CircularProgressIndicator()
-                : AspectRatio(
-                    aspectRatio: _controller.value.aspectRatio,
-                    child: VideoPlayer(_controller),
-                  ),
+        GestureDetector(
+          onTap: _togglePlay,
+          child: Container(
+            color: Colors.black,
+            child: Center(
+              child: _isLoading
+                  ? const CircularProgressIndicator()
+                  : AspectRatio(
+                      aspectRatio: _controller.value.aspectRatio,
+                      child: VideoPlayer(_controller),
+                    ),
+            ),
           ),
         ),
-
         // Right Side Actions (Avatar, Like, Comment, Share)
         Positioned(
           bottom: 100,
@@ -101,7 +170,7 @@ class _VideoPlayerItemState extends State<VideoPlayerItem> {
               _buildAction(
                 _isLiked ? Icons.favorite : Icons.favorite_border,
                 "$_likesCount",
-                color: _isLiked ? const Color(0xFFFE2C55) : Colors.white,
+                color: _isLiked ? AppColors.neonPink : Colors.white,
                 onTap: _toggleLike,
               ),
               const SizedBox(height: 16),

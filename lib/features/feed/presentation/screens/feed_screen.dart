@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/feed_provider.dart';
 import '../widgets/video_feed_list.dart';
 import '../widgets/live_feed_list.dart';
+import '../../../../core/providers/navigation_provider.dart';
 
 class FeedScreen extends ConsumerStatefulWidget {
   const FeedScreen({super.key});
@@ -33,6 +34,12 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
 
   @override
   Widget build(BuildContext context) {
+    ref.listen(feedTabResetProvider, (previous, next) {
+      if (next > 0) {
+        _tabController.animateTo(2); // Reset to "For You"
+      }
+    });
+
     final feedAsync = ref.watch(feedProvider);
 
     return Scaffold(
@@ -51,6 +58,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
                 videos: feedAsync.value ?? [],
                 isLoading: feedAsync.isLoading,
                 error: feedAsync.error?.toString(),
+                onRefresh: () async => ref.refresh(feedProvider.future),
               ),
 
               // For You Tab (Reuse VideoFeedList)
@@ -58,6 +66,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
                 videos: feedAsync.value ?? [],
                 isLoading: feedAsync.isLoading,
                 error: feedAsync.error?.toString(),
+                onRefresh: () async => ref.refresh(feedProvider.future),
               ),
             ],
           ),

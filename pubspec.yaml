@@ -45,11 +45,11 @@ dependencies:
 
   # Video & Camera
   camera: ^0.10.5+5
-  video_player: ^2.7.2
+  rtmp_broadcaster: ^2.3.4
   chewie: ^1.7.0
 
   # Live Streaming
-  agora_rtc_engine: ^6.2.1
+
 
   # Utils
   permission_handler: ^11.0.1
@@ -57,6 +57,24 @@ dependencies:
   cached_network_image: ^3.3.0
   font_awesome_flutter: ^10.6.0
   share_plus: ^7.2.1
+  audioplayers: ^5.2.1
+  photo_manager: ^3.8.3
+  deepar_flutter_plus: ^0.2.1
+  path_provider: ^2.1.5
+  just_audio: ^0.10.5
+  audio_session: ^0.2.2
+  video_player_rtmp_ext: ^0.2.1
+  agora_rtc_engine: ^6.5.3
+  video_player: ^2.10.1
+  agora_rtm: ^2.2.6
+  wakelock_plus: ^1.4.0
+
+dependency_overrides:
+  ffi: ^2.1.0
+
+
+
+
 
 dev_dependencies:
   flutter_test:
@@ -69,29 +87,26 @@ dev_dependencies:
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
   riverpod_generator: ^2.3.1
+  flutter_launcher_icons: ^0.13.1
   build_runner: ^2.4.6
 
-# For information on the generic Dart part of this file, see the
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: true
+  image_path: "assets/images/logo-black.jpg"
+  min_sdk_android: 21 # android min sdk min:16, default 21
+
 # following page: https://dart.dev/tools/pub/pubspec
 
 # The following section is specific to Flutter packages.
 flutter:
 
-  # The following line ensures that the Material Icons font is
-  # included with your application, so that you can use the icons in
-  # the material Icons class.
   uses-material-design: true
 
-  # To add assets to your application, add an assets section, like this:
-  # assets:
-  #   - images/a_dot_burr.jpeg
-  #   - images/a_dot_ham.jpeg
-
-  # An image asset can refer to one or more resolution-specific "variants", see
-  # https://flutter.dev/to/resolution-aware-images
-
-  # For details regarding adding assets from package dependencies, see
-  # https://flutter.dev/to/asset-from-package
+  assets:
+    - assets/images/
+    - assets/sounds/
+    - assets/deepar/
 
   # To add custom fonts to your application, add a fonts section here,
   # in this "flutter" section. Each entry in this list should have a

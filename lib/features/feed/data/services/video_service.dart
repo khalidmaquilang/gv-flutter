@@ -77,8 +77,39 @@ class VideoService {
     );
   }
 
+  // In-memory storage for uploaded videos
+  static final List<Video> _uploadedVideos = [];
+
+  Future<bool> uploadVideo(String path, String caption) async {
+    try {
+      // simulate network delay
+      await Future.delayed(const Duration(seconds: 2));
+
+      final newVideo = Video(
+        id: DateTime.now().millisecondsSinceEpoch,
+        videoUrl: path, // Local file path for now
+        thumbnailUrl: "https://dummyimage.com/150",
+        caption: caption,
+        likesCount: 0,
+        commentsCount: 0,
+        isLiked: false,
+        user: User(
+          id: 1, // Mock current user
+          name: "You",
+          email: "you@test.com",
+          avatar: "https://dummyimage.com/50",
+        ),
+      );
+
+      _uploadedVideos.insert(0, newVideo); // Add to top
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
   List<Video> _getMockVideos() {
-    return List.generate(
+    final mock = List.generate(
       5,
       (index) => Video(
         id: index,
@@ -97,5 +128,7 @@ class VideoService {
         ),
       ),
     );
+    // Combine uploaded videos with mock videos
+    return [..._uploadedVideos, ...mock];
   }
 }

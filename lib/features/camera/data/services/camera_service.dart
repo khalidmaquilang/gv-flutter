@@ -6,15 +6,27 @@ class CameraService {
 
   CameraController? get controller => _controller;
 
+  List<CameraDescription> _cameras = [];
+  int _selectedCameraIndex = 0;
+
   Future<void> initialize() async {
     // Request permissions
     await [Permission.camera, Permission.microphone].request();
 
-    final cameras = await availableCameras();
-    if (cameras.isEmpty) return;
+    _cameras = await availableCameras();
+    if (_cameras.isEmpty) return;
+
+    await _initController(_cameras[_selectedCameraIndex]);
+  }
+
+  Future<void> _initController(CameraDescription description) async {
+    if (_controller != null) {
+      await _controller!.dispose();
+      _controller = null;
+    }
 
     _controller = CameraController(
-      cameras.first, // Use back camera by default
+      description,
       ResolutionPreset.high,
       enableAudio: true,
     );
@@ -22,11 +34,35 @@ class CameraService {
     await _controller!.initialize();
   }
 
+  Future<void> switchCamera() async {
+    if (_cameras.length < 2) return;
+
+    _selectedCameraIndex = (_selectedCameraIndex + 1) % _cameras.length;
+    await _initController(_cameras[_selectedCameraIndex]);
+  }
+
+  Future<XFile?> takePicture() async {
+    if (_controller == null || !_controller!.value.isInitialized) return null;
+    if (_controller!.value.isTakingPicture) return null;
+
+    return await _controller!.takePicture();
+  }
+
   Future<void> startRecording() async {
     if (_controller == null || !_controller!.value.isInitialized) return;
     if (_controller!.value.isRecordingVideo) return;
 
     await _controller!.startVideoRecording();
+  }
+
+  Future<void> pauseRecording() async {
+    if (_controller == null || !_controller!.value.isRecordingVideo) return;
+    await _controller!.pauseVideoRecording();
+  }
+
+  Future<void> resumeRecording() async {
+    if (_controller == null || !_controller!.value.isRecordingVideo) return;
+    await _controller!.resumeVideoRecording();
   }
 
   Future<XFile?> stopRecording() async {

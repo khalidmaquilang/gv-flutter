@@ -30,8 +30,16 @@ class CameraNotifier extends StateNotifier<AsyncValue<CameraController?>> {
 
   Future<void> startRecording() async {
     await _service.startRecording();
-    // Force rebuild or update state to reflect recording status if needed
-    // Typically state update mechanism is needed to show recording indicator
+    state = AsyncValue.data(_service.controller);
+  }
+
+  Future<void> pauseRecording() async {
+    await _service.pauseRecording();
+    state = AsyncValue.data(_service.controller);
+  }
+
+  Future<void> resumeRecording() async {
+    await _service.resumeRecording();
     state = AsyncValue.data(_service.controller);
   }
 
@@ -39,6 +47,21 @@ class CameraNotifier extends StateNotifier<AsyncValue<CameraController?>> {
     final file = await _service.stopRecording();
     state = AsyncValue.data(_service.controller);
     return file;
+  }
+
+  Future<XFile?> takePicture() async {
+    final file = await _service.takePicture();
+    return file;
+  }
+
+  Future<void> switchCamera() async {
+    state = const AsyncValue.loading();
+    try {
+      await _service.switchCamera();
+      state = AsyncValue.data(_service.controller);
+    } catch (e, st) {
+      state = AsyncValue.error(e, st);
+    }
   }
 
   @override

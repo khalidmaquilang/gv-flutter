@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:test_flutter/core/theme/app_theme.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/services/video_service.dart';
 import '../../data/models/comment_model.dart';
@@ -144,7 +145,7 @@ class _CommentBottomSheetState extends ConsumerState<CommentBottomSheet> {
                   ),
                 ),
                 IconButton(
-                  icon: const Icon(Icons.send, color: Color(0xFFFE2C55)),
+                  icon: const Icon(Icons.send, color: AppColors.neonPink),
                   onPressed: _postComment,
                 ),
               ],

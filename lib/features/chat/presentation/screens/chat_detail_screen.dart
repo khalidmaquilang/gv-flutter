@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:test_flutter/core/theme/app_theme.dart';
 import '../../../auth/data/models/user_model.dart';
 
 class ChatDetailScreen extends StatefulWidget {
@@ -45,7 +46,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                     margin: const EdgeInsets.all(8),
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: isMe ? const Color(0xFFFE2C55) : Colors.grey[800],
+                      color: isMe ? AppColors.neonPink : Colors.grey[800],
                       borderRadius: BorderRadius.circular(16),
                     ),
                     child: Text(
@@ -77,7 +78,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                   ),
                 ),
                 IconButton(
-                  icon: const Icon(Icons.send, color: Color(0xFFFE2C55)),
+                  icon: const Icon(Icons.send, color: AppColors.neonPink),
                   onPressed: _send,
                 ),
               ],

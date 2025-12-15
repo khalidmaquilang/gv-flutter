@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:test_flutter/core/theme/app_theme.dart';
 import '../providers/auth_provider.dart';
 import '../../../../../main_screen.dart';
 import 'register_screen.dart';
@@ -43,78 +44,92 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     return Scaffold(
       backgroundColor: Colors.black,
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 32.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(
-                FontAwesomeIcons.tiktok,
-                size: 80,
-                color: Colors.white,
-              ),
-              const SizedBox(height: 48),
-              const Text(
-                'Log in to TikTok',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Manage your account, check notifications, \ncomment on videos, and more.',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.grey[400], fontSize: 14),
-              ),
-              const SizedBox(height: 32),
-              AuthTextField(
-                controller: _emailController,
-                hintText: 'Email',
-                keyboardType: TextInputType.emailAddress,
-                icon: Icons.email_outlined,
-              ),
-              const SizedBox(height: 16),
-              AuthTextField(
-                controller: _passwordController,
-                hintText: 'Password',
-                isObscure: true,
-                icon: Icons.lock_outline,
-              ),
-              const SizedBox(height: 24),
-              AuthButton(
-                text: 'Log in',
-                onPressed: authState.isLoading ? null : _login,
-                isLoading: authState.isLoading,
-              ),
-              const SizedBox(height: 24),
-              Row(
+        child: Center(
+          child: SingleChildScrollView(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 32.0),
+              child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Text(
-                    "Don't have an account? ",
-                    style: TextStyle(color: Colors.grey[400]),
-                  ),
-                  GestureDetector(
-                    onTap: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (context) => const RegisterScreen(),
-                        ),
-                      );
-                    },
-                    child: const Text(
-                      'Sign up',
-                      style: TextStyle(
-                        color: Color(0xFFFE2C55),
-                        fontWeight: FontWeight.bold,
-                      ),
+                  Hero(
+                    tag: 'app_logo',
+                    child: Image.asset(
+                      'assets/images/logo.png',
+                      height: 200,
+                      width: 200,
+                      fit: BoxFit.contain,
+                      errorBuilder: (context, error, stackTrace) {
+                        return const Icon(
+                          FontAwesomeIcons.tiktok,
+                          size: 80,
+                          color: Colors.white,
+                        );
+                      },
                     ),
+                  ),
+                  const Text(
+                    'Log in to GV Live',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Manage your account, check notifications, \ncomment on videos, and more.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Colors.grey[400], fontSize: 14),
+                  ),
+                  const SizedBox(height: 32),
+                  AuthTextField(
+                    controller: _emailController,
+                    hintText: 'Email',
+                    keyboardType: TextInputType.emailAddress,
+                    icon: Icons.email_outlined,
+                  ),
+                  const SizedBox(height: 16),
+                  AuthTextField(
+                    controller: _passwordController,
+                    hintText: 'Password',
+                    isObscure: true,
+                    icon: Icons.lock_outline,
+                  ),
+                  const SizedBox(height: 24),
+                  AuthButton(
+                    text: 'Log in',
+                    onPressed: authState.isLoading ? null : _login,
+                    isLoading: authState.isLoading,
+                  ),
+                  const SizedBox(height: 24),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        "Don't have an account? ",
+                        style: TextStyle(color: Colors.grey[400]),
+                      ),
+                      GestureDetector(
+                        onTap: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (context) => const RegisterScreen(),
+                            ),
+                          );
+                        },
+                        child: const Text(
+                          'Sign up',
+                          style: TextStyle(
+                            color: AppColors.neonPink,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
-            ],
+            ),
           ),
         ),
       ),
