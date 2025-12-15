@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import '../../data/models/video_model.dart';
 import 'video_player_item.dart';
 
-class VideoFeedList extends StatelessWidget {
+class VideoFeedList extends StatefulWidget {
   final List<Video> videos;
   final bool isLoading;
   final String? error;
@@ -17,21 +17,40 @@ class VideoFeedList extends StatelessWidget {
   });
 
   @override
+  State<VideoFeedList> createState() => _VideoFeedListState();
+}
+
+class _VideoFeedListState extends State<VideoFeedList> {
+  bool _isScrollEnabled = true;
+
+  void _onInteractionStart() {
+    setState(() {
+      _isScrollEnabled = false;
+    });
+  }
+
+  void _onInteractionEnd() {
+    setState(() {
+      _isScrollEnabled = true;
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
-    if (isLoading) {
+    if (widget.isLoading) {
       return const Center(child: CircularProgressIndicator());
     }
 
-    if (error != null) {
+    if (widget.error != null) {
       return Center(
         child: Text(
-          "Error: $error",
+          "Error: ${widget.error}",
           style: const TextStyle(color: Colors.white),
         ),
       );
     }
 
-    if (videos.isEmpty) {
+    if (widget.videos.isEmpty) {
       return const Center(
         child: Text(
           "No videos found",
@@ -41,12 +60,19 @@ class VideoFeedList extends StatelessWidget {
     }
 
     return RefreshIndicator(
-      onRefresh: onRefresh ?? () async {},
+      onRefresh: widget.onRefresh ?? () async {},
       child: PageView.builder(
         scrollDirection: Axis.vertical,
-        itemCount: videos.length,
+        physics: _isScrollEnabled
+            ? const AlwaysScrollableScrollPhysics()
+            : const NeverScrollableScrollPhysics(),
+        itemCount: widget.videos.length,
         itemBuilder: (context, index) {
-          return VideoPlayerItem(video: videos[index]);
+          return VideoPlayerItem(
+            video: widget.videos[index],
+            onInteractionStart: _onInteractionStart,
+            onInteractionEnd: _onInteractionEnd,
+          );
         },
       ),
     );
