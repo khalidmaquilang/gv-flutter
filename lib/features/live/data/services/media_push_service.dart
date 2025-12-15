@@ -76,34 +76,67 @@ class MediaPushService {
     };
 
     try {
-      debugPrint("MediaPushService: Starting push to $rtmpUrl via $_baseUrl");
+      debugPrint(
+        "MediaPushService: 1. Force Reset - Deleting existing converter...",
+      );
+      // Always try to delete first to ensure we don't have a zombie with wrong UID.
+      // We ignore errors here (e.g. if it doesn't exist, that's fine).
+      await stopMediaPush(channelId: channelId);
 
-      final response = await _dio.post(
+      // Give it a moment to clear
+      await Future.delayed(const Duration(seconds: 2));
+
+      debugPrint("MediaPushService: 2. Creating new converter...");
+      var response = await _dio.post(
         url,
         data: jsonEncode(body),
-        options: Options(headers: headers),
+        options: Options(headers: headers, validateStatus: (status) => true),
       );
 
       if (response.statusCode == 200) {
         debugPrint("MediaPushService: Success! ${response.data}");
+      } else if (response.statusCode == 409) {
+        // If it STILL says 409 after we just deleted it,
+        // either the delete failed silently or propagation is slow.
+        // In this worst case, we HAVE to assume the existing one is usable
+        // (assuming the UID 1000 fixed matched the previous run).
+        debugPrint(
+          "MediaPushService: 409 Persistence. Assuming existing converter is valid.",
+        );
+        return;
       } else {
-        debugPrint("MediaPushService: Failed with ${response.statusCode}");
+        debugPrint("MediaPushService: Failure ${response.statusCode}");
         throw Exception("API Error ${response.statusCode}: ${response.data}");
       }
     } on DioException catch (e) {
-      debugPrint("MediaPushService: Dio Error $e");
-      if (e.response != null) {
-        debugPrint("MediaPushService: Response Data: ${e.response?.data}");
-        throw Exception(
-          "API Failed: ${e.response?.statusCode} ${e.response?.data}",
-        );
-      } else {
-        throw Exception("Network Error: ${e.message}");
-      }
+      debugPrint("MediaPushService: Network Error $e");
+      throw Exception("Network Error: ${e.message}");
     }
   }
 
   Future<void> stopMediaPush({required String channelId}) async {
-    // Not strictly required for MVP test, and DELETE usually needs exact converter name/id
+    final converterName = "${channelId}_vertical";
+    final url = "$_baseUrl/$converterName";
+
+    // Auth Headers
+    String basicAuth =
+        'Basic ' +
+        base64Encode(
+          utf8.encode(
+            '${ApiConstants.agoraCustomerId}:${ApiConstants.agoraCustomerSecret}',
+          ),
+        );
+    Map<String, String> headers = {
+      "Content-Type": "application/json",
+      "Authorization": basicAuth,
+    };
+
+    try {
+      debugPrint("MediaPushService: Deleting converter $converterName...");
+      await _dio.delete(url, options: Options(headers: headers));
+      debugPrint("MediaPushService: Deleted.");
+    } catch (e) {
+      debugPrint("MediaPushService: Delete failed (maybe already gone): $e");
+    }
   }
 }

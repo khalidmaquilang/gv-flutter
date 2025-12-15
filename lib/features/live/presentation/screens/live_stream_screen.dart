@@ -50,6 +50,11 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen>
   @override
   void initState() {
     super.initState();
+    // Mute feed audio when entering live stream
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(isFeedAudioEnabledProvider.notifier).state = false;
+    });
+
     if (widget.isBroadcaster) {
       _initBroadcaster();
     } else {
@@ -133,7 +138,8 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen>
     await _engine.joinChannel(
       token: ApiConstants.agoraTempToken,
       channelId: ApiConstants.fixedTestChannelId, // Using the fixed ID
-      uid: 0,
+      uid:
+          1000, // Fixed UID for Broadcaster to avoid random ID issues with Converter
       options: const ChannelMediaOptions(
         publishCameraTrack: true,
         publishMicrophoneTrack: true,
@@ -180,6 +186,13 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen>
     _videoController?.dispose();
 
     if (widget.isBroadcaster) {
+      // Async method but we can't await in dispose.
+      // Fire and forget, or call a separate shutdown method before popping screen.
+      // For safety, we just call it.
+      _mediaPushService.stopMediaPush(
+        channelId: ApiConstants.fixedTestChannelId,
+      );
+
       _engine.stopRtmpStream(ApiConstants.rtmpUrl);
       _engine.stopDirectCdnStreaming(); // Stop both just in case
       _engine.leaveChannel();

@@ -43,7 +43,8 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
   @override
   void didPopNext() {
     // Top route popped, we are back
-    if (ref.read(bottomNavIndexProvider) == 0) {
+    if (ref.read(bottomNavIndexProvider) == 0 &&
+        ref.read(isFeedAudioEnabledProvider)) {
       _controller.play();
     }
   }
@@ -69,7 +70,8 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
                 setState(() {
                   _isLoading = false;
                 });
-                if (ref.read(bottomNavIndexProvider) == 0) {
+                if (ref.read(bottomNavIndexProvider) == 0 &&
+                    ref.read(isFeedAudioEnabledProvider)) {
                   _controller.play();
                 }
                 _controller.setLooping(true);
