@@ -5,6 +5,7 @@ import 'package:video_player/video_player.dart';
 import '../../../../core/providers/navigation_provider.dart';
 import '../../data/models/video_model.dart';
 import 'package:test_flutter/core/theme/app_theme.dart';
+import 'package:test_flutter/core/widgets/neon_border_container.dart';
 import '../../data/services/video_service.dart';
 import 'comment_bottom_sheet.dart';
 
@@ -156,10 +157,16 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
                     _buildAction(
                       Icons.comment,
                       "${widget.video.commentsCount}",
+                      color: AppColors.neonCyan, // Cyan for comments
                       onTap: _showComments,
                     ),
                     const SizedBox(height: 16),
-                    _buildAction(Icons.share, "Share", onTap: _shareVideo),
+                    _buildAction(
+                      Icons.share,
+                      "Share",
+                      color: AppColors.neonPurple, // Purple for share
+                      onTap: _shareVideo,
+                    ),
                   ],
                 ),
               ),
