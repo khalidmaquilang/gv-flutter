@@ -1,30 +1,19 @@
-import 'package:dio/dio.dart';
+import '../../../../core/network/api_client.dart';
 import '../../../../core/constants/api_constants.dart';
 import '../models/user_model.dart';
-import '../../../../core/errors/exceptions.dart';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class AuthService {
-  final Dio _dio;
+  final ApiClient _apiClient;
   final _storage = const FlutterSecureStorage();
 
-  AuthService({Dio? dio})
-    : _dio =
-          dio ??
-          Dio(
-            BaseOptions(
-              baseUrl: ApiConstants.baseUrl,
-              connectTimeout: const Duration(seconds: 10),
-              receiveTimeout: const Duration(seconds: 10),
-              headers: {'Accept': 'application/json'},
-            ),
-          );
+  AuthService({ApiClient? apiClient}) : _apiClient = apiClient ?? ApiClient();
 
   Future<User> login(String email, String password) async {
     try {
-      final response = await _dio.post(
-        ApiConstants.baseUrl + ApiConstants.login,
+      final response = await _apiClient.post(
+        ApiConstants.login,
         data: {'email': email, 'password': password},
       );
 
@@ -33,35 +22,20 @@ class AuthService {
       await _storage.write(key: 'auth_token', value: token);
 
       // Set auth header for future requests
-      _dio.options.headers['Authorization'] = 'Bearer $token';
+      _apiClient.setToken(token);
 
       // Fetch user details
-      final userResponse = await _dio.get(
-        ApiConstants.baseUrl + ApiConstants.user,
-      );
+      final userResponse = await _apiClient.get(ApiConstants.user);
       return User.fromJson(userResponse.data);
-    } on DioException catch (e) {
-      if (e.response?.statusCode == 422) {
-        final data = e.response?.data;
-        if (data is Map<String, dynamic>) {
-          throw ValidationException(
-            data['message']?.toString() ?? 'Validation Error',
-            data['errors'] is Map
-                ? Map<String, dynamic>.from(data['errors'])
-                : {},
-          );
-        }
-      }
-      throw Exception('Login Failed: ${e.message}');
     } catch (e) {
-      throw Exception('Login Failed: $e');
+      rethrow;
     }
   }
 
   Future<User> register(String name, String email, String password) async {
     try {
-      final response = await _dio.post(
-        ApiConstants.baseUrl + ApiConstants.register,
+      final response = await _apiClient.post(
+        ApiConstants.register,
         data: {
           'name': name,
           'email': email,
@@ -71,13 +45,13 @@ class AuthService {
       );
       return User.fromJson(response.data['user']);
     } catch (e) {
-      throw Exception('Registration Failed: $e');
+      rethrow;
     }
   }
 
   Future<void> logout() async {
     await _storage.delete(key: 'auth_token');
-    _dio.options.headers.remove('Authorization');
+    _apiClient.clearToken();
   }
 
   Future<User?> restoreSession() async {
@@ -93,8 +67,8 @@ class AuthService {
 
       if (token == null) return null;
 
-      _dio.options.headers['Authorization'] = 'Bearer $token';
-      final response = await _dio.get(ApiConstants.baseUrl + ApiConstants.user);
+      _apiClient.setToken(token);
+      final response = await _apiClient.get(ApiConstants.user);
       return User.fromJson(response.data);
     } catch (e) {
       // If token is invalid, expired, or storage fails, clear it and return null
