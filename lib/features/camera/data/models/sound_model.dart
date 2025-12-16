@@ -14,4 +14,26 @@ class Sound {
     required this.coverUrl,
     required this.duration,
   });
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'title': title,
+      'author': author,
+      'url': url,
+      'coverUrl': coverUrl,
+      'duration': duration,
+    };
+  }
+
+  factory Sound.fromJson(Map<String, dynamic> json) {
+    return Sound(
+      id: json['id'],
+      title: json['title'],
+      author: json['author'],
+      url: json['url'],
+      coverUrl: json['coverUrl'],
+      duration: json['duration'],
+    );
+  }
 }

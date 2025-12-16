@@ -9,18 +9,25 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:video_thumbnail/video_thumbnail.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:uuid/uuid.dart';
 import '../providers/upload_provider.dart';
+import '../providers/drafts_provider.dart';
+import '../../data/models/draft_model.dart';
 
 class CreatePostScreen extends ConsumerStatefulWidget {
   final List<XFile> files;
   final bool isVideo;
   final Sound? sound;
+  final String? initialCaption;
+  final String? draftId;
 
   const CreatePostScreen({
     super.key,
     required this.files,
     this.isVideo = true,
     this.sound,
+    this.initialCaption,
+    this.draftId,
   });
 
   @override
@@ -39,27 +46,38 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
   VideoPlayerController? _videoController;
 
   bool _isPosting = false;
-  bool _isVideoInitError = false;
+  // bool _isVideoInitError = false; // logic changed, removed
+  String? _previewThumbnail;
 
   @override
   void initState() {
     super.initState();
+    _descriptionController.text = widget.initialCaption ?? "";
     _currentFiles = List.from(widget.files);
     if (widget.isVideo && _currentFiles.isNotEmpty) {
-      _initializeVideoController();
+      // _initializeVideoController(); // Removed in favor of thumbnail
+      _generateThumbnail();
     }
   }
 
-  Future<void> _initializeVideoController() async {
+  Future<void> _generateThumbnail() async {
+    if (_currentFiles.isEmpty) return;
     try {
-      _videoController = VideoPlayerController.file(
-        File(_currentFiles.first.path),
+      final tempDir = await getTemporaryDirectory();
+      final thumb = await VideoThumbnail.thumbnailFile(
+        video: _currentFiles.first.path,
+        thumbnailPath: tempDir.path,
+        imageFormat: ImageFormat.JPEG,
+        maxHeight: 300,
+        quality: 75,
       );
-      await _videoController!.initialize();
-      setState(() {});
+      if (mounted) {
+        setState(() {
+          _previewThumbnail = thumb;
+        });
+      }
     } catch (e) {
-      debugPrint("Error initializing video controller: $e");
-      setState(() => _isVideoInitError = true);
+      debugPrint("Error generating thumbnail: $e");
     }
   }
 
@@ -69,6 +87,144 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
     _descriptionController.dispose();
     _videoController?.dispose();
     super.dispose();
+  }
+
+  void _onSaveDraft() async {
+    final path = _currentFiles.first.path;
+    final caption = widget.isVideo
+        ? _descriptionController.text
+        : "${_titleController.text}\n${_descriptionController.text}";
+
+    String? coverPath;
+    if (widget.isVideo) {
+      final tempDir = await getTemporaryDirectory();
+      coverPath = await VideoThumbnail.thumbnailFile(
+        video: path,
+        thumbnailPath: tempDir.path,
+        imageFormat: ImageFormat.JPEG,
+        maxHeight: 150,
+        quality: 75,
+      );
+    } else {
+      coverPath = path;
+    }
+
+    // Determine Draft ID
+    String finalDraftId = const Uuid().v4();
+    bool isUpdate = false;
+
+    if (widget.draftId != null) {
+      // Ask User: Update or Save As New?
+      final String? choice = await showModalBottomSheet<String>(
+        context: context,
+        backgroundColor: const Color(0xFF1E1E1E),
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        builder: (context) => SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.update, color: Colors.blue),
+                title: const Text(
+                  "Save and Exit (Overwrite)",
+                  style: TextStyle(color: Colors.white),
+                ),
+                onTap: () => Navigator.of(context).pop('update'),
+              ),
+              ListTile(
+                leading: const Icon(Icons.file_copy, color: Colors.green),
+                title: const Text(
+                  "Save as New Draft",
+                  style: TextStyle(color: Colors.white),
+                ),
+                onTap: () => Navigator.of(context).pop('new'),
+              ),
+              const SizedBox(height: 10),
+            ],
+          ),
+        ),
+      );
+
+      if (choice == null) return; // Cancelled
+
+      if (choice == 'update') {
+        finalDraftId = widget.draftId!;
+        isUpdate = true;
+      }
+      // else 'new' -> keeps finalDraftId as new UUID
+    }
+
+    // COPY FILES TO PERMANENT STORAGE
+    List<String> persistentPaths = [];
+    try {
+      final appDir = await getApplicationDocumentsDirectory();
+      final draftsDir = Directory('${appDir.path}/drafts');
+      if (!await draftsDir.exists()) {
+        await draftsDir.create(recursive: true);
+      }
+
+      for (int i = 0; i < _currentFiles.length; i++) {
+        final xFile = _currentFiles[i];
+        final File sourceFile = File(xFile.path);
+
+        // Check if source exists (it might be missing if coming from an old broken draft)
+        if (!sourceFile.existsSync()) {
+          debugPrint("Warning: Source file missing for draft: ${xFile.path}");
+          continue;
+        }
+
+        // Use draftId + index + timestamp to ensure uniqueness
+        final String fileName =
+            "${finalDraftId}_${i}_${DateTime.now().millisecondsSinceEpoch}.mp4";
+        final String newPath = '${draftsDir.path}/$fileName';
+
+        // Copy the file
+        await sourceFile.copy(newPath);
+        persistentPaths.add(newPath);
+      }
+    } catch (e) {
+      debugPrint("Error moving draft files to permanent storage: $e");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Failed to save draft files: $e"),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+
+    if (persistentPaths.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Error: No valid video files to save.")),
+        );
+      }
+      return;
+    }
+
+    final draft = DraftModel(
+      id: finalDraftId,
+      videoPaths: persistentPaths, // Use persistent paths
+      thumbnailPath: coverPath,
+      caption: caption,
+      createdAt: DateTime.now(),
+      sound: widget.sound,
+    );
+
+    if (!mounted) return;
+
+    await ref.read(draftsControllerProvider.notifier).saveDraft(draft);
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(isUpdate ? "Draft updated!" : "Draft saved!")),
+      );
+      Navigator.of(context).popUntil((route) => route.isFirst);
+    }
   }
 
   void _onPost() async {
@@ -215,21 +371,14 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              if (_videoController != null &&
-                  _videoController!.value.isInitialized)
+              if (_previewThumbnail != null)
                 ClipRRect(
                   borderRadius: BorderRadius.circular(12),
-                  child: FittedBox(
+                  child: Image.file(
+                    File(_previewThumbnail!),
                     fit: BoxFit.cover,
-                    child: SizedBox(
-                      width: _videoController!.value.size.width,
-                      height: _videoController!.value.size.height,
-                      child: VideoPlayer(_videoController!),
-                    ),
                   ),
                 )
-              else if (_isVideoInitError)
-                const Center(child: Icon(Icons.error, color: Colors.white54))
               else
                 const Center(child: CircularProgressIndicator()),
 
@@ -442,11 +591,7 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
             // Drafts Button
             Expanded(
               child: OutlinedButton(
-                onPressed: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text("Saved to drafts")),
-                  );
-                },
+                onPressed: _onSaveDraft,
                 style: OutlinedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   side: const BorderSide(color: Colors.white24),

@@ -8,7 +8,10 @@ import '../../../wallet/presentation/screens/wallet_screen.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../auth/presentation/screens/login_screen.dart';
 import '../../../../core/widgets/neon_border_container.dart';
+
 import 'edit_profile_screen.dart';
+import 'package:test_flutter/features/feed/presentation/providers/drafts_provider.dart';
+import 'package:test_flutter/features/feed/presentation/screens/drafts_screen.dart';
 
 final profileServiceProvider = Provider((ref) => ProfileService());
 
@@ -40,6 +43,9 @@ class ProfileScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final userAsync = ref.watch(userProfileProvider(userId));
     final statsAsync = ref.watch(userStatsProvider(userId));
+    final draftsAsync = ref.watch(draftsProvider);
+    final hasDrafts = draftsAsync.valueOrNull?.isNotEmpty ?? false;
+    final draftsCount = draftsAsync.valueOrNull?.length ?? 0;
 
     return Scaffold(
       backgroundColor: AppColors.deepVoid,
@@ -278,8 +284,51 @@ class ProfileScreen extends ConsumerWidget {
                             crossAxisSpacing: 1,
                             mainAxisSpacing: 1,
                           ),
-                      itemCount: 9,
+                      itemCount: 9 + (hasDrafts ? 1 : 0),
                       itemBuilder: (context, index) {
+                        if (hasDrafts && index == 0) {
+                          // Drafts Folder
+                          return GestureDetector(
+                            onTap: () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (context) => const DraftsScreen(),
+                                ),
+                              );
+                            },
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color: Colors.grey[850],
+                                border: Border.all(
+                                  color: Colors.white.withOpacity(0.1),
+                                ),
+                              ),
+                              child: Stack(
+                                alignment: Alignment.center,
+                                children: [
+                                  Icon(
+                                    Icons.folder_open,
+                                    size: 40,
+                                    color: Colors.white.withOpacity(0.5),
+                                  ),
+                                  Positioned(
+                                    bottom: 8,
+                                    child: Text(
+                                      "Drafts: $draftsCount",
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        }
+
+                        // Main Grid Items
                         return Container(
                           decoration: BoxDecoration(
                             color: Colors.grey[900],

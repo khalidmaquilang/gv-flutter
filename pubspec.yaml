@@ -69,6 +69,7 @@ dependencies:
   agora_rtm: ^2.2.6
   wakelock_plus: ^1.4.0
   video_thumbnail: ^0.5.3
+  uuid: ^4.0.0
 
 dependency_overrides:
   ffi: ^2.1.0

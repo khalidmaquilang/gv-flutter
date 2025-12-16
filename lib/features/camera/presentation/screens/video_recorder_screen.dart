@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
 import 'package:audioplayers/audioplayers.dart';
+import 'package:video_player/video_player.dart'; // Added for duration check
 import 'preview_screen.dart';
 import 'package:test_flutter/core/theme/app_theme.dart';
 import 'package:photo_manager/photo_manager.dart';
@@ -20,7 +21,16 @@ import '../widgets/glass_action_button.dart';
 import 'dart:ui'; // For ImageFilter
 
 class VideoRecorderScreen extends ConsumerStatefulWidget {
-  const VideoRecorderScreen({super.key});
+  final List<XFile> initialFiles;
+  final String? draftId;
+  final Sound? initialSound;
+
+  const VideoRecorderScreen({
+    super.key,
+    this.initialFiles = const [],
+    this.draftId,
+    this.initialSound,
+  });
 
   @override
   ConsumerState<VideoRecorderScreen> createState() =>
@@ -63,8 +73,81 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
   @override
   void initState() {
     super.initState();
+    if (widget.initialSound != null) {
+      _selectedSound = widget.initialSound;
+    }
     _initializeDeepAr();
     _fetchLastImage();
+    if (widget.initialFiles.isNotEmpty) {
+      _loadInitialFiles();
+    }
+  }
+
+  Future<void> _loadInitialFiles() async {
+    List<XFile> loadedFiles = [];
+    List<double> fileDurations = [];
+    double totalDuration = 0;
+
+    // 1. Gather all files and durations
+    for (final xFile in widget.initialFiles) {
+      final file = File(xFile.path);
+      if (!file.existsSync()) continue;
+
+      final controller = VideoPlayerController.file(file);
+      try {
+        await controller.initialize();
+        final duration = controller.value.duration;
+        final durationSec = duration.inMilliseconds / 1000.0;
+
+        loadedFiles.add(xFile);
+        fileDurations.add(durationSec);
+        totalDuration += durationSec;
+      } catch (e) {
+        debugPrint("Error loading file duration: $e");
+      } finally {
+        await controller.dispose();
+      }
+    }
+
+    if (loadedFiles.length < widget.initialFiles.length) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              "Warning: ${widget.initialFiles.length - loadedFiles.length} segment(s) could not be loaded.",
+            ),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+    }
+
+    if (!mounted || loadedFiles.isEmpty) return;
+
+    // 2. Determine Mode based on TOTAL duration
+    int newMaxDuration = 15;
+    int newModeIndex = 1; // 15s
+
+    if (totalDuration > 15.0) {
+      newMaxDuration = 60;
+      newModeIndex = 2; // 60s
+    }
+
+    // 3. Calculate segments
+    List<double> newSegments = [];
+    for (final dur in fileDurations) {
+      double progress = dur / newMaxDuration;
+      // if (progress > 1.0) progress = 1.0; // Don't clip individual, total might overflow slightly?
+      newSegments.add(progress);
+    }
+
+    setState(() {
+      _recordedFiles.addAll(loadedFiles);
+      _maxDuration = newMaxDuration;
+      _selectedModeIndex = newModeIndex;
+      _segments.addAll(newSegments);
+      isPaused = true;
+    });
   }
 
   Future<void> _initializeDeepAr() async {
@@ -408,6 +491,7 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
             files: filesToPreview,
             isVideo: true,
             sound: soundToPass,
+            draftId: widget.draftId,
           ),
         ),
       );
