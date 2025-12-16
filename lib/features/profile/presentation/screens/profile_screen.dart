@@ -8,6 +8,7 @@ import '../../../wallet/presentation/screens/wallet_screen.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../auth/presentation/screens/login_screen.dart';
 import '../../../../core/widgets/neon_border_container.dart';
+import 'edit_profile_screen.dart';
 
 final profileServiceProvider = Provider((ref) => ProfileService());
 
@@ -192,7 +193,22 @@ class ProfileScreen extends ConsumerWidget {
                               ),
                             ),
                             child: MaterialButton(
-                              onPressed: () {},
+                              onPressed: () {
+                                userAsync.whenData((user) {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => EditProfileScreen(
+                                        user: {
+                                          'name': user.name,
+                                          'avatar': user.avatar,
+                                          'bio': user.bio,
+                                        },
+                                      ),
+                                    ),
+                                  );
+                                });
+                              },
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 32,
                                 vertical: 12,
