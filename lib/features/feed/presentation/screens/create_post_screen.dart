@@ -2,12 +2,14 @@ import 'dart:io';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:test_flutter/core/theme/app_theme.dart';
-import '../../data/services/video_service.dart';
+
 import '../../../camera/data/models/sound_model.dart';
 import 'package:video_player/video_player.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../providers/upload_provider.dart';
 
-class CreatePostScreen extends StatefulWidget {
+class CreatePostScreen extends ConsumerStatefulWidget {
   final List<XFile> files;
   final bool isVideo;
   final Sound? sound;
@@ -20,10 +22,10 @@ class CreatePostScreen extends StatefulWidget {
   });
 
   @override
-  State<CreatePostScreen> createState() => _CreatePostScreenState();
+  ConsumerState<CreatePostScreen> createState() => _CreatePostScreenState();
 }
 
-class _CreatePostScreenState extends State<CreatePostScreen> {
+class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
   final TextEditingController _titleController = TextEditingController();
   final TextEditingController _descriptionController = TextEditingController();
   String _privacy = 'Public'; // Public, Friends, Private
@@ -61,29 +63,21 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     super.dispose();
   }
 
-  void _onPost() async {
-    setState(() => _isPosting = true);
-
+  void _onPost() {
+    // Start background upload
     final path = _currentFiles.first.path;
     final caption = widget.isVideo
         ? _descriptionController.text
         : "${_titleController.text}\n${_descriptionController.text}";
 
-    final success = await VideoService().uploadVideo(path, caption);
+    ref.read(uploadProvider.notifier).startUpload(path, caption);
 
-    if (mounted) {
-      setState(() => _isPosting = false);
-      if (success) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text("Posted successfully!")));
-        Navigator.of(context).popUntil((route) => route.isFirst);
-      } else {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text("Upload failed")));
-      }
-    }
+    // Navigate back to feed immediately
+    Navigator.of(context).popUntil((route) => route.isFirst);
+
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text("Uploading in background...")));
   }
 
   @override
