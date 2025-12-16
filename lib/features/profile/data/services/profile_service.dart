@@ -7,7 +7,7 @@ class ProfileService {
 
   ProfileService({Dio? dio}) : _dio = dio ?? Dio();
 
-  Future<User> getProfile(int userId) async {
+  Future<User> getProfile(String userId) async {
     try {
       final response = await _dio.get(
         '${ApiConstants.baseUrl}${ApiConstants.user}/$userId',
@@ -25,13 +25,13 @@ class ProfileService {
     }
   }
 
-  Future<Map<String, int>> getStats(int userId) async {
+  Future<Map<String, int>> getStats(String userId) async {
     // Mock API call for stats
     await Future.delayed(const Duration(milliseconds: 500));
     return {'following': 105, 'followers': 5600, 'likes': 12000};
   }
 
-  Future<void> followUser(int userId) async {
+  Future<void> followUser(String userId) async {
     await Future.delayed(const Duration(milliseconds: 500));
     // API Call to follow
   }

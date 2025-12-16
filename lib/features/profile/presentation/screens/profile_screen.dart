@@ -12,14 +12,14 @@ import 'edit_profile_screen.dart';
 
 final profileServiceProvider = Provider((ref) => ProfileService());
 
-final userProfileProvider = FutureProvider.family<User, int>((
+final userProfileProvider = FutureProvider.family<User, String>((
   ref,
   userId,
 ) async {
   return ref.read(profileServiceProvider).getProfile(userId);
 });
 
-final userStatsProvider = FutureProvider.family<Map<String, int>, int>((
+final userStatsProvider = FutureProvider.family<Map<String, int>, String>((
   ref,
   userId,
 ) async {
@@ -27,7 +27,7 @@ final userStatsProvider = FutureProvider.family<Map<String, int>, int>((
 });
 
 class ProfileScreen extends ConsumerWidget {
-  final int userId;
+  final String userId;
   final bool isCurrentUser;
 
   const ProfileScreen({

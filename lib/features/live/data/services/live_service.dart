@@ -224,7 +224,7 @@ class LiveService {
       return LiveStream(
         channelId: "channel_$index",
         user: User(
-          id: index,
+          id: index.toString(),
           name: "Live User $index",
           email: "live$index@test.com",
           avatar: "https://dummyimage.com/50",

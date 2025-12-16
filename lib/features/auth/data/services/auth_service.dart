@@ -17,8 +17,8 @@ class AuthService {
         data: {'email': email, 'password': password},
       );
 
-      // User reported response.data is the token string directly
-      final token = response.data.toString();
+      // User reported response is {"token": "..."}
+      final token = response.data['token'].toString();
       await _storage.write(key: 'auth_token', value: token);
 
       // Set auth header for future requests

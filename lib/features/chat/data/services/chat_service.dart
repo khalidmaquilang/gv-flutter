@@ -12,7 +12,7 @@ class ChatService {
     return List.generate(
       5,
       (index) => User(
-        id: index + 10,
+        id: (index + 10).toString(),
         name: "Chat User $index",
         email: "chat$index@test.com",
         avatar: "https://dummyimage.com/50",
@@ -21,17 +21,17 @@ class ChatService {
     );
   }
 
-  Future<List<Map<String, dynamic>>> getMessages(int userId) async {
+  Future<List<Map<String, dynamic>>> getMessages(String userId) async {
     // Mock
     await Future.delayed(const Duration(milliseconds: 500));
     return [
-      {'senderId': 1, 'text': 'Hello!', 'time': '10:00 AM'},
+      {'senderId': "1", 'text': 'Hello!', 'time': '10:00 AM'},
       {'senderId': userId, 'text': 'Hi there!', 'time': '10:01 AM'},
-      {'senderId': 1, 'text': 'How are you?', 'time': '10:02 AM'},
+      {'senderId': "1", 'text': 'How are you?', 'time': '10:02 AM'},
     ];
   }
 
-  Future<void> sendMessage(int userId, String text) async {
+  Future<void> sendMessage(String userId, String text) async {
     // Mock Send
   }
 }

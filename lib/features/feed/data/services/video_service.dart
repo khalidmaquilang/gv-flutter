@@ -50,7 +50,7 @@ class VideoService {
       (index) => Comment(
         id: index,
         user: User(
-          id: index,
+          id: index.toString(),
           name: "User $index",
           email: "test@test.com",
           avatar: "https://dummyimage.com/50",
@@ -67,7 +67,7 @@ class VideoService {
     return Comment(
       id: 999,
       user: User(
-        id: 1,
+        id: "1",
         name: "Me",
         email: "me@test.com",
         avatar: "https://dummyimage.com/50",
@@ -94,7 +94,7 @@ class VideoService {
         commentsCount: 0,
         isLiked: false,
         user: User(
-          id: 1, // Mock current user
+          id: "1", // Mock current user
           name: "You",
           email: "you@test.com",
           avatar: "https://dummyimage.com/50",
@@ -121,7 +121,7 @@ class VideoService {
         commentsCount: 20 + index,
         isLiked: false,
         user: User(
-          id: 1,
+          id: "1",
           name: 'User $index',
           email: 'test@test.com',
           avatar: 'https://dummyimage.com/50',

@@ -24,7 +24,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
     const DiscoverScreen(),
     const SizedBox.shrink(), // Placeholder for Record
     const ChatListScreen(),
-    const ProfileScreen(userId: 1, isCurrentUser: true), // Mock current user
+    const ProfileScreen(userId: "1", isCurrentUser: true), // Mock current user
   ];
 
   void _onItemTapped(int index) async {
