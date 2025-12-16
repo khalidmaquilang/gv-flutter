@@ -18,7 +18,45 @@ class DraftService {
       if (content.isEmpty) return [];
 
       final List<dynamic> jsonList = jsonDecode(content);
-      return jsonList.map((e) => DraftModel.fromJson(e)).toList();
+      List<DraftModel> drafts = jsonList
+          .map((e) => DraftModel.fromJson(e))
+          .toList();
+
+      // Fix paths if app sandbox changed
+      final appDir = await getApplicationDocumentsDirectory();
+      final draftsDir = Directory('${appDir.path}/drafts');
+
+      return drafts.map((draft) {
+        List<String> fixedPaths = [];
+        for (String path in draft.videoPaths) {
+          final f = File(path);
+          if (f.existsSync()) {
+            fixedPaths.add(path);
+          } else {
+            // Try to find in current drafts dir
+            final filename = path.split('/').last;
+            final newPath = '${draftsDir.path}/$filename';
+            if (File(newPath).existsSync()) {
+              fixedPaths.add(newPath);
+            } else {
+              // Only keep if we can't find it (will trigger warning later, but at least we tried)
+              // Or should we remove it?
+              // Let's keep it so logic downstream knows it's missing
+              fixedPaths.add(path);
+            }
+          }
+        }
+        // Return new draft with fixed paths (Wait, DraftModel fields are final, need copyWith or new instance)
+        // Since DraftModel doesn't have copyWith yet, I'll create new instance
+        return DraftModel(
+          id: draft.id,
+          videoPaths: fixedPaths,
+          thumbnailPath: draft.thumbnailPath,
+          caption: draft.caption,
+          createdAt: draft.createdAt,
+          sound: draft.sound,
+        );
+      }).toList();
     } catch (e) {
       return [];
     }

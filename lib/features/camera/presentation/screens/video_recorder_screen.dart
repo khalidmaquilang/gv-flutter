@@ -79,7 +79,10 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
     _initializeDeepAr();
     _fetchLastImage();
     if (widget.initialFiles.isNotEmpty) {
-      _loadInitialFiles();
+      // Delay loading to avoid resource contention with PreviewScreen (especially audio session)
+      Future.delayed(const Duration(milliseconds: 500), () {
+        if (mounted) _loadInitialFiles();
+      });
     }
   }
 
@@ -148,6 +151,27 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
       _segments.addAll(newSegments);
       isPaused = true;
     });
+
+    // Restore Music State for Resume
+    if (_selectedSound != null) {
+      try {
+        String url = _selectedSound!.url;
+        Source? source;
+        if (url.startsWith('assets/')) {
+          source = AssetSource(url.substring(7));
+        } else {
+          source = UrlSource(url);
+        }
+
+        // Prepare not play
+        await _audioPlayer.setSource(source);
+        // Seek to current total duration
+        int seekMillis = (totalDuration * 1000).toInt();
+        await _audioPlayer.seek(Duration(milliseconds: seekMillis));
+      } catch (e) {
+        debugPrint("Error restoring audio state: $e");
+      }
+    }
   }
 
   Future<void> _initializeDeepAr() async {
@@ -354,7 +378,25 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
 
     // Resume Music
     if (_selectedSound != null) {
-      await _audioPlayer.resume();
+      if (_audioPlayer.state == PlayerState.paused) {
+        await _audioPlayer.resume();
+      } else {
+        // If not paused (e.g. stopped/initial), play from correct position
+        double totalProgress = _segments.fold(0.0, (sum, seg) => sum + seg);
+        int seekMillis = (totalProgress * _maxDuration * 1000).toInt();
+
+        String url = _selectedSound!.url;
+        Source source;
+        if (url.startsWith('assets/')) {
+          source = AssetSource(url.substring(7));
+        } else {
+          source = UrlSource(url);
+        }
+        await _audioPlayer.play(
+          source,
+          position: Duration(milliseconds: seekMillis),
+        );
+      }
     }
 
     if (!mounted) return;
@@ -654,6 +696,15 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
   }
 
   void _selectSound() async {
+    if (_recordedFiles.isNotEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Cannot change sound after recording has started"),
+        ),
+      );
+      return;
+    }
+
     final Sound? result = await Navigator.of(context).push(
       MaterialPageRoute(builder: (context) => const SoundSelectionScreen()),
     );
@@ -765,6 +816,18 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
                                 const SizedBox(width: 8),
                                 GestureDetector(
                                   onTap: () {
+                                    if (_recordedFiles.isNotEmpty) {
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        const SnackBar(
+                                          content: Text(
+                                            "Cannot change sound after recording has started",
+                                          ),
+                                        ),
+                                      );
+                                      return;
+                                    }
                                     setState(() {
                                       _selectedSound = null;
                                     });
