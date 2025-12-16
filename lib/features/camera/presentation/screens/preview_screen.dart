@@ -151,22 +151,6 @@ class _PreviewScreenState extends State<PreviewScreen> {
     }
   }
 
-  void _toggleVoiceMute() {
-    setState(() {
-      _isVoiceMuted = !_isVoiceMuted;
-      _videoController?.setVolume(_isVoiceMuted ? 0 : 1.0);
-      debugPrint("PreviewScreen: Voice Muted: $_isVoiceMuted");
-    });
-  }
-
-  void _toggleMusicMute() {
-    setState(() {
-      _isMusicMuted = !_isMusicMuted;
-      _musicPlayer?.setVolume(_isMusicMuted ? 0 : 1.0);
-      debugPrint("PreviewScreen: Music Muted: $_isMusicMuted");
-    });
-  }
-
   @override
   void dispose() {
     _videoController?.dispose();
@@ -231,41 +215,6 @@ class _PreviewScreenState extends State<PreviewScreen> {
                   "${_currentFileIndex + 1} / ${widget.files.length}",
                   style: const TextStyle(color: Colors.white),
                 ),
-              ),
-            ),
-
-          // Audio Mixing Controls (Only show if NO sound is selected)
-          if (widget.isVideo && widget.sound == null)
-            Positioned(
-              top: 100,
-              right: 16,
-              child: Column(
-                children: [
-                  // Mute Voice (Video Audio)
-                  IconButton(
-                    onPressed: _toggleVoiceMute,
-                    icon: Icon(
-                      _isVoiceMuted ? Icons.mic_off : Icons.mic,
-                      color: _isVoiceMuted ? Colors.red : Colors.white,
-                      size: 30,
-                      shadows: [Shadow(color: Colors.black, blurRadius: 4)],
-                    ),
-                    tooltip: "Toggle Original Sound",
-                  ),
-                  const SizedBox(height: 10),
-                  // Mute Music (Added Sound)
-                  if (widget.sound != null)
-                    IconButton(
-                      onPressed: _toggleMusicMute,
-                      icon: Icon(
-                        _isMusicMuted ? Icons.music_off : Icons.music_note,
-                        color: _isMusicMuted ? Colors.red : Colors.white,
-                        size: 30,
-                        shadows: [Shadow(color: Colors.black, blurRadius: 4)],
-                      ),
-                      tooltip: "Toggle Added Sound",
-                    ),
-                ],
               ),
             ),
 
