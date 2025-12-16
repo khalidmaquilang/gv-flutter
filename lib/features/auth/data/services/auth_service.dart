@@ -32,7 +32,12 @@ class AuthService {
     }
   }
 
-  Future<User> register(String name, String email, String password) async {
+  Future<String> register(
+    String name,
+    String email,
+    String password,
+    String passwordConfirmation,
+  ) async {
     try {
       final response = await _apiClient.post(
         ApiConstants.register,
@@ -40,10 +45,11 @@ class AuthService {
           'name': name,
           'email': email,
           'password': password,
-          'password_confirmation': password,
+          'password_confirmation': passwordConfirmation,
         },
       );
-      return User.fromJson(response.data['user']);
+      return response.data['message']?.toString() ??
+          'Please check your email for verification link.';
     } catch (e) {
       rethrow;
     }

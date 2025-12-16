@@ -23,12 +23,25 @@ class AuthController extends StateNotifier<AsyncValue<User?>> {
     }
   }
 
-  Future<void> register(String name, String email, String password) async {
+  Future<String?> register(
+    String name,
+    String email,
+    String password,
+    String passwordConfirmation,
+  ) async {
     try {
-      final user = await _authService.register(name, email, password);
-      state = AsyncValue.data(user);
-    } catch (e, st) {
-      state = AsyncValue.error(e, st);
+      final message = await _authService.register(
+        name,
+        email,
+        password,
+        passwordConfirmation,
+      );
+      // We do NOT update global state here because the user is not logged in yet.
+      // They need to verify their email first.
+      return message;
+    } catch (e) {
+      // On failure, rethrow to handle locally in RegisterScreen
+      rethrow;
     }
   }
 
