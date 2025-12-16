@@ -5,6 +5,7 @@ import 'package:test_flutter/core/theme/app_theme.dart';
 import '../../data/services/video_service.dart';
 import '../../../camera/data/models/sound_model.dart';
 import 'package:video_player/video_player.dart';
+import 'package:flutter/services.dart';
 
 class CreatePostScreen extends StatefulWidget {
   final List<XFile> files;
@@ -263,6 +264,8 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       controller: _descriptionController,
       style: const TextStyle(color: Colors.white),
       maxLines: lines,
+      textInputAction: TextInputAction.done,
+      inputFormatters: [FilteringTextInputFormatter.deny(RegExp(r'\n'))],
       decoration: InputDecoration(
         hintText: hint,
         hintStyle: const TextStyle(color: Colors.white24),
