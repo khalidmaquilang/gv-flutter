@@ -51,12 +51,22 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               const SizedBox(height: 48),
-              const Icon(
-                FontAwesomeIcons.tiktok,
-                size: 80,
-                color: Colors.white,
+              Hero(
+                tag: 'app_logo',
+                child: Image.asset(
+                  'assets/images/logo.png',
+                  height: 200,
+                  width: 200,
+                  fit: BoxFit.contain,
+                  errorBuilder: (context, error, stackTrace) {
+                    return const Icon(
+                      FontAwesomeIcons.tiktok,
+                      size: 80,
+                      color: Colors.white,
+                    );
+                  },
+                ),
               ),
-              const SizedBox(height: 48),
               const Text(
                 'Sign up for GV Live',
                 style: TextStyle(

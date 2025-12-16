@@ -32,6 +32,17 @@ class AuthController extends StateNotifier<AsyncValue<User?>> {
     }
   }
 
+  Future<String?> forgotPassword(String email) async {
+    try {
+      final message = await _authService.forgotPassword(email);
+      return message;
+    } catch (e) {
+      // Don't update global state for forgot password errors to avoid
+      // polluting LoginScreen or other listeners.
+      rethrow;
+    }
+  }
+
   Future<void> logout() async {
     await _authService.logout();
     state = const AsyncValue.data(null);

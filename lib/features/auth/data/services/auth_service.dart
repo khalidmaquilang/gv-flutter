@@ -49,6 +49,18 @@ class AuthService {
     }
   }
 
+  Future<String> forgotPassword(String email) async {
+    try {
+      final response = await _apiClient.post(
+        ApiConstants.forgotPassword,
+        data: {'email': email},
+      );
+      return response.data['message']?.toString() ?? 'Password reset link sent';
+    } catch (e) {
+      rethrow;
+    }
+  }
+
   Future<void> logout() async {
     await _storage.delete(key: 'auth_token');
     _apiClient.clearToken();

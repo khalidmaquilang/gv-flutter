@@ -1,11 +1,12 @@
 class ApiConstants {
   static const String baseUrl =
-      'https://6f3becc9b94f.ngrok-free.app/api'; // Android Emulator localhost
+      'https://ec4f11df9299.ngrok-free.app/api/v1'; // Android Emulator localhost
 
   // Auth
   static const String login = '/login';
   static const String register = '/register';
   static const String user = '/user';
+  static const String forgotPassword = '/forgot-password';
 
   // Feed
   static const String videos = '/videos';

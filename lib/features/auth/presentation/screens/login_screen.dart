@@ -6,6 +6,7 @@ import '../../../../core/errors/exceptions.dart';
 import '../providers/auth_provider.dart';
 import '../../../../../main_screen.dart';
 import 'register_screen.dart';
+import 'forgot_password_screen.dart';
 import '../widgets/auth_text_field.dart';
 import '../widgets/auth_button.dart';
 
@@ -140,6 +141,26 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     isObscure: true,
                     icon: Icons.lock_outline,
                     errorText: _getFieldError(authState.error, 'password'),
+                  ),
+                  const SizedBox(height: 24),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: GestureDetector(
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (context) => const ForgotPasswordScreen(),
+                          ),
+                        );
+                      },
+                      child: const Text(
+                        'Forgot Password?',
+                        style: TextStyle(
+                          color: AppColors.neonCyan,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
                   ),
                   const SizedBox(height: 24),
                   AuthButton(
