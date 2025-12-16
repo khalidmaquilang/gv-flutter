@@ -3,7 +3,7 @@ import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 import 'package:test_flutter/core/theme/app_theme.dart';
-import '../../../feed/data/services/video_service.dart';
+import '../../../feed/presentation/screens/create_post_screen.dart';
 
 import 'package:just_audio/just_audio.dart';
 import 'package:audio_session/audio_session.dart';
@@ -222,40 +222,28 @@ class _PreviewScreenState extends State<PreviewScreen> {
             bottom: 40,
             right: 16,
             child: ElevatedButton(
-              onPressed: () async {
+              onPressed: () {
                 if (widget.files.isEmpty) return;
 
-                // For MVP: Just upload the first segment path.
-                final path = widget.files.first.path;
+                // Pause playback before navigating
+                _videoController?.pause();
+                _musicPlayer?.pause();
 
-                ScaffoldMessenger.of(
-                  context,
-                ).showSnackBar(const SnackBar(content: Text("Uploading...")));
-
-                // Call service
-                final success = await VideoService().uploadVideo(
-                  path,
-                  "My cool video #${DateTime.now().second}",
+                // Navigate to CreatePostScreen
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => CreatePostScreen(
+                      files: widget.files,
+                      isVideo: widget.isVideo,
+                      sound: widget.sound,
+                    ),
+                  ),
                 );
-
-                if (!mounted) return;
-
-                if (success) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text("Posted successfully!")),
-                  );
-                  // Pop to feed (or root)
-                  Navigator.of(context).popUntil((route) => route.isFirst);
-                } else {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text("Upload failed")),
-                  );
-                }
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.neonPink,
               ),
-              child: const Text("Post", style: TextStyle(color: Colors.white)),
+              child: const Text("Next", style: TextStyle(color: Colors.white)),
             ),
           ),
         ],
