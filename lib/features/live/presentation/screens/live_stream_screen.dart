@@ -159,7 +159,7 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen>
 
     await _engine.setCameraCapturerConfiguration(
       const CameraCapturerConfiguration(
-        cameraDirection: CameraDirection.cameraRear,
+        cameraDirection: CameraDirection.cameraFront,
         format: VideoFormat(width: 1280, height: 720, fps: 24),
       ),
     );
