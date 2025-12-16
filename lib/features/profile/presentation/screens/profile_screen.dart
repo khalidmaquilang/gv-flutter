@@ -7,6 +7,7 @@ import '../../data/services/profile_service.dart';
 import '../../../wallet/presentation/screens/wallet_screen.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../auth/presentation/screens/login_screen.dart';
+import '../../../../core/widgets/neon_border_container.dart';
 
 final profileServiceProvider = Provider((ref) => ProfileService());
 
@@ -40,131 +41,248 @@ class ProfileScreen extends ConsumerWidget {
     final statsAsync = ref.watch(userStatsProvider(userId));
 
     return Scaffold(
-      backgroundColor: Colors.black,
-      appBar: AppBar(
-        title: userAsync.when(
-          data: (user) => Text(user.name),
-          loading: () => const Text("Loading..."),
-          error: (_, __) => const Text("Profile"),
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.account_balance_wallet),
-            onPressed: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (context) => const WalletScreen()),
-              );
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: () async {
-              if (isCurrentUser) {
-                await ref.read(authControllerProvider.notifier).logout();
-                if (context.mounted) {
-                  Navigator.of(context).pushAndRemoveUntil(
-                    MaterialPageRoute(
-                      builder: (context) => const LoginScreen(),
-                    ),
-                    (route) => false,
-                  );
-                }
-              }
-            },
-          ),
-          IconButton(icon: const Icon(Icons.menu), onPressed: () {}),
-        ],
-      ),
-      body: SingleChildScrollView(
+      backgroundColor: AppColors.deepVoid,
+      body: SafeArea(
         child: Column(
           children: [
-            const SizedBox(height: 20),
-            // Avatar
-            userAsync.when(
-              data: (user) => CircleAvatar(
-                radius: 50,
-                backgroundImage: NetworkImage(user.avatar ?? ""),
-              ),
-              loading: () =>
-                  const CircleAvatar(radius: 50, backgroundColor: Colors.grey),
-              error: (_, __) =>
-                  const CircleAvatar(radius: 50, backgroundColor: Colors.red),
-            ),
-            const SizedBox(height: 12),
-            // Username
-            userAsync.when(
-              data: (user) => Text(
-                "@${user.name.replaceAll(' ', '').toLowerCase()}",
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              loading: () => const SizedBox(),
-              error: (_, __) => const SizedBox(),
-            ),
-            const SizedBox(height: 20),
-            // Stats
-            statsAsync.when(
-              data: (stats) => Row(
-                mainAxisAlignment: MainAxisAlignment.center,
+            // Custom Header
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  _buildStat("Following", stats['following'] ?? 0),
-                  _buildStat("Followers", stats['followers'] ?? 0),
-                  _buildStat("Likes", stats['likes'] ?? 0),
-                ],
-              ),
-              loading: () => const CircularProgressIndicator(),
-              error: (_, __) => const Text("Failed to load stats"),
-            ),
-            const SizedBox(height: 20),
-            // Buttons
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                if (isCurrentUser)
-                  ElevatedButton(
-                    onPressed: () {},
-                    child: const Text("Edit Profile"),
-                  )
-                else
-                  ElevatedButton(
-                    onPressed: () {}, // Todo: Follow
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.neonPink,
+                  userAsync.when(
+                    data: (user) => Text(
+                      user.name,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        shadows: [
+                          Shadow(color: AppColors.neonPink, blurRadius: 10),
+                        ],
+                      ),
                     ),
-                    child: const Text(
-                      "Follow",
+                    loading: () => const Text(
+                      "Loading...",
+                      style: TextStyle(color: Colors.white),
+                    ),
+                    error: (_, __) => const Text(
+                      "Profile",
                       style: TextStyle(color: Colors.white),
                     ),
                   ),
-                const SizedBox(width: 8),
-                OutlinedButton(
-                  onPressed: () {},
-                  child: const Icon(Icons.camera_alt, color: Colors.white),
-                ),
-              ],
-            ),
-            const SizedBox(height: 20),
-            // Mock Grid
-            GridView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 3,
-                childAspectRatio: 0.7,
-                crossAxisSpacing: 2,
-                mainAxisSpacing: 2,
-              ),
-              itemCount: 9,
-              itemBuilder: (context, index) {
-                return Container(
-                  color: Colors.grey[800],
-                  child: const Center(
-                    child: Icon(Icons.play_arrow, color: Colors.white),
+                  Row(
+                    children: [
+                      IconButton(
+                        icon: const Icon(
+                          Icons.account_balance_wallet,
+                          color: Colors.white,
+                        ),
+                        onPressed: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (context) => const WalletScreen(),
+                            ),
+                          );
+                        },
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.logout, color: Colors.white),
+                        onPressed: () async {
+                          if (isCurrentUser) {
+                            await ref
+                                .read(authControllerProvider.notifier)
+                                .logout();
+                            if (context.mounted) {
+                              Navigator.of(context).pushAndRemoveUntil(
+                                MaterialPageRoute(
+                                  builder: (context) => const LoginScreen(),
+                                ),
+                                (route) => false,
+                              );
+                            }
+                          }
+                        },
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.menu, color: Colors.white),
+                        onPressed: () {},
+                      ),
+                    ],
                   ),
-                );
-              },
+                ],
+              ),
+            ),
+            Expanded(
+              child: SingleChildScrollView(
+                child: Column(
+                  children: [
+                    const SizedBox(height: 20),
+                    // Avatar
+                    userAsync.when(
+                      data: (user) => NeonBorderContainer(
+                        shape: BoxShape.circle,
+                        borderWidth: 3,
+                        padding: const EdgeInsets.all(4),
+                        child: CircleAvatar(
+                          radius: 50,
+                          backgroundImage: NetworkImage(user.avatar ?? ""),
+                        ),
+                      ),
+                      loading: () => const CircleAvatar(
+                        radius: 50,
+                        backgroundColor: Colors.grey,
+                      ),
+                      error: (_, __) => const CircleAvatar(
+                        radius: 50,
+                        backgroundColor: Colors.red,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    // Username
+                    userAsync.when(
+                      data: (user) => Text(
+                        "@${user.name.replaceAll(' ', '').toLowerCase()}",
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.7),
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                      loading: () => const SizedBox(),
+                      error: (_, __) => const SizedBox(),
+                    ),
+                    const SizedBox(height: 20),
+                    // Stats
+                    statsAsync.when(
+                      data: (stats) => Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          _buildStat("Following", stats['following'] ?? 0),
+                          Container(
+                            height: 30,
+                            width: 1,
+                            color: Colors.white.withOpacity(0.2),
+                          ),
+                          _buildStat("Followers", stats['followers'] ?? 0),
+                          Container(
+                            height: 30,
+                            width: 1,
+                            color: Colors.white.withOpacity(0.2),
+                          ),
+                          _buildStat("Likes", stats['likes'] ?? 0),
+                        ],
+                      ),
+                      loading: () => const CircularProgressIndicator(),
+                      error: (_, __) => const Text("Failed to load stats"),
+                    ),
+                    const SizedBox(height: 24),
+                    // Buttons
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        if (isCurrentUser)
+                          Container(
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(30),
+                              border: Border.all(
+                                color: Colors.white.withOpacity(0.2),
+                              ),
+                            ),
+                            child: MaterialButton(
+                              onPressed: () {},
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 32,
+                                vertical: 12,
+                              ),
+                              child: const Text(
+                                "Edit Profile",
+                                style: TextStyle(color: Colors.white),
+                              ),
+                            ),
+                          )
+                        else
+                          Container(
+                            decoration: BoxDecoration(
+                              gradient: AppColors.primaryGradient,
+                              borderRadius: BorderRadius.circular(30),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: AppColors.neonPink.withOpacity(0.4),
+                                  blurRadius: 10,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ],
+                            ),
+                            child: MaterialButton(
+                              onPressed: () {}, // Todo: Follow
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 32,
+                                vertical: 12,
+                              ),
+                              child: const Text(
+                                "Follow",
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ),
+                        const SizedBox(width: 12),
+                        Container(
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(30),
+                            border: Border.all(
+                              color: Colors.white.withOpacity(0.2),
+                            ),
+                          ),
+                          child: IconButton(
+                            icon: const Icon(
+                              Icons.camera_alt,
+                              color: Colors.white,
+                            ),
+                            onPressed: () {},
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 30),
+                    // Mock Grid
+                    GridView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 3,
+                            childAspectRatio: 0.8,
+                            crossAxisSpacing: 1,
+                            mainAxisSpacing: 1,
+                          ),
+                      itemCount: 9,
+                      itemBuilder: (context, index) {
+                        return Container(
+                          decoration: BoxDecoration(
+                            color: Colors.grey[900],
+                            border: Border.all(
+                              color: Colors.white.withOpacity(0.05),
+                            ),
+                          ),
+                          child: Center(
+                            child: Icon(
+                              Icons.play_arrow,
+                              color: Colors.white.withOpacity(0.3),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              ),
             ),
           ],
         ),
@@ -179,7 +297,11 @@ class ProfileScreen extends ConsumerWidget {
         children: [
           Text(
             "$count",
-            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+            style: const TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 18,
+              color: Colors.white,
+            ),
           ),
           Text(label, style: const TextStyle(color: Colors.grey, fontSize: 12)),
         ],
