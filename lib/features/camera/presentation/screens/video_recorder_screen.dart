@@ -13,7 +13,11 @@ import '../../data/models/sound_model.dart';
 import 'sound_selection_screen.dart';
 import '../../data/services/deepar_service.dart';
 import 'package:path_provider/path_provider.dart';
+
 import '../../../live/presentation/screens/live_stream_setup_screen.dart';
+import 'package:test_flutter/core/widgets/neon_border_container.dart';
+import '../widgets/glass_action_button.dart';
+import 'dart:ui'; // For ImageFilter
 
 class VideoRecorderScreen extends ConsumerStatefulWidget {
   const VideoRecorderScreen({super.key});
@@ -628,7 +632,7 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
           ),
 
           // Select Sound
-          // Select Sound
+          // Top Sound Selector
           Positioned(
             top: 48,
             left: 0,
@@ -639,46 +643,58 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
                 duration: const Duration(milliseconds: 200),
                 opacity: isRecording ? 0.0 : 1.0,
                 child: Center(
-                  child: GestureDetector(
-                    onTap: _selectSound,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 15,
-                        vertical: 8,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.black.withOpacity(0.5),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(
-                            Icons.music_note,
-                            color: Colors.white,
-                            size: 16,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(20),
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                      child: GestureDetector(
+                        onTap: _selectSound,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 15,
+                            vertical: 8,
                           ),
-                          const SizedBox(width: 5),
-                          Text(
-                            _selectedSound?.title ?? "Add Sound",
-                            style: const TextStyle(color: Colors.white),
-                          ),
-                          if (_selectedSound != null) ...[
-                            const SizedBox(width: 5),
-                            GestureDetector(
-                              onTap: () {
-                                setState(() {
-                                  _selectedSound = null;
-                                });
-                              },
-                              child: const Icon(
-                                Icons.close,
-                                color: Colors.white,
-                                size: 14,
-                              ),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withOpacity(0.3),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                              color: Colors.white.withOpacity(0.2),
                             ),
-                          ],
-                        ],
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(
+                                Icons.music_note,
+                                color: AppColors.neonCyan, // Neon Icon
+                                size: 16,
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                _selectedSound?.title ?? "Add Sound",
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              if (_selectedSound != null) ...[
+                                const SizedBox(width: 8),
+                                GestureDetector(
+                                  onTap: () {
+                                    setState(() {
+                                      _selectedSound = null;
+                                    });
+                                  },
+                                  child: const Icon(
+                                    Icons.close,
+                                    color: Colors.white,
+                                    size: 14,
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
                       ),
                     ),
                   ),
@@ -690,58 +706,48 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
           // Floating Side Menu
           // Floating Side Menu
           Positioned(
-            top: 48,
+            top: 100, // Moved down slightly
             right: 16,
             child: IgnorePointer(
               ignoring: isRecording,
               child: AnimatedOpacity(
                 duration: const Duration(milliseconds: 200),
                 opacity: isRecording ? 0.0 : 1.0,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    vertical: 8,
-                    horizontal: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.4),
-                    borderRadius: BorderRadius.circular(24),
-                  ),
-                  child: Column(
-                    children: [
-                      // Flip Camera
-                      _buildMenuIcon(
-                        icon: Icons.flip_camera_ios,
-                        label: "Flip",
-                        onTap: () {
-                          _deepArController?.flipCamera();
-                        },
-                      ),
-                      const SizedBox(height: 16),
+                child: Column(
+                  children: [
+                    // Flip Camera
+                    GlassActionButton(
+                      icon: Icons.flip_camera_ios,
+                      label: "Flip",
+                      onTap: () {
+                        _deepArController?.flipCamera();
+                      },
+                    ),
+                    const SizedBox(height: 16),
 
-                      // Flash Toggle
-                      _buildMenuIcon(
-                        icon: _flashMode == FlashState.off
-                            ? Icons.flash_off
-                            : Icons.flash_on,
-                        label: "Flash",
-                        onTap: _toggleFlash,
-                        isActive: _flashMode == FlashState.on,
-                      ),
-                      const SizedBox(height: 16),
+                    // Flash Toggle
+                    GlassActionButton(
+                      icon: _flashMode == FlashState.off
+                          ? Icons.flash_off
+                          : Icons.flash_on,
+                      label: "Flash",
+                      onTap: _toggleFlash,
+                      isActive: _flashMode == FlashState.on,
+                      activeColor: AppColors.neonCyan,
+                    ),
+                    const SizedBox(height: 16),
 
-                      // Timer Toggle
-                      _buildMenuIcon(
-                        icon: _timerDelay == 0
-                            ? Icons.timer_off_outlined
-                            : (_timerDelay == 3
-                                  ? Icons.timer_3
-                                  : Icons.timer_10),
-                        label: "Timer",
-                        onTap: _toggleTimer,
-                        isActive: _timerDelay > 0,
-                      ),
-                    ],
-                  ),
+                    // Timer Toggle
+                    GlassActionButton(
+                      icon: _timerDelay == 0
+                          ? Icons.timer_off_outlined
+                          : (_timerDelay == 3 ? Icons.timer_3 : Icons.timer_10),
+                      label: "Timer",
+                      onTap: _toggleTimer,
+                      isActive: _timerDelay > 0,
+                      activeColor: AppColors.neonPink,
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -777,10 +783,20 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
                             shape: BoxShape.circle,
                             border: Border.all(
                               color: isSelected
-                                  ? AppColors.neonPink
-                                  : Colors.white,
-                              width: 2,
+                                  ? AppColors
+                                        .neonCyan // Neon Border
+                                  : Colors.white.withOpacity(0.5),
+                              width: isSelected ? 3 : 2,
                             ),
+                            boxShadow: isSelected
+                                ? [
+                                    const BoxShadow(
+                                      color: AppColors.neonCyan,
+                                      blurRadius: 8,
+                                      spreadRadius: 1,
+                                    ),
+                                  ]
+                                : [],
                             color: Colors.black.withOpacity(0.5),
                           ),
                           child: Center(
@@ -821,32 +837,36 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
                           onTap: _pickFromGallery,
                           child: Column(
                             children: [
-                              Container(
-                                height: 36,
+                              SizedBox(
                                 width: 36,
-                                decoration: BoxDecoration(
-                                  border: Border.all(
-                                    color: Colors.white,
-                                    width: 2,
+                                height: 36,
+                                child: NeonBorderContainer(
+                                  borderRadius: 8,
+                                  padding: EdgeInsets.zero,
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(8),
+                                      image: _lastImageBytes != null
+                                          ? DecorationImage(
+                                              image: MemoryImage(
+                                                _lastImageBytes!,
+                                              ),
+                                              fit: BoxFit.cover,
+                                            )
+                                          : null,
+                                      color: _lastImageBytes == null
+                                          ? Colors.grey[800]
+                                          : null,
+                                    ),
+                                    child: _lastImageBytes == null
+                                        ? const Icon(
+                                            Icons.image,
+                                            color: Colors.white,
+                                            size: 20,
+                                          )
+                                        : null,
                                   ),
-                                  borderRadius: BorderRadius.circular(8),
-                                  image: _lastImageBytes != null
-                                      ? DecorationImage(
-                                          image: MemoryImage(_lastImageBytes!),
-                                          fit: BoxFit.cover,
-                                        )
-                                      : null,
-                                  color: _lastImageBytes == null
-                                      ? Colors.grey[800]
-                                      : null,
                                 ),
-                                child: _lastImageBytes == null
-                                    ? const Icon(
-                                        Icons.image,
-                                        color: Colors.white,
-                                        size: 20,
-                                      )
-                                    : null,
                               ),
                               const SizedBox(height: 5),
                               const Text(
@@ -888,11 +908,21 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
                                   border: Border.all(
                                     color: isRecording
                                         ? Colors.transparent
-                                        : const Color(
-                                            0xFFFE2C55,
-                                          ).withOpacity(0.5),
+                                        : AppColors.neonPink.withOpacity(
+                                            0.5,
+                                          ), // Pink Ring
                                     width: 6,
                                   ),
+                                  boxShadow: isRecording
+                                      ? [] // Glow handled by painter or inner button
+                                      : [
+                                          BoxShadow(
+                                            color: AppColors.neonPink
+                                                .withOpacity(0.2),
+                                            blurRadius: 8,
+                                            spreadRadius: 2,
+                                          ),
+                                        ],
                                 ),
                               ),
                               if (isRecording || isPaused)
@@ -903,7 +933,8 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
                                     painter: SegmentedRingPainter(
                                       segments: _segments,
                                       currentProgress: _currentSegmentProgress,
-                                      color: const Color(0xFFFE2C55),
+                                      color:
+                                          AppColors.neonPink, // Pink Progress
                                       strokeWidth: 6,
                                     ),
                                   ),
@@ -914,10 +945,17 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
                                   height: isRecording ? 30 : 60,
                                   width: isRecording ? 30 : 60,
                                   decoration: BoxDecoration(
-                                    color: const Color(0xFFFE2C55),
+                                    color: AppColors.neonPink, // Pink Button
                                     borderRadius: BorderRadius.circular(
                                       isRecording ? 6 : 30,
                                     ),
+                                    boxShadow: [
+                                      const BoxShadow(
+                                        color: AppColors.neonPink,
+                                        blurRadius: 10,
+                                        spreadRadius: 2,
+                                      ),
+                                    ],
                                   ),
                                 ),
                               ),
@@ -941,12 +979,19 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
                           icon: Container(
                             padding: const EdgeInsets.all(8),
                             decoration: const BoxDecoration(
-                              color: AppColors.neonPink,
+                              color: AppColors.neonCyan, // Cyan Checkmark
                               shape: BoxShape.circle,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: AppColors.neonCyan,
+                                  blurRadius: 10,
+                                  spreadRadius: 2,
+                                ),
+                              ],
                             ),
                             child: const Icon(
                               Icons.check,
-                              color: Colors.white,
+                              color: Colors.black, // Dark icon for contrast
                               size: 20,
                             ),
                           ),
@@ -984,11 +1029,19 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
                                 style: TextStyle(
                                   color: isSelected
                                       ? Colors.white
-                                      : Colors.grey,
+                                      : Colors.white.withOpacity(0.5),
                                   fontWeight: isSelected
                                       ? FontWeight.bold
                                       : FontWeight.normal,
                                   fontSize: 14,
+                                  shadows: isSelected
+                                      ? [
+                                          const Shadow(
+                                            color: AppColors.neonCyan,
+                                            blurRadius: 8,
+                                          ),
+                                        ]
+                                      : [],
                                 ),
                               ),
                             ),
@@ -999,38 +1052,6 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
                   ),
                 ),
               ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildMenuIcon({
-    required IconData icon,
-    required String label,
-    required VoidCallback onTap,
-    bool isActive = false,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Column(
-        children: [
-          Icon(
-            icon,
-            color: isActive ? Colors.yellow : Colors.white,
-            size: 28,
-            shadows: [
-              Shadow(color: Colors.black.withOpacity(0.5), blurRadius: 4),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Text(
-            label,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 10,
-              shadows: [Shadow(color: Colors.black, blurRadius: 2)],
             ),
           ),
         ],

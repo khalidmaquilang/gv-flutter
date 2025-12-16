@@ -20,6 +20,7 @@ class _LiveStreamSetupScreenState extends ConsumerState<LiveStreamSetupScreen> {
   CameraController? _cameraController;
   bool _isPermissionGranted = false;
   bool _isGoingToLive = false;
+  String? _errorMessage;
 
   @override
   void initState() {
@@ -28,32 +29,65 @@ class _LiveStreamSetupScreenState extends ConsumerState<LiveStreamSetupScreen> {
   }
 
   Future<void> _initCamera() async {
-    // Wait for DeepAR to release camera (VideoRecorderScreen disposal overlap)
-    await Future.delayed(const Duration(milliseconds: 500));
+    setState(() {
+      _errorMessage = null;
+    });
 
-    // Request permissions
-    await [Permission.microphone, Permission.camera].request();
+    try {
+      // Wait for DeepAR to release camera (VideoRecorderScreen disposal overlap)
+      await Future.delayed(const Duration(milliseconds: 500));
 
-    final cameras = await availableCameras();
-    if (cameras.isEmpty) return;
+      // Request permissions
+      Map<Permission, PermissionStatus> statuses = await [
+        Permission.microphone,
+        Permission.camera,
+      ].request();
 
-    final frontCamera = cameras.firstWhere(
-      (camera) => camera.lensDirection == CameraLensDirection.front,
-      orElse: () => cameras.first,
-    );
+      if (statuses[Permission.camera] != PermissionStatus.granted ||
+          statuses[Permission.microphone] != PermissionStatus.granted) {
+        if (mounted) {
+          setState(() {
+            _errorMessage = "Camera/Mic permissions required.";
+          });
+        }
+        return;
+      }
 
-    _cameraController = CameraController(
-      frontCamera,
-      ResolutionPreset.high,
-      enableAudio: false, // Audio not needed for setup preview
-    );
+      final cameras = await availableCameras();
+      if (cameras.isEmpty) {
+        if (mounted) {
+          setState(() {
+            _errorMessage = "No cameras found.";
+          });
+        }
+        return;
+      }
 
-    await _cameraController!.initialize();
+      final frontCamera = cameras.firstWhere(
+        (camera) => camera.lensDirection == CameraLensDirection.front,
+        orElse: () => cameras.first,
+      );
 
-    if (mounted) {
-      setState(() {
-        _isPermissionGranted = true;
-      });
+      _cameraController = CameraController(
+        frontCamera,
+        ResolutionPreset.high,
+        enableAudio: false, // Audio not needed for setup preview
+      );
+
+      await _cameraController!.initialize();
+
+      if (mounted) {
+        setState(() {
+          _isPermissionGranted = true;
+        });
+      }
+    } catch (e) {
+      debugPrint("Live Setup Camera Error: $e");
+      if (mounted) {
+        setState(() {
+          _errorMessage = "Failed to start camera: $e";
+        });
+      }
     }
   }
 
@@ -104,7 +138,35 @@ class _LiveStreamSetupScreenState extends ConsumerState<LiveStreamSetupScreen> {
       body: Stack(
         children: [
           // Background Camera Preview
-          if (_isPermissionGranted &&
+          if (_errorMessage != null)
+            Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(
+                    Icons.error_outline,
+                    color: AppColors.neonPink,
+                    size: 48,
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    _errorMessage!,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: Colors.white),
+                  ),
+                  const SizedBox(height: 16),
+                  ElevatedButton(
+                    onPressed: _initCamera,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.white,
+                      foregroundColor: Colors.black,
+                    ),
+                    child: const Text("Retry"),
+                  ),
+                ],
+              ),
+            )
+          else if (_isPermissionGranted &&
               _cameraController != null &&
               _cameraController!.value.isInitialized)
             SizedBox.expand(child: CameraPreview(_cameraController!))

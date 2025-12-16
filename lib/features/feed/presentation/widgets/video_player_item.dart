@@ -5,6 +5,7 @@ import 'package:video_player/video_player.dart';
 import '../../../../core/providers/navigation_provider.dart';
 import '../../data/models/video_model.dart';
 import 'package:test_flutter/core/theme/app_theme.dart';
+import 'package:test_flutter/core/widgets/neon_border_container.dart';
 import '../../data/services/video_service.dart';
 import 'comment_bottom_sheet.dart';
 
@@ -142,7 +143,7 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
             children: [
               // Right Side Actions (Avatar, Like, Comment, Share)
               Positioned(
-                bottom: 100,
+                bottom: 160, // Moved up further as requested
                 right: 10,
                 child: Column(
                   children: [
@@ -156,19 +157,25 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
                     _buildAction(
                       Icons.comment,
                       "${widget.video.commentsCount}",
+                      color: AppColors.neonCyan, // Cyan for comments
                       onTap: _showComments,
                     ),
                     const SizedBox(height: 16),
-                    _buildAction(Icons.share, "Share", onTap: _shareVideo),
+                    _buildAction(
+                      Icons.share,
+                      "Share",
+                      color: AppColors.neonPurple, // Purple for share
+                      onTap: _shareVideo,
+                    ),
                   ],
                 ),
               ),
 
               // Bottom Info (Name, Caption)
               Positioned(
-                bottom: 20,
+                bottom: 130, // Kept at 130
                 left: 10,
-                right: 80,
+                right: 100, // Increased right padding
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -178,12 +185,20 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
                         fontWeight: FontWeight.bold,
                         fontSize: 16,
                         color: Colors.white,
+                        shadows: [
+                          Shadow(color: AppColors.neonCyan, blurRadius: 4),
+                          Shadow(color: Colors.black, blurRadius: 2),
+                        ],
                       ),
                     ),
                     const SizedBox(height: 8),
                     Text(
                       widget.video.caption,
-                      style: const TextStyle(fontSize: 14, color: Colors.white),
+                      style: const TextStyle(
+                        fontSize: 14,
+                        color: Colors.white,
+                        shadows: [Shadow(color: Colors.black, blurRadius: 2)],
+                      ),
                     ),
                   ],
                 ),
@@ -249,9 +264,32 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
       onTap: onTap,
       child: Column(
         children: [
-          Icon(icon, size: 36, color: color),
+          Container(
+            decoration: BoxDecoration(
+              boxShadow: [
+                BoxShadow(
+                  color: color.withOpacity(0.8),
+                  blurRadius: 15,
+                  spreadRadius: 2,
+                ),
+              ],
+            ),
+            child: Icon(
+              icon,
+              size: 36,
+              color: color,
+              shadows: [Shadow(color: color, blurRadius: 10)],
+            ),
+          ),
           const SizedBox(height: 4),
-          Text(text, style: const TextStyle(fontSize: 12, color: Colors.white)),
+          Text(
+            text,
+            style: const TextStyle(
+              fontSize: 12,
+              color: Colors.white,
+              shadows: [Shadow(color: Colors.black, blurRadius: 4)],
+            ),
+          ),
         ],
       ),
     );

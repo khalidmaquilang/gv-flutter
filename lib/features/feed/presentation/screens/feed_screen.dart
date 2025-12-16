@@ -71,6 +71,23 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
             ],
           ),
 
+          // Top Gradient Overlay
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            height: 120, // Height of the gradient fade
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Colors.black.withOpacity(0.7), Colors.transparent],
+                ),
+              ),
+            ),
+          ),
+
           // Top Navigation
           SafeArea(
             child: Container(
@@ -88,6 +105,24 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
                 labelStyle: const TextStyle(
                   fontWeight: FontWeight.bold,
                   fontSize: 16,
+                  shadows: [
+                    Shadow(
+                      color: Colors.black,
+                      blurRadius: 4,
+                      offset: Offset(0, 1),
+                    ),
+                  ],
+                ),
+                unselectedLabelStyle: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                  shadows: [
+                    Shadow(
+                      color: Colors.black,
+                      blurRadius: 4,
+                      offset: Offset(0, 1),
+                    ),
+                  ],
                 ),
                 dividerColor: Colors.transparent,
                 tabs: const [
