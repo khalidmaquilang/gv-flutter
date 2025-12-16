@@ -32,12 +32,16 @@ class UploadState {
 class UploadNotifier extends StateNotifier<UploadState> {
   UploadNotifier() : super(UploadState());
 
-  Future<void> startUpload(String path, String caption) async {
+  Future<void> startUpload(
+    String path,
+    String caption, {
+    String? coverPath,
+  }) async {
     state = state.copyWith(
       isUploading: true,
       progress: 0.0,
       error: null,
-      coverPath: path,
+      coverPath: coverPath ?? path,
     );
 
     // Simulate progress since we are using a mock service

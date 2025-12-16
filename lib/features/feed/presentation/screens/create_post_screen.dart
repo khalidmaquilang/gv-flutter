@@ -1,5 +1,5 @@
 import 'dart:io';
-import 'package:camera/camera.dart';
+import 'package:camera/camera.dart' hide ImageFormat;
 import 'package:flutter/material.dart';
 import 'package:test_flutter/core/theme/app_theme.dart';
 
@@ -7,6 +7,8 @@ import '../../../camera/data/models/sound_model.dart';
 import 'package:video_player/video_player.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:video_thumbnail/video_thumbnail.dart';
+import 'package:path_provider/path_provider.dart';
 import '../providers/upload_provider.dart';
 
 class CreatePostScreen extends ConsumerStatefulWidget {
@@ -37,6 +39,7 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
   VideoPlayerController? _videoController;
 
   bool _isPosting = false;
+  bool _isVideoInitError = false;
 
   @override
   void initState() {
@@ -48,11 +51,16 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
   }
 
   Future<void> _initializeVideoController() async {
-    _videoController = VideoPlayerController.file(
-      File(_currentFiles.first.path),
-    );
-    await _videoController!.initialize();
-    setState(() {});
+    try {
+      _videoController = VideoPlayerController.file(
+        File(_currentFiles.first.path),
+      );
+      await _videoController!.initialize();
+      setState(() {});
+    } catch (e) {
+      debugPrint("Error initializing video controller: $e");
+      setState(() => _isVideoInitError = true);
+    }
   }
 
   @override
@@ -63,21 +71,42 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
     super.dispose();
   }
 
-  void _onPost() {
+  void _onPost() async {
     // Start background upload
     final path = _currentFiles.first.path;
     final caption = widget.isVideo
         ? _descriptionController.text
         : "${_titleController.text}\n${_descriptionController.text}";
 
-    ref.read(uploadProvider.notifier).startUpload(path, caption);
+    String? coverPath;
+
+    // Generate thumbnail if it's a video
+    if (widget.isVideo) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text("Preparing upload...")));
+
+      final tempDir = await getTemporaryDirectory();
+      coverPath = await VideoThumbnail.thumbnailFile(
+        video: path,
+        thumbnailPath: tempDir.path,
+        imageFormat: ImageFormat.JPEG,
+        maxHeight: 150, // smaller for notification
+        quality: 75,
+      );
+    } else {
+      // It's a photo, use the file itself
+      coverPath = path;
+    }
+
+    if (!mounted) return;
+
+    ref
+        .read(uploadProvider.notifier)
+        .startUpload(path, caption, coverPath: coverPath);
 
     // Navigate back to feed immediately
     Navigator.of(context).popUntil((route) => route.isFirst);
-
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text("Uploading in background...")));
   }
 
   @override
@@ -199,6 +228,8 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
                     ),
                   ),
                 )
+              else if (_isVideoInitError)
+                const Center(child: Icon(Icons.error, color: Colors.white54))
               else
                 const Center(child: CircularProgressIndicator()),
 
