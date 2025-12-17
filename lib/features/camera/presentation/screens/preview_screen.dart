@@ -36,6 +36,7 @@ class PreviewScreen extends ConsumerStatefulWidget {
 
 class _PreviewScreenState extends ConsumerState<PreviewScreen> {
   VideoPlayerController? _videoController;
+  VideoPlayerController? _nextVideoController;
   AudioPlayer? _musicPlayer;
   int _currentFileIndex = 0;
 
@@ -50,7 +51,9 @@ class _PreviewScreenState extends ConsumerState<PreviewScreen> {
       _initAudio();
     }
     if (widget.isVideo && widget.files.isNotEmpty) {
-      _initializeController(0);
+      if (widget.isVideo && widget.files.isNotEmpty) {
+        _loadCurrentAndNext(0);
+      }
     }
   }
 
@@ -94,75 +97,140 @@ class _PreviewScreenState extends ConsumerState<PreviewScreen> {
     }
   }
 
-  Future<void> _initializeController(int index) async {
-    try {
-      final file = widget.files[index];
-      debugPrint("PreviewScreen: Init video $index: ${file.path}");
+  Future<void> _loadCurrentAndNext(int index) async {
+    // 1. Load Current (if needed)
+    if (_videoController == null) {
+      try {
+        final file = widget.files[index];
+        debugPrint("PreviewScreen: Init current video $index: ${file.path}");
+        _videoController = VideoPlayerController.file(
+          File(file.path),
+          videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
+        );
+        await _videoController!.initialize();
+        await _videoController!.setVolume(_isVoiceMuted ? 0 : 1.0);
+        _videoController!.addListener(_videoListener);
+        if (mounted) {
+          setState(() {});
+          await _videoController!.play();
 
-      final controller = VideoPlayerController.file(
-        File(file.path),
-        videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
-      );
-      _videoController = controller;
-
-      await controller.initialize();
-      await controller.setVolume(_isVoiceMuted ? 0 : 1.0);
-
-      controller.addListener(() {
-        if (controller.value.isInitialized &&
-            !controller.value.isPlaying &&
-            controller.value.position >= controller.value.duration) {
-          _playNext();
+          // Start music on first clip
+          if (index == 0) {
+            Future.delayed(const Duration(milliseconds: 500), () {
+              if (mounted) _startMusic();
+            });
+          }
         }
-      });
-
+      } catch (e) {
+        debugPrint("PreviewScreen: Error initializing current video: $e");
+        if (mounted) _playNext();
+        return;
+      }
+    } else {
+      // If we reused next controller, ensure it's playing and listening
       if (mounted) {
         setState(() {});
-        // Play video FIRST
-        await controller.play();
-
-        // Then start music (should be preloaded or loading) with DELAY
-        if (index == 0) {
-          Future.delayed(const Duration(milliseconds: 500), () {
-            if (mounted) _startMusic();
-          });
-        }
+        await _videoController!.play();
+        // Ensure music is syncing if not first segment?
+        // Logic assumes music plays continuously.
       }
-    } catch (e) {
-      debugPrint("PreviewScreen: Error initializing video: $e");
-      if (mounted) _playNext();
+    }
+
+    // 2. Pre-load Next
+    int nextIndex = index + 1;
+    if (nextIndex >= widget.files.length) {
+      nextIndex = 0; // Loop ready
+    }
+
+    // Only pre-load if valid and different (single video doesn't need next unless looping itself? no, controller handles loop)
+    if (widget.files.length > 1) {
+      _preloadNext(nextIndex);
     }
   }
 
+  Future<void> _preloadNext(int nextIndex) async {
+    // Dispose old next if exists (shoudn't unless rapid skip)
+    if (_nextVideoController != null) {
+      await _nextVideoController!.dispose();
+    }
+
+    try {
+      final file = widget.files[nextIndex];
+      debugPrint(
+        "PreviewScreen: Pre-loading next video $nextIndex: ${file.path}",
+      );
+      _nextVideoController = VideoPlayerController.file(
+        File(file.path),
+        videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
+      );
+      await _nextVideoController!.initialize();
+      await _nextVideoController!.setVolume(_isVoiceMuted ? 0 : 1.0);
+      // Don't add listener or play yet
+    } catch (e) {
+      debugPrint("PreviewScreen: Error pre-loading next: $e");
+    }
+  }
+
+  void _videoListener() {
+    final controller = _videoController;
+    if (controller != null &&
+        controller.value.isInitialized &&
+        !controller.value.isPlaying &&
+        controller.value.position >= controller.value.duration) {
+      _playNext();
+    }
+  }
+
+  // Replaces _initializeController
+  // Future<void> _initializeController(int index) async ... DELETED via replace
+
   void _playNext() async {
-    debugPrint(
-      "PreviewScreen: _playNext called. Current Index: $_currentFileIndex",
-    );
+    debugPrint("PreviewScreen: _playNext called. Current: $_currentFileIndex");
+
+    // Swap Next to Current
+    if (_videoController != null) {
+      _videoController!.removeListener(_videoListener);
+      await _videoController!.dispose();
+      _videoController = null;
+    }
+
     if (_currentFileIndex < widget.files.length - 1) {
       _currentFileIndex++;
-      await _videoController?.dispose();
-      if (!mounted) return;
-      _initializeController(_currentFileIndex);
     } else {
-      debugPrint("PreviewScreen: Reached end of playlist. Looping.");
-      // Loop back to start
       _currentFileIndex = 0;
-      await _videoController?.dispose();
-
-      // Reset music position if looping video sequence?
+      // Reset Music Loop
       if (_musicPlayer != null) {
         await _musicPlayer?.seek(Duration.zero);
         if (!_isMusicMuted) _musicPlayer?.play();
       }
+    }
 
-      if (!mounted) return;
-      _initializeController(0);
+    // Use Pre-loaded
+    if (_nextVideoController != null &&
+        _nextVideoController!.value.isInitialized) {
+      _videoController = _nextVideoController;
+      _nextVideoController = null;
+      _videoController!.addListener(_videoListener);
+      // Play immediately
+      await _videoController!.play();
+      if (mounted) setState(() {});
+
+      // Trigger pre-load for the one AFTER this new one
+      if (widget.files.length > 1) {
+        int nextNextIndex = _currentFileIndex + 1;
+        if (nextNextIndex >= widget.files.length) nextNextIndex = 0;
+        _preloadNext(nextNextIndex);
+      }
+    } else {
+      // Fallback if pre-load failed or wasn't ready
+      _loadCurrentAndNext(_currentFileIndex);
     }
   }
 
   @override
   void dispose() {
     _videoController?.dispose();
+    _nextVideoController?.dispose();
     _musicPlayer?.dispose();
     super.dispose();
   }
