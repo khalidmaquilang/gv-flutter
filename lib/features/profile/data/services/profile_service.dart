@@ -1,17 +1,24 @@
-import 'package:dio/dio.dart';
+import '../../../../core/network/api_client.dart';
 import '../../../../core/constants/api_constants.dart';
 import '../../../auth/data/models/user_model.dart';
+import '../models/profile_video_model.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class ProfileService {
-  final Dio _dio;
+  final ApiClient _apiClient;
+  final _storage = const FlutterSecureStorage();
 
-  ProfileService({Dio? dio}) : _dio = dio ?? Dio();
+  ProfileService({ApiClient? apiClient})
+    : _apiClient = apiClient ?? ApiClient();
 
   Future<User> getProfile(String userId) async {
     try {
-      final response = await _dio.get(
-        '${ApiConstants.baseUrl}${ApiConstants.user}/$userId',
-      );
+      final token = await _storage.read(key: 'auth_token');
+      if (token != null) {
+        _apiClient.setToken(token);
+      }
+
+      final response = await _apiClient.get('${ApiConstants.user}/$userId');
       return User.fromJson(response.data);
     } catch (e) {
       // Mock data
@@ -34,5 +41,25 @@ class ProfileService {
   Future<void> followUser(String userId) async {
     await Future.delayed(const Duration(milliseconds: 500));
     // API Call to follow
+  }
+
+  Future<List<ProfileVideo>> getMyVideos({int page = 1}) async {
+    try {
+      final token = await _storage.read(key: 'auth_token');
+      if (token != null) {
+        _apiClient.setToken(token);
+      }
+
+      final response = await _apiClient.get(
+        ApiConstants.myVideos,
+        queryParameters: {'page': page},
+      );
+
+      final data = response.data['data']['data'] as List;
+      return data.map((json) => ProfileVideo.fromJson(json)).toList();
+    } catch (e) {
+      // Return empty list on error for now
+      return [];
+    }
   }
 }
