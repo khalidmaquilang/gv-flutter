@@ -15,20 +15,25 @@ class _SoundSelectionScreenState extends State<SoundSelectionScreen> {
   final SoundService _soundService = SoundService();
   final AudioPlayer _audioPlayer = AudioPlayer();
 
+  final ScrollController _scrollController = ScrollController();
   List<Sound> _sounds = [];
   bool _isLoading = true;
+  bool _isMoreLoading = false;
+  int _currentPage = 1;
+  bool _hasMore = true;
   String _searchQuery = "";
-  String? _playingSoundId;
+  String? _playingUrl;
 
   @override
   void initState() {
     super.initState();
     _loadSounds();
+    _scrollController.addListener(_onScroll);
 
     _audioPlayer.onPlayerComplete.listen((event) {
       if (mounted) {
         setState(() {
-          _playingSoundId = null;
+          _playingUrl = null;
         });
       }
     });
@@ -37,63 +42,118 @@ class _SoundSelectionScreenState extends State<SoundSelectionScreen> {
   @override
   void dispose() {
     _audioPlayer.dispose();
+    _scrollController.dispose();
     super.dispose();
+  }
+
+  void _onScroll() {
+    if (_scrollController.position.pixels >=
+            _scrollController.position.maxScrollExtent - 200 &&
+        !_isLoading &&
+        !_isMoreLoading &&
+        _hasMore) {
+      _loadMoreSounds();
+    }
   }
 
   Future<void> _loadSounds() async {
     setState(() {
       _isLoading = true;
+      _currentPage = 1;
+      _hasMore = true;
+      _sounds = [];
     });
 
-    final sounds = await _soundService.searchSounds(_searchQuery);
+    final sounds = await _soundService.getSounds(
+      page: _currentPage,
+      query: _searchQuery,
+    );
 
     if (mounted) {
       setState(() {
         _sounds = sounds;
         _isLoading = false;
+        if (sounds.isEmpty) _hasMore = false;
+      });
+    }
+  }
+
+  Future<void> _loadMoreSounds() async {
+    setState(() {
+      _isMoreLoading = true;
+    });
+
+    final nextPage = _currentPage + 1;
+    final sounds = await _soundService.getSounds(
+      page: nextPage,
+      query: _searchQuery,
+    );
+
+    if (mounted) {
+      setState(() {
+        if (sounds.isEmpty) {
+          _hasMore = false;
+        } else {
+          _sounds.addAll(sounds);
+          _currentPage = nextPage;
+        }
+        _isMoreLoading = false;
       });
     }
   }
 
   void _onSearchChanged(String query) {
+    if (_searchQuery == query) return;
+
+    // Stop playing music when search changes
+    _audioPlayer.stop();
+
     setState(() {
       _searchQuery = query;
+      _playingUrl = null;
     });
     // Debounce could be added here
     _loadSounds();
   }
 
   Future<void> _togglePreview(Sound sound) async {
-    if (_playingSoundId == sound.id) {
-      await _audioPlayer.stop();
-      setState(() {
-        _playingSoundId = null;
-      });
-    } else {
-      await _audioPlayer.stop();
-      // For dummy assets, ensure they are in pubspec or handle error
-      // Assuming assets for now based on service
-      if (sound.url.isNotEmpty) {
-        // If it's an asset
-        if (sound.url.startsWith('assets/')) {
-          // Remove 'assets/' prefix if AudioPlayer default needs it,
-          // typically AssetSource takes path relative to assets or full depending on config.
-          // AudioPlayer AssetSource needs prefix removed? No, usually "sounds/beep.wav" if in assets/sounds
-          // Let's assume the service returns full path "assets/sounds/..."
-          // AssetSource expects path inside asset bundle.
-          String assetPath = sound.url;
-          if (assetPath.startsWith('assets/')) {
-            assetPath = assetPath.substring(7); // remove 'assets/'
-          }
-          await _audioPlayer.play(AssetSource(assetPath));
-        } else {
-          await _audioPlayer.play(UrlSource(sound.url));
-        }
-
+    try {
+      if (_playingUrl == sound.url) {
+        await _audioPlayer.stop();
         setState(() {
-          _playingSoundId = sound.id;
+          _playingUrl = null;
         });
+      } else {
+        await _audioPlayer.stop();
+
+        if (sound.url.isNotEmpty) {
+          // Verify URL validity
+          final uri = Uri.tryParse(sound.url);
+          if (uri == null || !uri.hasAbsolutePath) {
+            print("Invalid sound URL: ${sound.url}");
+            return;
+          }
+
+          // Use setSourceUrl + resume for better reliability
+          await _audioPlayer.setSourceUrl(sound.url);
+          await _audioPlayer.resume();
+
+          setState(() {
+            _playingUrl = sound.url;
+          });
+        }
       }
+    } catch (e) {
+      print("Error toggling preview for ${sound.title}: $e");
+      // Optionally show a snackbar or toast
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text("Failed to play preview: $e")));
+      }
+      setState(() {
+        _playingUrl = null;
+      });
     }
   }
 
@@ -156,10 +216,21 @@ class _SoundSelectionScreenState extends State<SoundSelectionScreen> {
                     ),
                   )
                 : ListView.builder(
-                    itemCount: _sounds.length,
+                    controller: _scrollController,
+                    itemCount: _sounds.length + (_isMoreLoading ? 1 : 0),
                     itemBuilder: (context, index) {
+                      if (index == _sounds.length) {
+                        return const Center(
+                          child: Padding(
+                            padding: EdgeInsets.all(16.0),
+                            child: CircularProgressIndicator(
+                              color: AppColors.neonPink,
+                            ),
+                          ),
+                        );
+                      }
                       final sound = _sounds[index];
-                      final isPlaying = _playingSoundId == sound.id;
+                      final isPlaying = _playingUrl == sound.url;
 
                       return ListTile(
                         leading: GestureDetector(
@@ -168,11 +239,8 @@ class _SoundSelectionScreenState extends State<SoundSelectionScreen> {
                             width: 50,
                             height: 50,
                             decoration: BoxDecoration(
+                              color: Colors.grey[800], // Plain color
                               borderRadius: BorderRadius.circular(4),
-                              image: DecorationImage(
-                                image: NetworkImage(sound.coverUrl),
-                                fit: BoxFit.cover,
-                              ),
                             ),
                             child: Center(
                               child: Icon(
