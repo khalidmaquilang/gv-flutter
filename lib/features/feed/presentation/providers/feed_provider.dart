@@ -3,7 +3,12 @@ import '../../data/models/video_model.dart';
 import '../../data/services/video_service.dart';
 import '../../../auth/data/models/user_model.dart';
 
-final videoServiceProvider = Provider((ref) => VideoService());
+import '../../../../core/providers/api_provider.dart';
+
+final videoServiceProvider = Provider((ref) {
+  final apiClient = ref.watch(apiClientProvider);
+  return VideoService(apiClient: apiClient);
+});
 
 final feedProvider = FutureProvider<List<Video>>((ref) async {
   final service = ref.read(videoServiceProvider);

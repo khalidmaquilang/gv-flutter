@@ -2,7 +2,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/models/user_model.dart';
 import '../../data/services/auth_service.dart';
 
-final authServiceProvider = Provider((ref) => AuthService());
+import '../../../../core/providers/api_provider.dart';
+
+final authServiceProvider = Provider((ref) {
+  final apiClient = ref.watch(apiClientProvider);
+  return AuthService(apiClient: apiClient);
+});
 
 final authControllerProvider =
     StateNotifierProvider<AuthController, AsyncValue<User?>>((ref) {

@@ -10,6 +10,7 @@ class ApiConstants {
 
   // Feed
   static const String videos = '/videos';
+  static const String createPost = '/videos';
   static const String musics = '/musics';
   static const String myVideos = '/my-videos';
 

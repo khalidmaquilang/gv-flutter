@@ -37,7 +37,7 @@ class CreatePostScreen extends ConsumerStatefulWidget {
 class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
   final TextEditingController _titleController = TextEditingController();
   final TextEditingController _descriptionController = TextEditingController();
-  String _privacy = 'Public'; // Public, Friends, Private
+  String _privacy = 'public'; // public, friends, private
   bool _allowComments = true;
 
   // For additional photos
@@ -45,7 +45,7 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
 
   VideoPlayerController? _videoController;
 
-  bool _isPosting = false;
+  // bool _isPosting = false; // Removed in favor of provider
   // bool _isVideoInitError = false; // logic changed, removed
   String? _previewThumbnail;
 
@@ -238,9 +238,8 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
 
     // Generate thumbnail if it's a video
     if (widget.isVideo) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text("Preparing upload...")));
+      // Don't show snackbar here, let provider handle loading state UI
+      // ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Preparing upload...")));
 
       final tempDir = await getTemporaryDirectory();
       coverPath = await VideoThumbnail.thumbnailFile(
@@ -255,18 +254,79 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
       coverPath = path;
     }
 
+    if (coverPath == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Failed to generate thumbnail")),
+      );
+      return;
+    }
+
     if (!mounted) return;
 
-    ref
+    await ref
         .read(uploadProvider.notifier)
-        .startUpload(path, caption, coverPath: coverPath);
+        .startUpload(
+          path,
+          caption,
+          coverPath: coverPath,
+          privacy: _privacy,
+          allowComments: _allowComments,
+          musicId: widget.sound?.id,
+        );
 
-    // Navigate back to feed immediately
-    Navigator.of(context).popUntil((route) => route.isFirst);
+    if (!mounted) return;
+
+    final uploadState = ref.read(uploadProvider);
+
+    if (uploadState.error != null) {
+      // Show error
+      String message = uploadState.error!;
+      if (uploadState.validationErrors != null) {
+        // Format validation errors nicely for user
+        final List<String> errorMessages = [];
+
+        uploadState.validationErrors!.forEach((key, value) {
+          if (value is List) {
+            for (var item in value) {
+              errorMessages.add(item.toString());
+            }
+          } else {
+            errorMessages.add(value.toString());
+          }
+        });
+
+        if (errorMessages.isNotEmpty) {
+          message = errorMessages.join('\n');
+        } else {
+          // Fallback if structure is unexpected
+          message = uploadState.validationErrors!.entries
+              .map((e) => "${e.key}: ${e.value}")
+              .join('\n');
+        }
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 4),
+        ),
+      );
+    } else {
+      // Success
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text("Posted successfully!")));
+      Navigator.of(context).popUntil((route) => route.isFirst);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    final uploadState = ref.watch(uploadProvider);
+    final isUploading = uploadState.isUploading;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text("New Post"),
@@ -349,7 +409,7 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
           ),
 
           // Bottom Actions
-          _buildBottomActions(),
+          _buildBottomActions(isUploading),
         ],
       ),
     );
@@ -565,11 +625,11 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
               onChanged: (val) {
                 if (val != null) setState(() => _privacy = val);
               },
-              items: [
-                "Public",
-                "Friends",
-                "Private",
-              ].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
+              items: const [
+                DropdownMenuItem(value: 'public', child: Text('Public')),
+                DropdownMenuItem(value: 'friends', child: Text('Friends')),
+                DropdownMenuItem(value: 'private', child: Text('Private')),
+              ],
             ),
           ),
         ),
@@ -577,7 +637,7 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
     );
   }
 
-  Widget _buildBottomActions() {
+  Widget _buildBottomActions(bool isUploading) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -591,7 +651,7 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
             // Drafts Button
             Expanded(
               child: OutlinedButton(
-                onPressed: _onSaveDraft,
+                onPressed: isUploading ? null : _onSaveDraft,
                 style: OutlinedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   side: const BorderSide(color: Colors.white24),
@@ -609,7 +669,7 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
             // Post Button
             Expanded(
               child: ElevatedButton(
-                onPressed: _isPosting ? null : _onPost,
+                onPressed: isUploading ? null : _onPost,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.neonPink,
                   padding: const EdgeInsets.symmetric(vertical: 16),
@@ -617,7 +677,7 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
                     borderRadius: BorderRadius.circular(8),
                   ),
                 ),
-                child: _isPosting
+                child: isUploading
                     ? const SizedBox(
                         width: 20,
                         height: 20,

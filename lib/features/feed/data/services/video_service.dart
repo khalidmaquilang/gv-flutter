@@ -1,17 +1,18 @@
 import 'package:dio/dio.dart';
+import '../../../../core/network/api_client.dart';
 import '../../../../core/constants/api_constants.dart';
 import '../../../auth/data/models/user_model.dart';
 import '../models/comment_model.dart';
 import '../models/video_model.dart';
 
 class VideoService {
-  final Dio _dio;
+  final ApiClient _apiClient;
 
-  VideoService({Dio? dio}) : _dio = dio ?? Dio();
+  VideoService({ApiClient? apiClient}) : _apiClient = apiClient ?? ApiClient();
 
   Future<List<Video>> getFeed() async {
     try {
-      final _ = await _dio.get(ApiConstants.baseUrl + ApiConstants.videos);
+      final _ = await _apiClient.get(ApiConstants.videos);
 
       // Mock data if 404/error for demo
       // return (response.data as List).map((e) => Video.fromJson(e)).toList();
@@ -26,7 +27,7 @@ class VideoService {
 
   Future<bool> likeVideo(String videoId) async {
     try {
-      await _dio.post('${ApiConstants.baseUrl}/videos/$videoId/like');
+      await _apiClient.post('/videos/$videoId/like');
       return true;
     } catch (e) {
       return false;
@@ -35,7 +36,7 @@ class VideoService {
 
   Future<bool> unlikeVideo(String videoId) async {
     try {
-      await _dio.post('${ApiConstants.baseUrl}/videos/$videoId/unlike');
+      await _apiClient.post('/videos/$videoId/unlike');
       return true;
     } catch (e) {
       return false;
@@ -80,31 +81,42 @@ class VideoService {
   // In-memory storage for uploaded videos
   static final List<Video> _uploadedVideos = [];
 
-  Future<bool> uploadVideo(String path, String caption) async {
+  Future<bool> uploadVideo({
+    required String videoPath,
+    required String thumbnailPath,
+    required String description,
+    required String privacy,
+    required bool allowComments,
+    int? musicId,
+  }) async {
     try {
-      // simulate network delay
-      await Future.delayed(const Duration(seconds: 2));
+      String fileName = videoPath.split('/').last;
+      String thumbName = thumbnailPath.split('/').last;
 
-      final newVideo = Video(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
-        videoUrl: path, // Local file path for now
-        thumbnailUrl: "https://dummyimage.com/150",
-        caption: caption,
-        likesCount: 0,
-        commentsCount: 0,
-        isLiked: false,
-        user: User(
-          id: "1", // Mock current user
-          name: "You",
-          email: "you@test.com",
-          avatar: "https://dummyimage.com/50",
+      FormData formData = FormData.fromMap({
+        "video": await MultipartFile.fromFile(videoPath, filename: fileName),
+        "thumbnail": await MultipartFile.fromFile(
+          thumbnailPath,
+          filename: thumbName,
         ),
+        "description": description,
+        "privacy": privacy,
+        "allow_comments": allowComments ? 1 : 0,
+        if (musicId != null) "music_id": musicId,
+      });
+
+      final response = await _apiClient.post(
+        ApiConstants.createPost,
+        data: formData,
+        options: Options(headers: {"Content-Type": "multipart/form-data"}),
       );
 
-      _uploadedVideos.insert(0, newVideo); // Add to top
-      return true;
-    } catch (e) {
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return true;
+      }
       return false;
+    } catch (e) {
+      rethrow;
     }
   }
 
