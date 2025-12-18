@@ -23,9 +23,10 @@ class ProfileService {
     } catch (e) {
       // Mock data
       return User(
-        id: userId,
-        name: "User $userId",
-        email: "user$userId@example.com",
+        id: "019b26fa-9bcd-73f8-9890-b85b6f8f7b64",
+        name: "Test User",
+        username: "test",
+        email: "aa@aa.com",
         avatar: "https://dummyimage.com/150",
         bio: "TikTok Clone User\nFollow me!",
       );

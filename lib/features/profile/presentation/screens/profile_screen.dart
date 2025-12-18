@@ -148,7 +148,18 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final userAsync = ref.watch(userProfileProvider(widget.userId));
+    final AsyncValue<User> userAsync;
+    if (widget.isCurrentUser) {
+      final authState = ref.watch(authControllerProvider);
+      userAsync = authState.when(
+        data: (user) =>
+            user != null ? AsyncValue.data(user) : const AsyncValue.loading(),
+        loading: () => const AsyncValue.loading(),
+        error: (e, st) => AsyncValue.error(e, st),
+      );
+    } else {
+      userAsync = ref.watch(userProfileProvider(widget.userId));
+    }
     final statsAsync = ref.watch(userStatsProvider(widget.userId));
     final draftsAsync = ref.watch(draftsProvider);
     final hasDrafts = draftsAsync.valueOrNull?.isNotEmpty ?? false;
