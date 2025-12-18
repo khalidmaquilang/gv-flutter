@@ -13,6 +13,7 @@ import 'package:uuid/uuid.dart';
 import '../providers/upload_provider.dart';
 import '../providers/drafts_provider.dart';
 import '../../data/models/draft_model.dart';
+import '../../../profile/presentation/screens/profile_screen.dart';
 
 class CreatePostScreen extends ConsumerStatefulWidget {
   final List<XFile> files;
@@ -315,6 +316,9 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
       );
     } else {
       // Success
+      ref.invalidate(
+        profileVideosProvider,
+      ); // specific provider to refresh profile videos
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text("Posted successfully!")));
