@@ -58,6 +58,7 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
   double _currentSegmentProgress = 0.0;
   int _maxDuration = 15;
   bool isPaused = false;
+  bool _isProcessing = false;
 
   // New State for Side Menu
   FlashState _flashMode = FlashState.off;
@@ -331,43 +332,55 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
     debugPrint("Recorder: Pausing... Stopping current segment (DeepAR).");
     if (_deepArController == null) return;
 
-    // stopVideoRecording returns File? in Plus?
-    // Docs say: stopVideoRecording()
-    // It might return void and we rely on 'startVideoRecording' returning the future file?
-    // Wait, docs said:
-    // final File videoFile = _controller.startVideoRecording();
-    // This is weird for a START method.
-    // Usually standard DeepAR plugin: start is void. Stop returns string/file.
-    // I will use `await _deepArController!.stopVideoRecording();` and check return type.
-    // If it returns void, I assume the start call gave me the file path?
-    // But how can start give file path before recording?
-    // I'll stick to `stopVideoRecording` returning File or String.
-    // If usage fails, I'll debug.
-
-    final dynamic result = await _deepArController!.stopVideoRecording();
-    File? file;
-    if (result is File) {
-      file = result;
-    } else if (result is String) {
-      file = File(result);
-    }
-
-    // Pause Music
-    await _audioPlayer.pause();
-
-    if (!mounted) return;
+    // Optimistic UI Update: Immediately show "Paused" state
     setState(() {
-      if (file != null) {
-        debugPrint("Recorder: Segment saved. Path: ${file.path}");
-        _recordedFiles.add(XFile(file.path));
-        _segments.add(_currentSegmentProgress);
-      } else {
-        debugPrint("Recorder: Stop returned NULL file!");
-      }
-      _currentSegmentProgress = 0.0;
-      isPaused = true;
       isRecording = false;
+      isPaused = true;
+      _isProcessing = true; // Block further actions until save completes
     });
+
+    try {
+      // Stop Audio IMMEDIATELY so user doesn't hear it continuing during save
+      await _audioPlayer.pause();
+
+      // Background: Stop recording and save file
+      final dynamic result = await _deepArController!.stopVideoRecording();
+
+      // Pause Music concurrently or after
+      // await _audioPlayer.pause(); // Moved up
+
+      File? file;
+      if (result is File) {
+        file = result;
+      } else if (result is String) {
+        file = File(result);
+      }
+
+      if (!mounted) return;
+
+      setState(() {
+        if (file != null) {
+          debugPrint("Recorder: Segment saved. Path: ${file.path}");
+          _recordedFiles.add(XFile(file.path));
+          _segments.add(_currentSegmentProgress);
+        } else {
+          debugPrint("Recorder: Stop returned NULL file!");
+          // If save failed, we might want to revert UI??
+          // For now, let's keep it paused but with no new segment added,
+          // or we could show error.
+        }
+        _currentSegmentProgress = 0.0;
+        _isProcessing = false; // Re-enable actions
+      });
+    } catch (e) {
+      debugPrint("Error pausing recording: $e");
+      if (mounted) {
+        setState(() {
+          _isProcessing = false;
+          // Optionally revert state if critical failure
+        });
+      }
+    }
   }
 
   void _resumeTimer() async {
@@ -433,10 +446,16 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
   }
 
   void _discardLastSegment() async {
-    if (_recordedFiles.isEmpty) return;
+    if (_recordedFiles.isEmpty || _isProcessing) return;
 
     debugPrint("Recorder: Discarding last segment.");
+
+    final lastFile = File(_recordedFiles.last.path);
+    // final lastSegmentProgress = _segments.isNotEmpty ? _segments.last : 0.0; // Unused
+
+    // Optimistic UI Update first
     setState(() {
+      _isProcessing = true;
       _recordedFiles.removeLast();
       if (_segments.isNotEmpty) {
         _segments.removeLast();
@@ -447,6 +466,31 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
         _currentSegmentProgress = 0.0;
       }
     });
+
+    try {
+      // Delete file in background
+      if (await lastFile.exists()) {
+        await lastFile.delete();
+        debugPrint("Recorder: Deleted segment file: ${lastFile.path}");
+      }
+
+      // Reset audio position to new end
+      if (_selectedSound != null && _recordedFiles.isNotEmpty) {
+        double totalProgress = _segments.fold(0.0, (sum, seg) => sum + seg);
+        int seekMillis = (totalProgress * _maxDuration * 1000).toInt();
+        await _audioPlayer.seek(Duration(milliseconds: seekMillis));
+      } else if (_selectedSound != null && _recordedFiles.isEmpty) {
+        await _audioPlayer.seek(Duration.zero);
+      }
+    } catch (e) {
+      debugPrint("Error discarding segment: $e");
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isProcessing = false;
+        });
+      }
+    }
   }
 
   Future<void> _finishRecording() async {
@@ -545,6 +589,7 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
   }
 
   void _recordVideo() async {
+    if (_isProcessing) return;
     if (_deepArController == null || !_isDeepArInitialized) return;
 
     // Photo Mode
@@ -1078,7 +1123,7 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
                                   width: 80,
                                   child: CustomPaint(
                                     painter: SegmentedRingPainter(
-                                      segments: _segments,
+                                      segments: List.from(_segments),
                                       currentProgress: _currentSegmentProgress,
                                       color:
                                           AppColors.neonPink, // Pink Progress
