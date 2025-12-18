@@ -1,18 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:test_flutter/core/theme/app_theme.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/models/sound_model.dart';
-import '../../data/services/sound_service.dart';
+// import '../../data/services/sound_service.dart'; // No longer needed directly
+import '../providers/sound_provider.dart';
 
-class SoundSelectionScreen extends StatefulWidget {
+class SoundSelectionScreen extends ConsumerStatefulWidget {
   const SoundSelectionScreen({super.key});
 
   @override
-  State<SoundSelectionScreen> createState() => _SoundSelectionScreenState();
+  ConsumerState<SoundSelectionScreen> createState() =>
+      _SoundSelectionScreenState();
 }
 
-class _SoundSelectionScreenState extends State<SoundSelectionScreen> {
-  final SoundService _soundService = SoundService();
+class _SoundSelectionScreenState extends ConsumerState<SoundSelectionScreen> {
   final AudioPlayer _audioPlayer = AudioPlayer();
 
   final ScrollController _scrollController = ScrollController();
@@ -64,17 +66,26 @@ class _SoundSelectionScreenState extends State<SoundSelectionScreen> {
       _sounds = [];
     });
 
-    final sounds = await _soundService.getSounds(
-      page: _currentPage,
-      query: _searchQuery,
-    );
+    try {
+      final sounds = await ref
+          .read(soundServiceProvider)
+          .getSounds(page: _currentPage, query: _searchQuery);
 
-    if (mounted) {
-      setState(() {
-        _sounds = sounds;
-        _isLoading = false;
-        if (sounds.isEmpty) _hasMore = false;
-      });
+      if (mounted) {
+        setState(() {
+          _sounds = sounds;
+          _isLoading = false;
+          if (sounds.isEmpty) _hasMore = false;
+        });
+      }
+    } catch (e) {
+      debugPrint("Error loading sounds: $e");
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _hasMore = false;
+        });
+      }
     }
   }
 
@@ -84,21 +95,29 @@ class _SoundSelectionScreenState extends State<SoundSelectionScreen> {
     });
 
     final nextPage = _currentPage + 1;
-    final sounds = await _soundService.getSounds(
-      page: nextPage,
-      query: _searchQuery,
-    );
+    try {
+      final sounds = await ref
+          .read(soundServiceProvider)
+          .getSounds(page: nextPage, query: _searchQuery);
 
-    if (mounted) {
-      setState(() {
-        if (sounds.isEmpty) {
-          _hasMore = false;
-        } else {
-          _sounds.addAll(sounds);
-          _currentPage = nextPage;
-        }
-        _isMoreLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          if (sounds.isEmpty) {
+            _hasMore = false;
+          } else {
+            _sounds.addAll(sounds);
+            _currentPage = nextPage;
+          }
+          _isMoreLoading = false;
+        });
+      }
+    } catch (e) {
+      debugPrint("Error loading more sounds: $e");
+      if (mounted) {
+        setState(() {
+          _isMoreLoading = false;
+        });
+      }
     }
   }
 

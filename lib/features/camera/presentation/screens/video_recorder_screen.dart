@@ -581,6 +581,7 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
           ),
         ),
       );
+      if (soundToPass != null) {}
     } else {
       ScaffoldMessenger.of(
         context,

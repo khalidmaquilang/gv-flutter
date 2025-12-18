@@ -3,7 +3,9 @@ import 'package:test_flutter/core/network/api_client.dart';
 import 'package:test_flutter/features/camera/data/models/sound_model.dart';
 
 class SoundService {
-  final ApiClient _apiClient = ApiClient();
+  final ApiClient _apiClient;
+
+  SoundService({ApiClient? apiClient}) : _apiClient = apiClient ?? ApiClient();
 
   Future<List<Sound>> getSounds({int page = 1, String? query}) async {
     try {

@@ -1,6 +1,5 @@
 class Sound {
-  final int
-  id; // Changed to int as typically API IDs are ints, but could be String. User said "we need id".
+  final String id; // Changed to String to match UUID from API
   final String title;
   final String author;
   final String url;
@@ -42,7 +41,7 @@ class Sound {
     }
 
     return Sound(
-      id: json['id'] ?? 0, // Default to 0 if missing, need to handle carefully
+      id: json['id'] ?? '0',
       title: json['name'] ?? 'Unknown Title',
       author: json['artist'] ?? 'Unknown Artist',
       url: json['path'] ?? '',

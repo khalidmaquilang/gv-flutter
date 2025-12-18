@@ -46,7 +46,7 @@ class UploadNotifier extends StateNotifier<UploadState> {
     required String coverPath,
     required String privacy,
     required bool allowComments,
-    int? musicId,
+    String? musicId,
   }) async {
     state = state.copyWith(
       isUploading: true,

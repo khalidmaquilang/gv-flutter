@@ -87,7 +87,7 @@ class VideoService {
     required String description,
     required String privacy,
     required bool allowComments,
-    int? musicId,
+    String? musicId,
   }) async {
     try {
       String fileName = videoPath.split('/').last;
