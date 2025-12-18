@@ -11,7 +11,7 @@ final feedProvider = FutureProvider<List<Video>>((ref) async {
 
   // Dummy Video for Zoom Testing
   final dummyVideo = Video(
-    id: 99999, // int
+    id: "99999", // String
     user: User(id: "1", name: 'TestUser', email: 'test@test.com'),
     videoUrl:
         'https://flutter.github.io/assets-for-api-docs/assets/videos/butterfly.mp4',

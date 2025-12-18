@@ -24,7 +24,7 @@ class VideoService {
     }
   }
 
-  Future<bool> likeVideo(int videoId) async {
+  Future<bool> likeVideo(String videoId) async {
     try {
       await _dio.post('${ApiConstants.baseUrl}/videos/$videoId/like');
       return true;
@@ -33,7 +33,7 @@ class VideoService {
     }
   }
 
-  Future<bool> unlikeVideo(int videoId) async {
+  Future<bool> unlikeVideo(String videoId) async {
     try {
       await _dio.post('${ApiConstants.baseUrl}/videos/$videoId/unlike');
       return true;
@@ -42,13 +42,13 @@ class VideoService {
     }
   }
 
-  Future<List<Comment>> getComments(int videoId) async {
+  Future<List<Comment>> getComments(String videoId) async {
     // Mock comments
     await Future.delayed(const Duration(milliseconds: 500));
     return List.generate(
       10,
       (index) => Comment(
-        id: index,
+        id: index.toString(),
         user: User(
           id: index.toString(),
           name: "User $index",
@@ -61,11 +61,11 @@ class VideoService {
     );
   }
 
-  Future<Comment> postComment(int videoId, String text) async {
+  Future<Comment> postComment(String videoId, String text) async {
     // Mock response
     await Future.delayed(const Duration(milliseconds: 500));
     return Comment(
-      id: 999,
+      id: "999",
       user: User(
         id: "1",
         name: "Me",
@@ -86,7 +86,7 @@ class VideoService {
       await Future.delayed(const Duration(seconds: 2));
 
       final newVideo = Video(
-        id: DateTime.now().millisecondsSinceEpoch,
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
         videoUrl: path, // Local file path for now
         thumbnailUrl: "https://dummyimage.com/150",
         caption: caption,
@@ -112,7 +112,7 @@ class VideoService {
     final mock = List.generate(
       5,
       (index) => Video(
-        id: index,
+        id: index.toString(),
         videoUrl:
             'https://flutter.github.io/assets-for-api-docs/assets/videos/bee.mp4',
         thumbnailUrl: 'https://dummyimage.com/150',

@@ -23,7 +23,10 @@ class VideoPlayerItem extends ConsumerStatefulWidget {
     required this.video,
     this.onInteractionStart,
     this.onInteractionEnd,
+    this.autoplay = false,
   });
+
+  final bool autoplay;
 
   @override
   ConsumerState<VideoPlayerItem> createState() => _VideoPlayerItemState();
@@ -40,6 +43,20 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
 
   bool _isUiVisible = true;
 
+  bool _hasError = false;
+
+  @override
+  void didUpdateWidget(VideoPlayerItem oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.autoplay != oldWidget.autoplay) {
+      if (widget.autoplay) {
+        _controller.play();
+      } else {
+        _controller.pause();
+      }
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -53,14 +70,21 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
                 if (!mounted) return;
                 setState(() {
                   _isLoading = false;
+                  _hasError = false;
                 });
-                if (ref.read(bottomNavIndexProvider) == 0 &&
-                    ref.read(isFeedAudioEnabledProvider)) {
+                if (widget.autoplay ||
+                    (ref.read(bottomNavIndexProvider) == 0 &&
+                        ref.read(isFeedAudioEnabledProvider))) {
                   _controller.play();
                 }
                 _controller.setLooping(true);
               })
               .catchError((error) {
+                if (!mounted) return;
+                setState(() {
+                  _isLoading = false;
+                  _hasError = true;
+                });
                 debugPrint("Video Error: $error");
               });
   }
@@ -79,8 +103,9 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
 
   @override
   void didPopNext() {
-    if (ref.read(bottomNavIndexProvider) == 0 &&
-        ref.read(isFeedAudioEnabledProvider)) {
+    if (widget.autoplay ||
+        (ref.read(bottomNavIndexProvider) == 0 &&
+            ref.read(isFeedAudioEnabledProvider))) {
       _controller.play();
     }
   }
@@ -125,7 +150,26 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
           child: Container(
             color: Colors.black,
             child: Center(
-              child: _isLoading
+              child: _hasError
+                  ? Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(
+                          Icons.error_outline,
+                          color: Colors.red,
+                          size: 40,
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          "Video format not supported",
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.8),
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    )
+                  : _isLoading
                   ? const CircularProgressIndicator()
                   : AspectRatio(
                       aspectRatio: _controller.value.aspectRatio,

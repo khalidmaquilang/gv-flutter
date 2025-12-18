@@ -1,7 +1,7 @@
 import '../../../auth/data/models/user_model.dart';
 
 class Video {
-  final int id;
+  final String id;
   final String videoUrl;
   final String thumbnailUrl;
   final String caption;
@@ -23,7 +23,7 @@ class Video {
 
   factory Video.fromJson(Map<String, dynamic> json) {
     return Video(
-      id: json['id'],
+      id: json['id'].toString(),
       videoUrl: json['video_url'],
       thumbnailUrl: json['thumbnail_url'],
       caption: json['caption'],

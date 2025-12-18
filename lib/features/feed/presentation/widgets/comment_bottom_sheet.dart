@@ -5,7 +5,7 @@ import '../../data/services/video_service.dart';
 import '../../data/models/comment_model.dart';
 
 class CommentBottomSheet extends ConsumerStatefulWidget {
-  final int videoId;
+  final String videoId;
 
   const CommentBottomSheet({super.key, required this.videoId});
 

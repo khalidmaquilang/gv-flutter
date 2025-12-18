@@ -13,6 +13,7 @@ import 'edit_profile_screen.dart';
 import 'package:test_flutter/features/feed/presentation/providers/drafts_provider.dart';
 import '../../data/models/profile_video_model.dart'; // Import Model
 import '../../../../features/feed/presentation/screens/drafts_screen.dart';
+import 'profile_feed_screen.dart';
 
 final profileServiceProvider = Provider((ref) => ProfileService());
 
@@ -473,40 +474,56 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                           final videoIndex = hasDrafts ? index - 1 : index;
                           final video = videos[videoIndex];
 
-                          return Container(
-                            decoration: BoxDecoration(
-                              color: Colors.grey[900],
-                              border: Border.all(
-                                color: Colors.white.withValues(alpha: 0.05),
-                              ),
-                              image: DecorationImage(
-                                image: NetworkImage(video.thumbnail),
-                                fit: BoxFit.cover,
-                              ),
-                            ),
-                            child: Stack(
-                              children: [
-                                Positioned(
-                                  bottom: 4,
-                                  left: 4,
-                                  child: Row(
-                                    children: [
-                                      const Icon(
-                                        Icons.play_arrow_outlined,
-                                        color: Colors.white,
-                                        size: 14,
-                                      ),
-                                      Text(
-                                        "${video.views}",
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 10,
-                                        ),
-                                      ),
-                                    ],
+                          return GestureDetector(
+                            onTap: () {
+                              userAsync.whenData((user) {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => ProfileFeedScreen(
+                                      videos: videos,
+                                      initialIndex: videoIndex,
+                                      user: user,
+                                    ),
                                   ),
+                                );
+                              });
+                            },
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color: Colors.grey[900],
+                                border: Border.all(
+                                  color: Colors.white.withValues(alpha: 0.05),
                                 ),
-                              ],
+                                image: DecorationImage(
+                                  image: NetworkImage(video.thumbnail),
+                                  fit: BoxFit.cover,
+                                ),
+                              ),
+                              child: Stack(
+                                children: [
+                                  Positioned(
+                                    bottom: 4,
+                                    left: 4,
+                                    child: Row(
+                                      children: [
+                                        const Icon(
+                                          Icons.play_arrow_outlined,
+                                          color: Colors.white,
+                                          size: 14,
+                                        ),
+                                        Text(
+                                          "${video.views}",
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 10,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                           );
                         },
