@@ -83,7 +83,6 @@ class VideoService {
 
   Future<bool> uploadVideo({
     required String videoPath,
-    required String thumbnailPath,
     required String description,
     required String privacy,
     required bool allowComments,
@@ -91,14 +90,9 @@ class VideoService {
   }) async {
     try {
       String fileName = videoPath.split('/').last;
-      String thumbName = thumbnailPath.split('/').last;
 
       FormData formData = FormData.fromMap({
         "video": await MultipartFile.fromFile(videoPath, filename: fileName),
-        "thumbnail": await MultipartFile.fromFile(
-          thumbnailPath,
-          filename: thumbName,
-        ),
         "description": description,
         "privacy": privacy,
         "allow_comments": allowComments ? 1 : 0,

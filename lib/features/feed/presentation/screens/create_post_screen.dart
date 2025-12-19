@@ -235,42 +235,11 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
         ? _descriptionController.text
         : "${_titleController.text}\n${_descriptionController.text}";
 
-    String? coverPath;
-
-    // Generate thumbnail if it's a video
-    if (widget.isVideo) {
-      // Don't show snackbar here, let provider handle loading state UI
-      // ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Preparing upload...")));
-
-      final tempDir = await getTemporaryDirectory();
-      coverPath = await VideoThumbnail.thumbnailFile(
-        video: path,
-        thumbnailPath: tempDir.path,
-        imageFormat: ImageFormat.JPEG,
-        maxHeight: 150, // smaller for notification
-        quality: 75,
-      );
-    } else {
-      // It's a photo, use the file itself
-      coverPath = path;
-    }
-
-    if (coverPath == null) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Failed to generate thumbnail")),
-      );
-      return;
-    }
-
-    if (!mounted) return;
-
     await ref
         .read(uploadProvider.notifier)
         .startUpload(
           path,
           caption,
-          coverPath: coverPath,
           privacy: _privacy,
           allowComments: _allowComments,
           musicId: widget.sound?.id,
@@ -316,13 +285,15 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
       );
     } else {
       // Success
-      ref.invalidate(
-        profileVideosProvider,
-      ); // specific provider to refresh profile videos
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text("Posted successfully!")));
-      Navigator.of(context).popUntil((route) => route.isFirst);
+      if (mounted) {
+        Navigator.of(context).pop(); // Close create screen
+        // refresh will happen in background or on next load
+        ref.read(profileVideosProvider.notifier).refresh();
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text("Posted successfully!")));
+        Navigator.of(context).popUntil((route) => route.isFirst);
+      }
     }
   }
 
@@ -345,9 +316,8 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // 1. Media Preview & Description row (For Video)
-                  // For Photo, we might keep separate if needed, but let's try to unify or adapt
                   if (widget.isVideo)
-                    _buildVideoAndDescription()
+                    _buildVideoAndDescription(enabled: !isUploading)
                   else ...[
                     _buildPhotoPreview(),
                     const SizedBox(height: 16),
@@ -359,6 +329,7 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
                     const SizedBox(height: 8),
                     TextField(
                       controller: _titleController,
+                      enabled: !isUploading,
                       style: const TextStyle(color: Colors.white),
                       decoration: InputDecoration(
                         hintText: "Enter a catchy title",
@@ -378,13 +349,13 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
                       style: TextStyle(color: Colors.white70),
                     ),
                     const SizedBox(height: 8),
-                    _buildDescriptionField(lines: 4),
+                    _buildDescriptionField(lines: 4, enabled: !isUploading),
                   ],
 
                   const SizedBox(height: 24),
 
                   // 3. Privacy
-                  _buildPrivacySelector(),
+                  _buildPrivacySelector(enabled: !isUploading),
 
                   const SizedBox(height: 24),
 
@@ -398,10 +369,13 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
                       ),
                       Switch(
                         value: _allowComments,
-                        onChanged: (val) =>
-                            setState(() => _allowComments = val),
+                        onChanged: isUploading
+                            ? null
+                            : (val) => setState(() => _allowComments = val),
                         activeColor: AppColors.neonPink,
-                        activeTrackColor: AppColors.neonPink.withOpacity(0.3),
+                        activeTrackColor: AppColors.neonPink.withValues(
+                          alpha: 0.3,
+                        ),
                         inactiveThumbColor: Colors.white54,
                         inactiveTrackColor: Colors.white10,
                       ),
@@ -419,7 +393,7 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
     );
   }
 
-  Widget _buildVideoAndDescription() {
+  Widget _buildVideoAndDescription({bool enabled = true}) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -446,35 +420,7 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
               else
                 const Center(child: CircularProgressIndicator()),
 
-              // Edit Cover Button Overlay
-              Positioned(
-                bottom: 0,
-                left: 0,
-                right: 0,
-                child: GestureDetector(
-                  onTap: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text("Edit Cover feature coming soon!"),
-                      ),
-                    );
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.7),
-                      borderRadius: const BorderRadius.vertical(
-                        bottom: Radius.circular(12),
-                      ),
-                    ),
-                    child: const Text(
-                      "Edit Cover",
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: Colors.white, fontSize: 10),
-                    ),
-                  ),
-                ),
-              ),
+              // Edit Cover Button Overlay Removed
             ],
           ),
         ),
@@ -487,6 +433,7 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
             child: _buildDescriptionField(
               lines: 6,
               hint: "Describe your video...",
+              enabled: enabled,
             ),
           ),
         ),
@@ -497,11 +444,13 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
   Widget _buildDescriptionField({
     int lines = 4,
     String hint = "What's on your mind?",
+    bool enabled = true,
   }) {
     return TextField(
       controller: _descriptionController,
       style: const TextStyle(color: Colors.white),
       maxLines: lines,
+      enabled: enabled,
       textInputAction: TextInputAction.done,
       inputFormatters: [FilteringTextInputFormatter.deny(RegExp(r'\n'))],
       decoration: InputDecoration(
@@ -604,7 +553,7 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
     );
   }
 
-  Widget _buildPrivacySelector() {
+  Widget _buildPrivacySelector({bool enabled = true}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -624,11 +573,16 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
               value: _privacy,
               dropdownColor: const Color(0xFF1E1E1E),
               isExpanded: true,
-              icon: const Icon(Icons.arrow_drop_down, color: Colors.white70),
-              style: const TextStyle(color: Colors.white),
-              onChanged: (val) {
-                if (val != null) setState(() => _privacy = val);
-              },
+              icon: Icon(
+                Icons.arrow_drop_down,
+                color: enabled ? Colors.white70 : Colors.white30,
+              ),
+              style: TextStyle(color: enabled ? Colors.white : Colors.white30),
+              onChanged: enabled
+                  ? (val) {
+                      if (val != null) setState(() => _privacy = val);
+                    }
+                  : null,
               items: const [
                 DropdownMenuItem(value: 'public', child: Text('Public')),
                 DropdownMenuItem(value: 'friends', child: Text('Friends')),

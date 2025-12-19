@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'dart:io';
 
 import '../../../auth/data/models/user_model.dart';
 import 'package:test_flutter/core/theme/app_theme.dart';
@@ -40,6 +41,9 @@ class ProfileVideosState {
     );
   }
 
+  // Combined list for UI
+  List<ProfileVideo> get allVideos => videos;
+
   ProfileVideosState copyWith({
     List<ProfileVideo>? videos,
     int? page,
@@ -79,6 +83,26 @@ class ProfileVideosNotifier extends StateNotifier<ProfileVideosState> {
           isLoading: false,
         );
       }
+    } catch (e) {
+      state = state.copyWith(isLoading: false);
+    }
+  }
+
+  Future<void> refresh() async {
+    // Keep processing videos, or clear them?
+    // If upload is done, they should come from API.
+    // Let's assume refresh means "sync with server", so clear processing.
+
+    state = ProfileVideosState.initial().copyWith(isLoading: true);
+
+    try {
+      final newVideos = await _service.getMyVideos(page: 1);
+      state = state.copyWith(
+        videos: newVideos,
+        page: 2,
+        isLoading: false,
+        hasMore: newVideos.isNotEmpty,
+      );
     } catch (e) {
       state = state.copyWith(isLoading: false);
     }
@@ -131,6 +155,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   void initState() {
     super.initState();
     _scrollController.addListener(_onScroll);
+    Future.microtask(() => ref.read(profileVideosProvider.notifier).refresh());
   }
 
   @override
@@ -166,7 +191,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     final draftsCount = draftsAsync.valueOrNull?.length ?? 0;
 
     final videosState = ref.watch(profileVideosProvider);
-    final videos = videosState.videos;
+    final videos = videosState.allVideos;
 
     // Logic for grid items
     final gridItemCount = (hasDrafts ? 1 : 0) + videos.length;
@@ -507,29 +532,69 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                                   color: Colors.white.withValues(alpha: 0.05),
                                 ),
                                 image: DecorationImage(
-                                  image: NetworkImage(video.thumbnail),
+                                  image: video.isProcessing
+                                      ? FileImage(File(video.videoPath))
+                                      : NetworkImage(video.thumbnail)
+                                            as ImageProvider,
                                   fit: BoxFit.cover,
                                 ),
                               ),
                               child: Stack(
                                 children: [
-                                  Positioned(
-                                    bottom: 4,
-                                    left: 4,
-                                    child: Row(
+                                  Positioned.fill(
+                                    child: Stack(
                                       children: [
-                                        const Icon(
-                                          Icons.play_arrow_outlined,
-                                          color: Colors.white,
-                                          size: 14,
-                                        ),
-                                        Text(
-                                          "${video.views}",
-                                          style: const TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 10,
+                                        // Processing Overlay
+                                        if (video.isProcessing)
+                                          Container(
+                                            color: Colors.black.withValues(
+                                              alpha: 0.5,
+                                            ),
+                                            child: const Center(
+                                              child: Column(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  CircularProgressIndicator(
+                                                    strokeWidth: 2,
+                                                    color: AppColors.neonPink,
+                                                  ),
+                                                  SizedBox(height: 4),
+                                                  Text(
+                                                    "Processing",
+                                                    style: TextStyle(
+                                                      color: Colors.white,
+                                                      fontSize: 10,
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
                                           ),
-                                        ),
+
+                                        // Play count (Hide if processing)
+                                        if (!video.isProcessing)
+                                          Positioned(
+                                            bottom: 4,
+                                            left: 4,
+                                            child: Row(
+                                              children: [
+                                                const Icon(
+                                                  Icons.play_arrow_outlined,
+                                                  color: Colors.white,
+                                                  size: 14,
+                                                ),
+                                                Text(
+                                                  "${video.views}",
+                                                  style: const TextStyle(
+                                                    color: Colors.white,
+                                                    fontSize: 10,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
                                       ],
                                     ),
                                   ),

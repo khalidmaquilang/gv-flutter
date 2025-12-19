@@ -59,6 +59,9 @@ class _ProfileFeedScreenState extends ConsumerState<ProfileFeedScreen> {
                 key: ValueKey(video.id),
                 video: video,
                 autoplay: index == _currentIndex,
+                shouldPrepare:
+                    (index - _currentIndex).abs() <=
+                    1, // Relaxed: Keep current, prev, and next prepared.
               );
             },
           ),

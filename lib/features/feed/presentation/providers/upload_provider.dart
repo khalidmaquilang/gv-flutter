@@ -43,7 +43,6 @@ class UploadNotifier extends StateNotifier<UploadState> {
   Future<void> startUpload(
     String path,
     String caption, {
-    required String coverPath,
     required String privacy,
     required bool allowComments,
     String? musicId,
@@ -53,7 +52,7 @@ class UploadNotifier extends StateNotifier<UploadState> {
       progress: 0.0,
       error: null,
       validationErrors: null,
-      coverPath: coverPath,
+      coverPath: null,
     );
 
     try {
@@ -64,7 +63,6 @@ class UploadNotifier extends StateNotifier<UploadState> {
 
       final success = await _videoService.uploadVideo(
         videoPath: path,
-        thumbnailPath: coverPath,
         description: caption,
         privacy: privacy,
         allowComments: allowComments,

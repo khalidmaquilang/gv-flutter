@@ -9,6 +9,10 @@ class ProfileVideo {
   final bool allowComments;
   final String privacy;
   final int views;
+  final String status;
+
+  // Derived
+  bool get isProcessing => status == 'processing';
 
   ProfileVideo({
     required this.id,
@@ -18,17 +22,20 @@ class ProfileVideo {
     required this.allowComments,
     required this.privacy,
     required this.views,
+    required this.status,
   });
 
   factory ProfileVideo.fromJson(Map<String, dynamic> json) {
     return ProfileVideo(
-      id: json['id']?.toString() ?? '',
+      id: json['id'].toString(),
       thumbnail: json['thumbnail'] ?? '',
       description: json['description'] ?? '',
       videoPath: json['video_path'] ?? '',
-      allowComments: json['allow_comments'] ?? true,
+      allowComments:
+          json['allow_comments'] == 1 || json['allow_comments'] == true,
       privacy: json['privacy'] ?? 'public',
       views: json['views'] ?? 0,
+      status: json['status'] ?? 'processed',
     );
   }
 
@@ -38,9 +45,9 @@ class ProfileVideo {
       videoUrl: videoPath,
       thumbnailUrl: thumbnail,
       caption: description,
-      likesCount: 0, // Not provided in API yet
-      commentsCount: 0, // Not provided in API yet
-      isLiked: false, // Not provided in API yet
+      likesCount: 0,
+      commentsCount: 0,
+      isLiked: false,
       user: user,
     );
   }

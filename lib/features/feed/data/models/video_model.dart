@@ -24,9 +24,9 @@ class Video {
   factory Video.fromJson(Map<String, dynamic> json) {
     return Video(
       id: json['id'].toString(),
-      videoUrl: json['video_url'],
-      thumbnailUrl: json['thumbnail_url'],
-      caption: json['caption'],
+      videoUrl: json['video_url'] ?? '',
+      thumbnailUrl: json['thumbnail_url'] ?? '',
+      caption: json['description'] ?? '',
       likesCount: json['likes_count'] ?? 0,
       commentsCount: json['comments_count'] ?? 0,
       isLiked: json['is_liked'] ?? false,

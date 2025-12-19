@@ -5,12 +5,12 @@ import 'package:video_player/video_player.dart';
 import '../../../../core/providers/navigation_provider.dart';
 import '../../data/models/video_model.dart';
 import 'package:test_flutter/core/theme/app_theme.dart';
-import 'package:test_flutter/core/widgets/neon_border_container.dart';
 import '../../data/services/video_service.dart';
 import 'comment_bottom_sheet.dart';
 
 import 'package:test_flutter/core/utils/route_observer.dart';
 import '../providers/feed_audio_provider.dart';
+
 import 'dart:async';
 
 class VideoPlayerItem extends ConsumerStatefulWidget {
@@ -24,9 +24,11 @@ class VideoPlayerItem extends ConsumerStatefulWidget {
     this.onInteractionStart,
     this.onInteractionEnd,
     this.autoplay = false,
+    this.shouldPrepare = false,
   });
 
   final bool autoplay;
+  final bool shouldPrepare;
 
   @override
   ConsumerState<VideoPlayerItem> createState() => _VideoPlayerItemState();
@@ -34,7 +36,7 @@ class VideoPlayerItem extends ConsumerStatefulWidget {
 
 class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
     with RouteAware {
-  late VideoPlayerController _controller;
+  VideoPlayerController? _controller;
 
   bool _isLoading = true;
   bool _isLiked = false;
@@ -42,17 +44,27 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
   final VideoService _videoService = VideoService();
 
   bool _isUiVisible = true;
-
   bool _hasError = false;
 
   @override
   void didUpdateWidget(VideoPlayerItem oldWidget) {
     super.didUpdateWidget(oldWidget);
+
+    // Autoplay handling
     if (widget.autoplay != oldWidget.autoplay) {
       if (widget.autoplay) {
-        _controller.play();
+        _controller?.play();
       } else {
-        _controller.pause();
+        _controller?.pause();
+      }
+    }
+
+    // Lazy Loading Handling
+    if (widget.shouldPrepare != oldWidget.shouldPrepare) {
+      if (widget.shouldPrepare) {
+        _initializeController();
+      } else {
+        _disposeController();
       }
     }
   }
@@ -63,42 +75,75 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
     _isLiked = widget.video.isLiked;
     _likesCount = widget.video.likesCount;
 
-    _controller =
-        VideoPlayerController.networkUrl(Uri.parse(widget.video.videoUrl))
-          ..initialize()
-              .then((_) {
-                if (!mounted) return;
-                setState(() {
-                  _isLoading = false;
-                  _hasError = false;
-                });
-                if (widget.autoplay ||
-                    (ref.read(bottomNavIndexProvider) == 0 &&
-                        ref.read(isFeedAudioEnabledProvider))) {
-                  _controller.play();
-                }
-                _controller.setLooping(true);
-              })
-              .catchError((error) {
-                if (!mounted) return;
-                setState(() {
-                  _isLoading = false;
-                  _hasError = true;
-                });
-                debugPrint("Video Error: $error");
-              });
+    if (widget.shouldPrepare) {
+      _initializeController();
+    }
+  }
+
+  void _initializeController() {
+    if (_controller != null) return;
+
+    print(
+      "VideoPlayerItem: Init ${widget.video.id}, URL: ${widget.video.videoUrl}",
+    );
+
+    _controller = VideoPlayerController.networkUrl(
+      Uri.parse(widget.video.videoUrl),
+    );
+
+    _controller!
+        .initialize()
+        .then((_) {
+          if (!mounted) {
+            // print("VideoPlayerItem: Init success but unmounted ${widget.video.id}");
+            return;
+          }
+          // print("VideoPlayerItem: Init success ${widget.video.id}");
+          setState(() {
+            _isLoading = false;
+            _hasError = false;
+          });
+          if (widget.autoplay ||
+              (ref.read(bottomNavIndexProvider) == 0 &&
+                  ref.read(isFeedAudioEnabledProvider))) {
+            _controller?.play();
+          }
+          _controller?.setLooping(true);
+        })
+        .catchError((error) {
+          // print("VideoPlayerItem: Init Failed ${widget.video.id}, Error: $error");
+          if (!mounted) return;
+          setState(() {
+            _isLoading = false;
+            _hasError = true;
+          });
+          debugPrint("Video Error: $error");
+        });
+  }
+
+  void _disposeController() {
+    if (_controller == null) return;
+    // print("VideoPlayerItem: Disposing controller ${widget.video.id}");
+    _controller?.dispose();
+    _controller = null;
+    if (mounted) {
+      setState(() {
+        _isLoading = true; // Show loading when re-initializing
+      });
+    }
   }
 
   @override
   void dispose() {
+    // print("VideoPlayerItem: Dispose Object ${widget.video.id}");
     routeObserver.unsubscribe(this);
-    _controller.dispose();
+    _controller?.dispose();
     super.dispose();
   }
 
   @override
   void didPushNext() {
-    _controller.pause();
+    _controller?.pause();
   }
 
   @override
@@ -106,7 +151,7 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
     if (widget.autoplay ||
         (ref.read(bottomNavIndexProvider) == 0 &&
             ref.read(isFeedAudioEnabledProvider))) {
-      _controller.play();
+      _controller?.play();
     }
   }
 
@@ -115,20 +160,21 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
     ref.listen(isFeedAudioEnabledProvider, (previous, next) {
       if (next) {
         if (ref.read(bottomNavIndexProvider) == 0 &&
-            !_controller.value.isPlaying) {
-          _controller.play();
+            _controller != null &&
+            !_controller!.value.isPlaying) {
+          _controller?.play();
         }
       } else {
-        _controller.pause();
+        _controller?.pause();
       }
     });
 
     ref.listen(bottomNavIndexProvider, (previous, next) {
       if (next != 0) {
-        _controller.pause();
+        _controller?.pause();
       } else {
         if (ref.read(isFeedAudioEnabledProvider)) {
-          _controller.play();
+          _controller?.play();
         }
       }
     });
@@ -169,11 +215,26 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
                         ),
                       ],
                     )
-                  : _isLoading
-                  ? const CircularProgressIndicator()
+                  : (_isLoading || _controller == null)
+                  ? Stack(
+                      children: [
+                        // Thumbnail Placeholder
+                        SizedBox.expand(
+                          child: (widget.video.thumbnailUrl.isNotEmpty)
+                              ? Image.network(
+                                  widget.video.thumbnailUrl,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (context, error, stackTrace) {
+                                    return Container(color: Colors.black);
+                                  },
+                                )
+                              : Container(color: Colors.black),
+                        ),
+                      ],
+                    )
                   : AspectRatio(
-                      aspectRatio: _controller.value.aspectRatio,
-                      child: VideoPlayer(_controller),
+                      aspectRatio: _controller!.value.aspectRatio,
+                      child: VideoPlayer(_controller!),
                     ),
             ),
           ),
@@ -280,10 +341,10 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
         _isUiVisible = true;
       } else {
         // Normal toggle play behavior
-        if (_controller.value.isPlaying) {
-          _controller.pause();
+        if (_controller != null && _controller!.value.isPlaying) {
+          _controller?.pause();
         } else {
-          _controller.play();
+          _controller?.play();
         }
       }
     });
@@ -312,7 +373,7 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
             decoration: BoxDecoration(
               boxShadow: [
                 BoxShadow(
-                  color: color.withOpacity(0.8),
+                  color: color.withValues(alpha: 0.8),
                   blurRadius: 15,
                   spreadRadius: 2,
                 ),
