@@ -1,5 +1,6 @@
 import '../../../auth/data/models/user_model.dart';
 import '../../../feed/data/models/video_model.dart';
+import '../../../camera/data/models/sound_model.dart';
 
 class ProfileVideo {
   final String id;
@@ -10,6 +11,7 @@ class ProfileVideo {
   final String privacy;
   final int views;
   final String status;
+  final Sound? sound;
 
   // Derived
   bool get isProcessing => status == 'processing';
@@ -23,6 +25,7 @@ class ProfileVideo {
     required this.privacy,
     required this.views,
     required this.status,
+    this.sound,
   });
 
   factory ProfileVideo.fromJson(Map<String, dynamic> json) {
@@ -36,6 +39,7 @@ class ProfileVideo {
       privacy: json['privacy'] ?? 'public',
       views: json['views'] ?? 0,
       status: json['status'] ?? 'processed',
+      sound: json['music'] != null ? Sound.fromJson(json['music']) : null,
     );
   }
 
@@ -49,6 +53,7 @@ class ProfileVideo {
       commentsCount: 0,
       isLiked: false,
       user: user,
+      sound: sound,
     );
   }
 }
