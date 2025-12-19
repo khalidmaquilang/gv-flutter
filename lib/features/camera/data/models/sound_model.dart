@@ -46,7 +46,7 @@ class Sound {
       author: json['artist'] ?? 'Unknown Artist',
       url: json['path'] ?? '',
       coverUrl:
-          json['cover_url'] ??
+          json['thumbnail'] ??
           'https://www.shutterstock.com/image-vector/music-note-icon-vector-illustration-600nw-2253322131.jpg', // Default image
       duration: parsedDuration,
     );

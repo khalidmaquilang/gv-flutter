@@ -258,8 +258,16 @@ class _SoundSelectionScreenState extends ConsumerState<SoundSelectionScreen> {
                             width: 50,
                             height: 50,
                             decoration: BoxDecoration(
-                              color: Colors.grey[800], // Plain color
+                              color: Colors.grey[800],
                               borderRadius: BorderRadius.circular(4),
+                              image: DecorationImage(
+                                image: NetworkImage(sound.coverUrl),
+                                fit: BoxFit.cover,
+                                colorFilter: ColorFilter.mode(
+                                  Colors.black.withOpacity(0.3),
+                                  BlendMode.darken,
+                                ),
+                              ),
                             ),
                             child: Center(
                               child: Icon(

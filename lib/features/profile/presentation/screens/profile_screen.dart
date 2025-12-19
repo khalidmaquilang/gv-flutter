@@ -9,6 +9,7 @@ import '../../../wallet/presentation/screens/wallet_screen.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../auth/presentation/screens/login_screen.dart';
 import '../../../../core/widgets/neon_border_container.dart';
+import 'package:test_flutter/core/providers/navigation_provider.dart'; // Add navigation provider import
 
 import 'edit_profile_screen.dart';
 import 'package:test_flutter/features/feed/presentation/providers/drafts_provider.dart';
@@ -173,6 +174,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (widget.isCurrentUser) {
+      ref.listen(bottomNavIndexProvider, (previous, next) {
+        if (next == 4) {
+          ref.read(profileVideosProvider.notifier).refresh();
+        }
+      });
+    }
+
     final AsyncValue<User> userAsync;
     if (widget.isCurrentUser) {
       final authState = ref.watch(authControllerProvider);
