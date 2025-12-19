@@ -59,7 +59,6 @@ dependencies:
   share_plus: ^7.2.1
   audioplayers: ^5.2.1
   photo_manager: ^3.8.3
-  deepar_flutter_plus: ^0.2.1
   path_provider: ^2.1.5
   just_audio: ^0.10.5
   audio_session: ^0.2.2
@@ -70,6 +69,7 @@ dependencies:
   wakelock_plus: ^1.4.0
   video_thumbnail: ^0.5.3
   uuid: ^4.0.0
+  banuba_sdk: ^3.0.12
 
 dependency_overrides:
   ffi: ^2.1.0
@@ -109,6 +109,7 @@ flutter:
     - assets/images/
     - assets/sounds/
     - assets/deepar/
+    - effects/
 
   # To add custom fonts to your application, add a fonts section here,
   # in this "flutter" section. Each entry in this list should have a

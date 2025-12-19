@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../../features/live/data/services/live_service.dart';
 import '../../../../features/live/data/models/live_stream_model.dart';
-import '../../../../features/live/presentation/screens/live_stream_screen.dart';
 import '../../../../features/live/presentation/screens/live_scrolling_screen.dart';
 import 'package:test_flutter/core/theme/app_theme.dart';
 

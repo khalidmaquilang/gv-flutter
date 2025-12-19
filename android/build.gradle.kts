@@ -1,3 +1,5 @@
+extra["bnb_sdk_version"] = "1.17.+"
+
 allprojects {
     repositories {
         google()

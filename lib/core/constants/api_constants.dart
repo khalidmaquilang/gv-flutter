@@ -14,10 +14,9 @@ class ApiConstants {
   static const String musics = '/musics';
   static const String myVideos = '/my-videos';
 
-  // DeepAR
-  static const String deepArAndroidLicenseKey =
-      "2f95939383b07b667868a05a342b1c8f3dc6b9d923e08dfb7d8572074ef0536f7a940aa8886c5798";
-  static const String deepArIosLicenseKey = "REPLACE_WITH_YOUR_IOS_KEY";
+  // Banuba
+  static const String banubaToken =
+      "Qk5CIGRq/LNYIrgbFApFapYXsEoZ0OSTPh7ixIq45vlAl3qbkPrNZoE/m7ORS+Ns3va8xQSzo5IUHszToOhA00fzud069dWll8nzH6AJe7C2fYO1L/8MvT6i33nM8xIR7y+foBLG8wHtgAnTidsp6TKccuFVMKFm7T+pJ0U0I6oJu9gffw+9ulYza8McLBqeBFBcSIcf2Gm5X4Alf5SMbT5wnA7FswdY5lpp75RN6WV/h6zH4ayBPkU/LwMUwH0Tfd0cVVsmKlRzsmEjRzD1J2O6lHALqFZYOvibFxayhdHUqz2pAkrn4knCgMhL3GcEAmAB2SHcUM3E8y1+th+63hgWzCP3FxMOVm1fPgrGEsyf/5IrqkLZAuPX3+0G976iEFCLf1f4bb1xZjQhJtDQRCA1I/TaiondUZGikDWNoHC/LRwZwqJi0rqMVGMIi5aUedfcx5NGPY2HWQ5XTOK0bxr2Hu6fC947vs5LBOzuaFh8MDuu7orGar3eFl5mjlzo6ODlTDk0j4N7AJX/vI+bZ+Ug+4yFdzifgyGHKEl46+tHxQy+Ya5hwGXHnFsyhFJtoI5pxSFPLudXJoQPrS/WIVEN9rsJbasjkc+73XKANr1xKyI0iTeNQVE19KbR4Z0WkzGL6MizYvkvc4zTPLHpNuMidw==";
 
   // Agora
   static const String agoraAppId = "c0108ab6bba14678982d1aea8a4470b4";

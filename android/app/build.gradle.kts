@@ -1,3 +1,5 @@
+import org.gradle.api.tasks.Copy
+
 plugins {
     id("com.android.application")
     id("kotlin-android")
@@ -24,7 +26,7 @@ android {
         applicationId = "com.example.test_flutter"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = 24
+        minSdk = 26
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
@@ -49,4 +51,22 @@ android {
 
 flutter {
     source = "../.."
+}
+
+val bnbSdkVersion: String = rootProject.extra["bnb_sdk_version"] as String
+
+dependencies {
+    implementation("com.banuba.sdk:face_tracker:$bnbSdkVersion")
+    implementation("com.banuba.sdk:background:$bnbSdkVersion")
+}
+
+val copyEffects by tasks.registering(Copy::class) {
+    from("${flutter.source}/effects")
+    into("src/main/assets/gv-resources/effects")
+    inputs.dir("${flutter.source}/effects")
+    outputs.dir("src/main/assets/gv-resources/effects")
+}
+
+tasks.named("preBuild") {
+    dependsOn(copyEffects)
 }

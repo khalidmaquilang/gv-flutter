@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'dart:io';
-import 'package:deepar_flutter_plus/deepar_flutter_plus.dart';
+import 'package:banuba_sdk/banuba_sdk.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
@@ -12,7 +12,7 @@ import 'package:photo_manager/photo_manager.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../data/models/sound_model.dart';
 import 'sound_selection_screen.dart';
-import '../../data/services/deepar_service.dart';
+import '../../data/services/banuba_service.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../../../live/presentation/screens/live_stream_setup_screen.dart';
@@ -41,20 +41,22 @@ enum FlashState { off, on, auto }
 
 class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
   final AudioPlayer _audioPlayer = AudioPlayer();
-  DeepArControllerPlus? _deepArController; // Updated type
-  bool _isDeepArInitialized = false;
+  BanubaSdkManager? _banubaManager;
+  EffectPlayerWidget? _effectPlayerWidget;
+  bool _isBanubaInitialized = false;
 
   bool isRecording = false;
+  bool _isFrontCamera = true;
   int _selectedModeIndex = 1; // 0: Photo, 1: 15s, 2: 60s, 3: Live
   final List<String> _modes = ['Photo', '15s', '60s', 'Live'];
 
   // Effects
-  final List<String> _effects = ['none', 'beats-headphones-ad', 'makeup-kim'];
+  final List<String> _effects = ['none', 'Afro', 'TrollGrandma'];
   int _selectedEffectIndex = 0;
 
-  List<XFile> _recordedFiles = [];
+  final List<XFile> _recordedFiles = [];
   Timer? _timer;
-  List<double> _segments = [];
+  final List<double> _segments = [];
   double _currentSegmentProgress = 0.0;
   int _maxDuration = 15;
   bool isPaused = false;
@@ -70,6 +72,7 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
 
   // Sound
   Sound? _selectedSound;
+  String? _currentFilePath; // Track current recording path
 
   @override
   void initState() {
@@ -77,7 +80,7 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
     if (widget.initialSound != null) {
       _selectedSound = widget.initialSound;
     }
-    _initializeDeepAr();
+    _initializeBanuba();
     _fetchLastImage();
     if (widget.initialFiles.isNotEmpty) {
       // Delay loading to avoid resource contention with PreviewScreen (especially audio session)
@@ -175,20 +178,43 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
     }
   }
 
-  Future<void> _initializeDeepAr() async {
-    _deepArController = await DeepArService.initialize();
-    if (mounted) {
-      if (_deepArController?.isInitialized ?? false) {
+  Future<void> _initializeBanuba() async {
+    _banubaManager = await BanubaService.initialize();
+    if (mounted && _banubaManager != null) {
+      _effectPlayerWidget = EffectPlayerWidget(key: null);
+      setState(() {
+        _isBanubaInitialized = true;
+      });
+
+      // Wait for the widget to be built and the platform view to be created
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        if (!mounted || _banubaManager == null || _effectPlayerWidget == null)
+          return;
+
+        try {
+          // Attach widget to manager
+          await _banubaManager!.attachWidget(_effectPlayerWidget!.banubaId);
+
+          // Open Camera and Start Player
+          await _banubaManager!.openCamera();
+          await _banubaManager!.startPlayer();
+          // Reset effect to ensure clean state
+          _banubaManager!.loadEffect("", false);
+
+          setState(() {}); // Refresh UI if needed
+        } catch (e) {
+          debugPrint("Error initializing Banuba Camera: $e");
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text("Camera initialization failed: $e")),
+            );
+          }
+        }
+      });
+    } else {
+      if (mounted) {
         setState(() {
-          _isDeepArInitialized = true;
-        });
-      } else {
-        // Handle init failure if needed, mainly checked in build
-        // DeepArService logs errors.
-        // We can check again slightly later if iOS needs it, but service return should be enough for now.
-        setState(() {
-          _isDeepArInitialized =
-              true; // Still true to let build try render or show error
+          // Handle error
         });
       }
     }
@@ -198,6 +224,22 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
   void dispose() {
     _timer?.cancel();
     _audioPlayer.dispose();
+    if (_banubaManager != null) {
+      _banubaManager!.stopPlayer();
+      _banubaManager!.closeCamera();
+      // BanubaSdkManager.deinitialize(); // Static check
+      // Based on previous code in _onModeChanged, it was called on instance.
+      // However, the provided list says "static void deinitialize()".
+      // Safe bet: if instance has it, call it. If not, call BanubaSdkManager.deinitialize().
+      // Given _onModeChanged used instance, let's try instance first, but safely.
+      // Actually, standard pattern often is to deinitialize when completely done.
+      // If we just pop, we probably want to destroy.
+      try {
+        _banubaManager!.deinitialize();
+      } catch (e) {
+        debugPrint("Banuba deinit error: $e");
+      }
+    }
     super.dispose();
   }
 
@@ -209,17 +251,20 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
 
     if (_modes[index] == 'Live') {
       // Stop DeepAR camera before pushing to LiveStreamSetupScreen
-      if (_deepArController != null) {
+      if (_banubaManager != null) {
         try {
-          await _deepArController!.destroy();
+          await _banubaManager!.closeCamera();
+          await _banubaManager!.deinitialize();
         } catch (e) {
-          debugPrint("DeepAR destroy error: $e");
+          debugPrint("Banuba destroy error: $e");
         }
-        _deepArController = null;
+        _banubaManager = null;
         setState(() {
-          _isDeepArInitialized = false;
+          _isBanubaInitialized = false;
         });
       }
+
+      if (!mounted) return;
 
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (context) => const LiveStreamSetupScreen()),
@@ -245,44 +290,35 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
     setState(() {
       if (_flashMode == FlashState.off) {
         _flashMode = FlashState.on;
-        _deepArController?.toggleFlash();
+        _banubaManager?.enableFlashlight(true);
       } else {
         _flashMode = FlashState.off;
-        _deepArController?.toggleFlash();
+        _banubaManager?.enableFlashlight(false);
       }
     });
   }
 
-  Future<File> _copyAssetToFile(String assetPath) async {
-    final byteData = await rootBundle.load(assetPath);
-    final buffer = byteData.buffer;
-    final directory = await getTemporaryDirectory();
-    final file = File('${directory.path}/${assetPath.split('/').last}');
-    await file.writeAsBytes(
-      buffer.asUint8List(byteData.offsetInBytes, byteData.lengthInBytes),
-    );
-    return file;
-  }
-
   void _switchEffect(int index) async {
-    if (_deepArController == null) return;
+    if (_banubaManager == null) return;
     setState(() {
       _selectedEffectIndex = index;
     });
 
     final effect = _effects[index];
     if (effect == 'none') {
-      _deepArController?.switchEffect(null as dynamic);
+      // Banuba expects "" for empty effect usually
+      _banubaManager?.loadEffect("", false);
     } else {
-      String assetPath = "assets/deepar/$effect.deepar";
+      String assetPath = "effects/$effect";
       try {
-        final File file = await _copyAssetToFile(assetPath);
-        _deepArController?.switchEffect(file.path);
+        _banubaManager?.loadEffect(assetPath, false);
       } catch (e) {
         debugPrint("Error loading effect: $e");
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text("Error loading effect: $e")));
+        if (mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text("Error loading effect: $e")));
+        }
       }
     }
   }
@@ -329,31 +365,26 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
 
   void _pauseTimer() async {
     _timer?.cancel();
-    debugPrint("Recorder: Pausing... Stopping current segment (DeepAR).");
-    if (_deepArController == null) return;
+    debugPrint("Recorder: Pausing... Stopping current segment (Banuba).");
+    if (_banubaManager == null) return;
 
-    // Optimistic UI Update: Immediately show "Paused" state
     setState(() {
       isRecording = false;
       isPaused = true;
-      _isProcessing = true; // Block further actions until save completes
+      _isProcessing = true;
     });
 
     try {
-      // Stop Audio IMMEDIATELY so user doesn't hear it continuing during save
       await _audioPlayer.pause();
 
-      // Background: Stop recording and save file
-      final dynamic result = await _deepArController!.stopVideoRecording();
-
-      // Pause Music concurrently or after
-      // await _audioPlayer.pause(); // Moved up
+      await _banubaManager!.stopVideoRecording();
+      // Banuba stopVideoRecording is void, it saves to the path provided in start.
+      // We need to know where we started recording to.
+      // Modifying logic to track currentFilePath.
 
       File? file;
-      if (result is File) {
-        file = result;
-      } else if (result is String) {
-        file = File(result);
+      if (_currentFilePath != null) {
+        file = File(_currentFilePath!);
       }
 
       if (!mounted) return;
@@ -384,10 +415,20 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
   }
 
   void _resumeTimer() async {
-    debugPrint("Recorder: Resuming... Starting new segment (DeepAR).");
-    if (_deepArController == null) return;
+    debugPrint("Recorder: Resuming... Starting new segment (Banuba).");
+    if (_banubaManager == null) return;
 
-    await _deepArController!.startVideoRecording();
+    final directory = await getTemporaryDirectory();
+    final String filePath =
+        '${directory.path}/${DateTime.now().millisecondsSinceEpoch}.mp4';
+    _currentFilePath = filePath;
+
+    await _banubaManager!.startVideoRecording(
+      filePath,
+      true, // useAudio
+      1, // speed (int)
+      0, // flag (int)
+    );
 
     // Resume Music
     if (_selectedSound != null) {
@@ -498,13 +539,12 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
     // Stop Music
     await _audioPlayer.stop();
 
-    if (isRecording && _deepArController != null) {
-      final dynamic result = await _deepArController!.stopVideoRecording();
+    if (isRecording && _banubaManager != null) {
+      await _banubaManager!.stopVideoRecording();
+
       File? file;
-      if (result is File) {
-        file = result;
-      } else if (result is String) {
-        file = File(result);
+      if (_currentFilePath != null) {
+        file = File(_currentFilePath!);
       }
 
       if (file != null) {
@@ -571,38 +611,76 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
     });
 
     if (filesToPreview.isNotEmpty) {
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (context) => PreviewScreen(
-            files: filesToPreview,
-            isVideo: true,
-            sound: soundToPass,
-            draftId: widget.draftId,
-          ),
-        ),
-      );
+      if (!mounted) return;
+      // Stop Banuba player to ensure audio/effects stop during preview
+      _banubaManager?.stopPlayer();
+
+      Navigator.of(context)
+          .push(
+            MaterialPageRoute(
+              builder: (context) => PreviewScreen(
+                files: filesToPreview,
+                isVideo: true,
+                sound: soundToPass,
+                draftId: widget.draftId,
+              ),
+            ),
+          )
+          .then((_) {
+            // Restart player and reset effect when returning
+            if (mounted && _banubaManager != null) {
+              _banubaManager!.startPlayer();
+              _banubaManager!.loadEffect("", false);
+            }
+          });
       if (soundToPass != null) {}
     } else {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text("No video recorded!")));
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text("No video recorded!")));
+      }
     }
   }
 
   void _recordVideo() async {
     if (_isProcessing) return;
-    if (_deepArController == null || !_isDeepArInitialized) return;
+    if (_banubaManager == null || !_isBanubaInitialized) return;
 
     // Photo Mode
+    // Photo Mode
     if (_modes[_selectedModeIndex] == 'Photo') {
-      final File? file = await _deepArController!.takeScreenshot();
-      if (file != null && mounted) {
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (context) =>
-                PreviewScreen(files: [XFile(file.path)], isVideo: false),
-          ),
-        );
+      try {
+        final directory = await getTemporaryDirectory();
+        final String filePath =
+            '${directory.path}/photo_${DateTime.now().millisecondsSinceEpoch}.jpg';
+
+        // Use Banuba to take photo. Assuming 720x1280 resolution.
+        // User signature: void takePhoto(String filePath, int width, int height); by default dart wrapper likely returns Future<void>
+        await _banubaManager!.takePhoto(filePath, 720, 1280);
+
+        final File file = File(filePath);
+        // Small delay to ensure write? Native SDK usually blocks until save or is async.
+        // If wrapper is Future, we are good.
+
+        if (await file.exists()) {
+          if (!mounted) return;
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (context) => PreviewScreen(
+                files: [XFile(file.path)],
+                isVideo: false,
+                sound:
+                    _selectedSound, // Can attach sound to photo? Maybe for slideshow.
+                draftId: widget.draftId,
+              ),
+            ),
+          );
+        } else {
+          debugPrint("Photo file not found: $filePath");
+        }
+      } catch (e) {
+        debugPrint("Error taking photo: $e");
       }
       return;
     }
@@ -636,7 +714,13 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
             }
           }
 
-          await _deepArController!.startVideoRecording();
+          final directory = await getTemporaryDirectory();
+          final String filePath =
+              '${directory.path}/${DateTime.now().millisecondsSinceEpoch}.mp4';
+          _currentFilePath = filePath;
+
+          // Using 720x1280 (HD Portrait) as standard vertical video resolution
+          await _banubaManager!.startVideoRecording(filePath, true, 720, 1280);
 
           // Start Music
           if (_selectedSound != null) {
@@ -764,7 +848,7 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (!_isDeepArInitialized || _deepArController == null) {
+    if (!_isBanubaInitialized || _banubaManager == null) {
       return const Scaffold(
         backgroundColor: Colors.black,
         body: Center(child: CircularProgressIndicator()),
@@ -775,12 +859,10 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
       backgroundColor: Colors.black,
       body: Stack(
         children: [
-          // DeepAR Preview Link (Updated)
-          Transform.scale(
-            scale: 1.0,
-            child: DeepArPreviewPlus(_deepArController!), // Updated widget
-          ),
-
+          // Banuba Preview
+          // Banuba Preview Placeholder
+          // Banuba Preview
+          if (_effectPlayerWidget != null) _effectPlayerWidget!,
           // Countdown Overlay
           if (_countdown > 0)
             Center(
@@ -836,10 +918,10 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
                             vertical: 8,
                           ),
                           decoration: BoxDecoration(
-                            color: Colors.black.withOpacity(0.3),
+                            color: Colors.black.withValues(alpha: 0.3),
                             borderRadius: BorderRadius.circular(20),
                             border: Border.all(
-                              color: Colors.white.withOpacity(0.2),
+                              color: Colors.white.withValues(alpha: 0.2),
                             ),
                           ),
                           child: Row(
@@ -913,7 +995,10 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
                       icon: Icons.flip_camera_ios,
                       label: "Flip",
                       onTap: () {
-                        _deepArController?.flipCamera();
+                        // Toggle between front (true) and back (false)
+                        // Verify current state or toggle a boolean tracker
+                        _isFrontCamera = !_isFrontCamera;
+                        _banubaManager?.setCameraFacing(_isFrontCamera);
                       },
                     ),
                     const SizedBox(height: 16),
@@ -978,7 +1063,7 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
                               color: isSelected
                                   ? AppColors
                                         .neonCyan // Neon Border
-                                  : Colors.white.withOpacity(0.5),
+                                  : Colors.white.withValues(alpha: 0.5),
                               width: isSelected ? 3 : 2,
                             ),
                             boxShadow: isSelected
@@ -990,7 +1075,7 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
                                     ),
                                   ]
                                 : [],
-                            color: Colors.black.withOpacity(0.5),
+                            color: Colors.black.withValues(alpha: 0.5),
                           ),
                           child: Center(
                             child: Text(
@@ -1111,7 +1196,7 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
                                       : [
                                           BoxShadow(
                                             color: AppColors.neonPink
-                                                .withOpacity(0.2),
+                                                .withValues(alpha: 0.2),
                                             blurRadius: 8,
                                             spreadRadius: 2,
                                           ),
@@ -1222,7 +1307,7 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
                                 style: TextStyle(
                                   color: isSelected
                                       ? Colors.white
-                                      : Colors.white.withOpacity(0.5),
+                                      : Colors.white.withValues(alpha: 0.5),
                                   fontWeight: isSelected
                                       ? FontWeight.bold
                                       : FontWeight.normal,

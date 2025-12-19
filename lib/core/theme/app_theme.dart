@@ -24,7 +24,6 @@ class AppTheme {
       primary: AppColors.neonPink,
       secondary: AppColors.neonCyan,
       surface: AppColors.deepVoid,
-      background: AppColors.deepVoid,
       tertiary: AppColors.neonPurple,
     ),
     appBarTheme: const AppBarTheme(
