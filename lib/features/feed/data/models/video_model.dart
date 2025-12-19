@@ -1,3 +1,4 @@
+import '../../../camera/data/models/sound_model.dart';
 import '../../../auth/data/models/user_model.dart';
 
 class Video {
@@ -9,6 +10,7 @@ class Video {
   final int commentsCount;
   final bool isLiked;
   final User user;
+  final Sound? sound;
 
   Video({
     required this.id,
@@ -19,6 +21,7 @@ class Video {
     required this.commentsCount,
     this.isLiked = false,
     required this.user,
+    this.sound,
   });
 
   factory Video.fromJson(Map<String, dynamic> json) {
@@ -31,6 +34,7 @@ class Video {
       commentsCount: json['comments_count'] ?? 0,
       isLiked: json['is_liked'] ?? false,
       user: User.fromJson(json['user']),
+      sound: json['music'] != null ? Sound.fromJson(json['music']) : null,
     );
   }
 }

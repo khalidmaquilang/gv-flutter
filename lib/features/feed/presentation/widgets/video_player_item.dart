@@ -279,8 +279,8 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
               // Bottom Info (Name, Caption)
               Positioned(
                 bottom: 130, // Kept at 130
-                left: 10,
-                right: 100, // Increased right padding
+                left: 16, // Standard left padding
+                right: 80, // Reduced right padding
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -304,6 +304,40 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
                         color: Colors.white,
                         shadows: [Shadow(color: Colors.black, blurRadius: 2)],
                       ),
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        _SpinningDisc(
+                          imageUrl:
+                              widget.video.sound?.coverUrl ??
+                              widget.video.user.avatar,
+                          size: 30,
+                        ),
+                        const SizedBox(width: 8),
+                        const Icon(
+                          Icons.music_note,
+                          size: 15,
+                          color: Colors.white,
+                        ),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Text(
+                            widget.video.sound != null
+                                ? "${widget.video.sound!.title} • ${widget.video.sound!.author}"
+                                : "Original Sound - ${widget.video.user.name}",
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 13,
+                              shadows: [
+                                Shadow(color: Colors.black, blurRadius: 2),
+                              ],
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -643,6 +677,72 @@ class _ZoomableContentState extends State<_ZoomableContent>
           behavior: HitTestBehavior.opaque,
           child: widget.child,
         ),
+      ),
+    );
+  }
+}
+
+class _SpinningDisc extends StatefulWidget {
+  final String? imageUrl;
+  final double size;
+  const _SpinningDisc({super.key, this.imageUrl, this.size = 45});
+
+  @override
+  State<_SpinningDisc> createState() => _SpinningDiscState();
+}
+
+class _SpinningDiscState extends State<_SpinningDisc>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 5),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return RotationTransition(
+      turns: _controller,
+      child: Container(
+        width: widget.size,
+        height: widget.size,
+        decoration: BoxDecoration(
+          color: const Color(0xFF111111), // Dark vinyl background
+          shape: BoxShape.circle,
+          border: Border.all(
+            color: const Color(0xFF222222),
+            width: widget.size * 0.15,
+          ),
+          image: widget.imageUrl != null
+              ? DecorationImage(
+                  image: NetworkImage(widget.imageUrl!),
+                  fit: BoxFit.cover,
+                )
+              : null,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.5),
+              blurRadius: 4,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: widget.imageUrl == null
+            ? const Center(
+                child: Icon(Icons.music_note, color: Colors.white, size: 20),
+              )
+            : null,
       ),
     );
   }
