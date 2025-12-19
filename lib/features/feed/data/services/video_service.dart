@@ -1,17 +1,18 @@
 import 'package:dio/dio.dart';
+import '../../../../core/network/api_client.dart';
 import '../../../../core/constants/api_constants.dart';
 import '../../../auth/data/models/user_model.dart';
 import '../models/comment_model.dart';
 import '../models/video_model.dart';
 
 class VideoService {
-  final Dio _dio;
+  final ApiClient _apiClient;
 
-  VideoService({Dio? dio}) : _dio = dio ?? Dio();
+  VideoService({ApiClient? apiClient}) : _apiClient = apiClient ?? ApiClient();
 
   Future<List<Video>> getFeed() async {
     try {
-      final _ = await _dio.get(ApiConstants.baseUrl + ApiConstants.videos);
+      final _ = await _apiClient.get(ApiConstants.videos);
 
       // Mock data if 404/error for demo
       // return (response.data as List).map((e) => Video.fromJson(e)).toList();
@@ -24,31 +25,31 @@ class VideoService {
     }
   }
 
-  Future<bool> likeVideo(int videoId) async {
+  Future<bool> likeVideo(String videoId) async {
     try {
-      await _dio.post('${ApiConstants.baseUrl}/videos/$videoId/like');
+      await _apiClient.post('/videos/$videoId/like');
       return true;
     } catch (e) {
       return false;
     }
   }
 
-  Future<bool> unlikeVideo(int videoId) async {
+  Future<bool> unlikeVideo(String videoId) async {
     try {
-      await _dio.post('${ApiConstants.baseUrl}/videos/$videoId/unlike');
+      await _apiClient.post('/videos/$videoId/unlike');
       return true;
     } catch (e) {
       return false;
     }
   }
 
-  Future<List<Comment>> getComments(int videoId) async {
+  Future<List<Comment>> getComments(String videoId) async {
     // Mock comments
     await Future.delayed(const Duration(milliseconds: 500));
     return List.generate(
       10,
       (index) => Comment(
-        id: index,
+        id: index.toString(),
         user: User(
           id: index.toString(),
           name: "User $index",
@@ -61,11 +62,11 @@ class VideoService {
     );
   }
 
-  Future<Comment> postComment(int videoId, String text) async {
+  Future<Comment> postComment(String videoId, String text) async {
     // Mock response
     await Future.delayed(const Duration(milliseconds: 500));
     return Comment(
-      id: 999,
+      id: "999",
       user: User(
         id: "1",
         name: "Me",
@@ -80,31 +81,36 @@ class VideoService {
   // In-memory storage for uploaded videos
   static final List<Video> _uploadedVideos = [];
 
-  Future<bool> uploadVideo(String path, String caption) async {
+  Future<bool> uploadVideo({
+    required String videoPath,
+    required String description,
+    required String privacy,
+    required bool allowComments,
+    String? musicId,
+  }) async {
     try {
-      // simulate network delay
-      await Future.delayed(const Duration(seconds: 2));
+      String fileName = videoPath.split('/').last;
 
-      final newVideo = Video(
-        id: DateTime.now().millisecondsSinceEpoch,
-        videoUrl: path, // Local file path for now
-        thumbnailUrl: "https://dummyimage.com/150",
-        caption: caption,
-        likesCount: 0,
-        commentsCount: 0,
-        isLiked: false,
-        user: User(
-          id: "1", // Mock current user
-          name: "You",
-          email: "you@test.com",
-          avatar: "https://dummyimage.com/50",
-        ),
+      FormData formData = FormData.fromMap({
+        "video": await MultipartFile.fromFile(videoPath, filename: fileName),
+        "description": description,
+        "privacy": privacy,
+        "allow_comments": allowComments ? 1 : 0,
+        if (musicId != null) "music_id": musicId,
+      });
+
+      final response = await _apiClient.post(
+        ApiConstants.createPost,
+        data: formData,
+        options: Options(headers: {"Content-Type": "multipart/form-data"}),
       );
 
-      _uploadedVideos.insert(0, newVideo); // Add to top
-      return true;
-    } catch (e) {
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return true;
+      }
       return false;
+    } catch (e) {
+      rethrow;
     }
   }
 
@@ -112,7 +118,7 @@ class VideoService {
     final mock = List.generate(
       5,
       (index) => Video(
-        id: index,
+        id: index.toString(),
         videoUrl:
             'https://flutter.github.io/assets-for-api-docs/assets/videos/bee.mp4',
         thumbnailUrl: 'https://dummyimage.com/150',

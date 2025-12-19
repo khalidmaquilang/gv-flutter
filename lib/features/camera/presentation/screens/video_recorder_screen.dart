@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
 import 'package:audioplayers/audioplayers.dart';
+import 'package:video_player/video_player.dart'; // Added for duration check
 import 'preview_screen.dart';
 import 'package:test_flutter/core/theme/app_theme.dart';
 import 'package:photo_manager/photo_manager.dart';
@@ -20,7 +21,16 @@ import '../widgets/glass_action_button.dart';
 import 'dart:ui'; // For ImageFilter
 
 class VideoRecorderScreen extends ConsumerStatefulWidget {
-  const VideoRecorderScreen({super.key});
+  final List<XFile> initialFiles;
+  final String? draftId;
+  final Sound? initialSound;
+
+  const VideoRecorderScreen({
+    super.key,
+    this.initialFiles = const [],
+    this.draftId,
+    this.initialSound,
+  });
 
   @override
   ConsumerState<VideoRecorderScreen> createState() =>
@@ -48,6 +58,7 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
   double _currentSegmentProgress = 0.0;
   int _maxDuration = 15;
   bool isPaused = false;
+  bool _isProcessing = false;
 
   // New State for Side Menu
   FlashState _flashMode = FlashState.off;
@@ -63,8 +74,105 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
   @override
   void initState() {
     super.initState();
+    if (widget.initialSound != null) {
+      _selectedSound = widget.initialSound;
+    }
     _initializeDeepAr();
     _fetchLastImage();
+    if (widget.initialFiles.isNotEmpty) {
+      // Delay loading to avoid resource contention with PreviewScreen (especially audio session)
+      Future.delayed(const Duration(milliseconds: 500), () {
+        if (mounted) _loadInitialFiles();
+      });
+    }
+  }
+
+  Future<void> _loadInitialFiles() async {
+    List<XFile> loadedFiles = [];
+    List<double> fileDurations = [];
+    double totalDuration = 0;
+
+    // 1. Gather all files and durations
+    for (final xFile in widget.initialFiles) {
+      final file = File(xFile.path);
+      if (!file.existsSync()) continue;
+
+      final controller = VideoPlayerController.file(file);
+      try {
+        await controller.initialize();
+        final duration = controller.value.duration;
+        final durationSec = duration.inMilliseconds / 1000.0;
+
+        loadedFiles.add(xFile);
+        fileDurations.add(durationSec);
+        totalDuration += durationSec;
+      } catch (e) {
+        debugPrint("Error loading file duration: $e");
+      } finally {
+        await controller.dispose();
+      }
+    }
+
+    if (loadedFiles.length < widget.initialFiles.length) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              "Warning: ${widget.initialFiles.length - loadedFiles.length} segment(s) could not be loaded.",
+            ),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+    }
+
+    if (!mounted || loadedFiles.isEmpty) return;
+
+    // 2. Determine Mode based on TOTAL duration
+    int newMaxDuration = 15;
+    int newModeIndex = 1; // 15s
+
+    if (totalDuration > 15.0) {
+      newMaxDuration = 60;
+      newModeIndex = 2; // 60s
+    }
+
+    // 3. Calculate segments
+    List<double> newSegments = [];
+    for (final dur in fileDurations) {
+      double progress = dur / newMaxDuration;
+      // if (progress > 1.0) progress = 1.0; // Don't clip individual, total might overflow slightly?
+      newSegments.add(progress);
+    }
+
+    setState(() {
+      _recordedFiles.addAll(loadedFiles);
+      _maxDuration = newMaxDuration;
+      _selectedModeIndex = newModeIndex;
+      _segments.addAll(newSegments);
+      isPaused = true;
+    });
+
+    // Restore Music State for Resume
+    if (_selectedSound != null) {
+      try {
+        String url = _selectedSound!.url;
+        Source? source;
+        if (url.startsWith('assets/')) {
+          source = AssetSource(url.substring(7));
+        } else {
+          source = UrlSource(url);
+        }
+
+        // Prepare not play
+        await _audioPlayer.setSource(source);
+        // Seek to current total duration
+        int seekMillis = (totalDuration * 1000).toInt();
+        await _audioPlayer.seek(Duration(milliseconds: seekMillis));
+      } catch (e) {
+        debugPrint("Error restoring audio state: $e");
+      }
+    }
   }
 
   Future<void> _initializeDeepAr() async {
@@ -224,43 +332,55 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
     debugPrint("Recorder: Pausing... Stopping current segment (DeepAR).");
     if (_deepArController == null) return;
 
-    // stopVideoRecording returns File? in Plus?
-    // Docs say: stopVideoRecording()
-    // It might return void and we rely on 'startVideoRecording' returning the future file?
-    // Wait, docs said:
-    // final File videoFile = _controller.startVideoRecording();
-    // This is weird for a START method.
-    // Usually standard DeepAR plugin: start is void. Stop returns string/file.
-    // I will use `await _deepArController!.stopVideoRecording();` and check return type.
-    // If it returns void, I assume the start call gave me the file path?
-    // But how can start give file path before recording?
-    // I'll stick to `stopVideoRecording` returning File or String.
-    // If usage fails, I'll debug.
-
-    final dynamic result = await _deepArController!.stopVideoRecording();
-    File? file;
-    if (result is File) {
-      file = result;
-    } else if (result is String) {
-      file = File(result);
-    }
-
-    // Pause Music
-    await _audioPlayer.pause();
-
-    if (!mounted) return;
+    // Optimistic UI Update: Immediately show "Paused" state
     setState(() {
-      if (file != null) {
-        debugPrint("Recorder: Segment saved. Path: ${file.path}");
-        _recordedFiles.add(XFile(file.path));
-        _segments.add(_currentSegmentProgress);
-      } else {
-        debugPrint("Recorder: Stop returned NULL file!");
-      }
-      _currentSegmentProgress = 0.0;
-      isPaused = true;
       isRecording = false;
+      isPaused = true;
+      _isProcessing = true; // Block further actions until save completes
     });
+
+    try {
+      // Stop Audio IMMEDIATELY so user doesn't hear it continuing during save
+      await _audioPlayer.pause();
+
+      // Background: Stop recording and save file
+      final dynamic result = await _deepArController!.stopVideoRecording();
+
+      // Pause Music concurrently or after
+      // await _audioPlayer.pause(); // Moved up
+
+      File? file;
+      if (result is File) {
+        file = result;
+      } else if (result is String) {
+        file = File(result);
+      }
+
+      if (!mounted) return;
+
+      setState(() {
+        if (file != null) {
+          debugPrint("Recorder: Segment saved. Path: ${file.path}");
+          _recordedFiles.add(XFile(file.path));
+          _segments.add(_currentSegmentProgress);
+        } else {
+          debugPrint("Recorder: Stop returned NULL file!");
+          // If save failed, we might want to revert UI??
+          // For now, let's keep it paused but with no new segment added,
+          // or we could show error.
+        }
+        _currentSegmentProgress = 0.0;
+        _isProcessing = false; // Re-enable actions
+      });
+    } catch (e) {
+      debugPrint("Error pausing recording: $e");
+      if (mounted) {
+        setState(() {
+          _isProcessing = false;
+          // Optionally revert state if critical failure
+        });
+      }
+    }
   }
 
   void _resumeTimer() async {
@@ -271,7 +391,25 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
 
     // Resume Music
     if (_selectedSound != null) {
-      await _audioPlayer.resume();
+      if (_audioPlayer.state == PlayerState.paused) {
+        await _audioPlayer.resume();
+      } else {
+        // If not paused (e.g. stopped/initial), play from correct position
+        double totalProgress = _segments.fold(0.0, (sum, seg) => sum + seg);
+        int seekMillis = (totalProgress * _maxDuration * 1000).toInt();
+
+        String url = _selectedSound!.url;
+        Source source;
+        if (url.startsWith('assets/')) {
+          source = AssetSource(url.substring(7));
+        } else {
+          source = UrlSource(url);
+        }
+        await _audioPlayer.play(
+          source,
+          position: Duration(milliseconds: seekMillis),
+        );
+      }
     }
 
     if (!mounted) return;
@@ -308,10 +446,16 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
   }
 
   void _discardLastSegment() async {
-    if (_recordedFiles.isEmpty) return;
+    if (_recordedFiles.isEmpty || _isProcessing) return;
 
     debugPrint("Recorder: Discarding last segment.");
+
+    final lastFile = File(_recordedFiles.last.path);
+    // final lastSegmentProgress = _segments.isNotEmpty ? _segments.last : 0.0; // Unused
+
+    // Optimistic UI Update first
     setState(() {
+      _isProcessing = true;
       _recordedFiles.removeLast();
       if (_segments.isNotEmpty) {
         _segments.removeLast();
@@ -322,6 +466,31 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
         _currentSegmentProgress = 0.0;
       }
     });
+
+    try {
+      // Delete file in background
+      if (await lastFile.exists()) {
+        await lastFile.delete();
+        debugPrint("Recorder: Deleted segment file: ${lastFile.path}");
+      }
+
+      // Reset audio position to new end
+      if (_selectedSound != null && _recordedFiles.isNotEmpty) {
+        double totalProgress = _segments.fold(0.0, (sum, seg) => sum + seg);
+        int seekMillis = (totalProgress * _maxDuration * 1000).toInt();
+        await _audioPlayer.seek(Duration(milliseconds: seekMillis));
+      } else if (_selectedSound != null && _recordedFiles.isEmpty) {
+        await _audioPlayer.seek(Duration.zero);
+      }
+    } catch (e) {
+      debugPrint("Error discarding segment: $e");
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isProcessing = false;
+        });
+      }
+    }
   }
 
   Future<void> _finishRecording() async {
@@ -408,9 +577,11 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
             files: filesToPreview,
             isVideo: true,
             sound: soundToPass,
+            draftId: widget.draftId,
           ),
         ),
       );
+      if (soundToPass != null) {}
     } else {
       ScaffoldMessenger.of(
         context,
@@ -419,6 +590,7 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
   }
 
   void _recordVideo() async {
+    if (_isProcessing) return;
     if (_deepArController == null || !_isDeepArInitialized) return;
 
     // Photo Mode
@@ -570,6 +742,15 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
   }
 
   void _selectSound() async {
+    if (_recordedFiles.isNotEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Cannot change sound after recording has started"),
+        ),
+      );
+      return;
+    }
+
     final Sound? result = await Navigator.of(context).push(
       MaterialPageRoute(builder: (context) => const SoundSelectionScreen()),
     );
@@ -681,6 +862,18 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
                                 const SizedBox(width: 8),
                                 GestureDetector(
                                   onTap: () {
+                                    if (_recordedFiles.isNotEmpty) {
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        const SnackBar(
+                                          content: Text(
+                                            "Cannot change sound after recording has started",
+                                          ),
+                                        ),
+                                      );
+                                      return;
+                                    }
                                     setState(() {
                                       _selectedSound = null;
                                     });
@@ -931,7 +1124,7 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
                                   width: 80,
                                   child: CustomPaint(
                                     painter: SegmentedRingPainter(
-                                      segments: _segments,
+                                      segments: List.from(_segments),
                                       currentProgress: _currentSegmentProgress,
                                       color:
                                           AppColors.neonPink, // Pink Progress

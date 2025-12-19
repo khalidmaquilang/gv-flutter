@@ -1,7 +1,7 @@
 import '../../../auth/data/models/user_model.dart';
 
 class Comment {
-  final int id;
+  final String id;
   final User user;
   final String text;
   final DateTime createdAt;
@@ -15,7 +15,7 @@ class Comment {
 
   factory Comment.fromJson(Map<String, dynamic> json) {
     return Comment(
-      id: json['id'],
+      id: json['id'].toString(),
       user: User.fromJson(json['user']),
       text: json['text'],
       createdAt: DateTime.parse(json['created_at']),

@@ -1,6 +1,6 @@
 class ApiConstants {
   static const String baseUrl =
-      'https://ec4f11df9299.ngrok-free.app/api/v1'; // Android Emulator localhost
+      'https://eb5c238860c7.ngrok-free.app/api/v1'; // Android Emulator localhost
 
   // Auth
   static const String login = '/login';
@@ -10,6 +10,9 @@ class ApiConstants {
 
   // Feed
   static const String videos = '/videos';
+  static const String createPost = '/videos';
+  static const String musics = '/musics';
+  static const String myVideos = '/my-videos';
 
   // DeepAR
   static const String deepArAndroidLicenseKey =
