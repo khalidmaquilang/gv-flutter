@@ -453,6 +453,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                               crossAxisSpacing: 1,
                               mainAxisSpacing: 1,
                             ),
+                        padding: const EdgeInsets.only(bottom: 80),
                         itemCount:
                             gridItemCount + (videosState.isLoading ? 1 : 0),
                         itemBuilder: (context, index) {

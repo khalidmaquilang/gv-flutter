@@ -223,7 +223,7 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
                           child: (widget.video.thumbnailUrl.isNotEmpty)
                               ? Image.network(
                                   widget.video.thumbnailUrl,
-                                  fit: BoxFit.cover,
+                                  fit: BoxFit.contain,
                                   errorBuilder: (context, error, stackTrace) {
                                     return Container(color: Colors.black);
                                   },
