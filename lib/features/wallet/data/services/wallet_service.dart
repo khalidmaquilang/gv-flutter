@@ -1,5 +1,4 @@
 import 'package:dio/dio.dart';
-import '../../../../core/constants/api_constants.dart';
 
 class WalletService {
   final Dio _dio;

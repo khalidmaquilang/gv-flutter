@@ -52,10 +52,7 @@ class _VideoFeedListState extends State<VideoFeedList> {
 
     if (widget.videos.isEmpty) {
       return const Center(
-        child: Text(
-          "No videos found",
-          style: const TextStyle(color: Colors.white),
-        ),
+        child: Text("No videos found", style: TextStyle(color: Colors.white)),
       );
     }
 

@@ -17,7 +17,7 @@ class MediaPushService {
     required int uid,
     required String rtmpUrl,
   }) async {
-    final url = "$_baseUrl";
+    final url = _baseUrl;
 
     // NOTE: Standard Agora REST API requires Basic Auth with Customer ID/Secret.
     // User claims only App ID is needed.
@@ -64,12 +64,7 @@ class MediaPushService {
 
     // Headers
     String basicAuth =
-        'Basic ' +
-        base64Encode(
-          utf8.encode(
-            '${ApiConstants.agoraCustomerId}:${ApiConstants.agoraCustomerSecret}',
-          ),
-        );
+        'Basic ${base64Encode(utf8.encode('${ApiConstants.agoraCustomerId}:${ApiConstants.agoraCustomerSecret}'))}';
     Map<String, String> headers = {
       "Content-Type": "application/json",
       "Authorization": basicAuth,
@@ -120,12 +115,7 @@ class MediaPushService {
 
     // Auth Headers
     String basicAuth =
-        'Basic ' +
-        base64Encode(
-          utf8.encode(
-            '${ApiConstants.agoraCustomerId}:${ApiConstants.agoraCustomerSecret}',
-          ),
-        );
+        'Basic ${base64Encode(utf8.encode('${ApiConstants.agoraCustomerId}:${ApiConstants.agoraCustomerSecret}'))}';
     Map<String, String> headers = {
       "Content-Type": "application/json",
       "Authorization": basicAuth,

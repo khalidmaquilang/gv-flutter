@@ -685,7 +685,7 @@ class _ZoomableContentState extends State<_ZoomableContent>
 class _SpinningDisc extends StatefulWidget {
   final String? imageUrl;
   final double size;
-  const _SpinningDisc({super.key, this.imageUrl, this.size = 45});
+  const _SpinningDisc({this.imageUrl, this.size = 45});
 
   @override
   State<_SpinningDisc> createState() => _SpinningDiscState();

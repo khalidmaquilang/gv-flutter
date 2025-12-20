@@ -107,6 +107,10 @@ class _LiveStreamSetupScreenState extends ConsumerState<LiveStreamSetupScreen> {
       _cameraController = null;
     }
 
+    // Add delay to allow Xiaomi/Android OS to fully release camera resource
+    // before Zego tries to acquire it. This fixes the Xiaomi specific crash.
+    await Future.delayed(const Duration(milliseconds: 1000));
+
     if (!mounted) return;
 
     Navigator.of(context).pushReplacement(

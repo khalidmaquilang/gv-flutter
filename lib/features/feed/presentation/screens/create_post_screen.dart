@@ -372,7 +372,7 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
                         onChanged: isUploading
                             ? null
                             : (val) => setState(() => _allowComments = val),
-                        activeColor: AppColors.neonPink,
+                        activeThumbColor: AppColors.neonPink,
                         activeTrackColor: AppColors.neonPink.withValues(
                           alpha: 0.3,
                         ),
