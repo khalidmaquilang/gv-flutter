@@ -32,6 +32,9 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
   VideoPlayerController? _videoController;
   bool _isVideoInitialized = false;
 
+  // Host Network Stats (Notifier for real-time updates)
+  final ValueNotifier<HostStats> _hostStats = ValueNotifier(const HostStats());
+
   String? _localUserID;
   String? _localUserName;
 
@@ -40,6 +43,45 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
     super.initState();
     _handleAudio();
     _initializeEngine();
+    if (widget.isBroadcaster) {
+      _startMonitoringHostStats();
+    }
+  }
+
+  void _startMonitoringHostStats() {
+    // Wait for Zego UIKit to initialize and potentially set its own listeners
+    Future.delayed(const Duration(seconds: 2), () {
+      if (!mounted) return;
+
+      // Capture the existing callback to avoid breaking ZegoUIKit
+      final originalCallback = ZegoExpressEngine.onPublisherQualityUpdate;
+
+      ZegoExpressEngine.onPublisherQualityUpdate =
+          (String roomID, ZegoPublishStreamQuality quality) {
+            // Call the original callback first
+            originalCallback?.call(roomID, quality);
+
+            if (mounted) {
+              // Simple quality heuristic
+              ZegoStreamQualityLevel qualityLevel;
+              if (quality.rtt < 100 && quality.packetLostRate < 0.01) {
+                qualityLevel = ZegoStreamQualityLevel.Excellent;
+              } else if (quality.rtt < 200 && quality.packetLostRate < 0.05) {
+                qualityLevel = ZegoStreamQualityLevel.Medium;
+              } else {
+                qualityLevel = ZegoStreamQualityLevel.Bad;
+              }
+
+              _hostStats.value = HostStats(
+                fps: quality.videoSendFPS,
+                bitrate: quality.videoKBPS,
+                rtt: quality.rtt,
+                packetLoss: quality.packetLostRate,
+                qualityLevel: qualityLevel,
+              );
+            }
+          };
+    });
   }
 
   void _handleAudio() {
@@ -73,9 +115,9 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
     // Disable Hardware Decoding (Fixes Black Screen on Emulators viewing H264)
     await ZegoExpressEngine.instance.enableHardwareDecoder(false);
 
-    // Force 360p for stable RTMP/Emulator performance
+    // Set 720p for better quality (Check device performance if needed)
     ZegoVideoConfig videoConfig = ZegoVideoConfig.preset(
-      ZegoVideoConfigPreset.Preset360P,
+      ZegoVideoConfigPreset.Preset720P,
     );
     await ZegoExpressEngine.instance.setVideoConfig(videoConfig);
 
@@ -282,7 +324,7 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
     // Disable system back swipe gesture
     return PopScope(
       canPop: false,
-      onPopInvoked: (didPop) async {
+      onPopInvokedWithResult: (didPop, result) async {
         if (didPop) return;
         // Optionally show exit confirmation here if needed,
         // but typically Zego UI handles exit button.
@@ -322,6 +364,8 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
             ..inRoomMessage.backgroundColor = AppColors.deepVoid.withValues(
               alpha: 0.7,
             )
+            ..innerText.startLiveStreamingButton = 'Start Live'
+            ..innerText.noHostOnline = 'No host online'
             ..inRoomMessage.nameTextStyle = TextStyle(
               color: AppColors.neonCyan,
               fontWeight: FontWeight.bold,
@@ -443,6 +487,7 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
                     plugins: [ZegoUIKitSignalingPlugin()],
                   )
                   // Camera settings
+                  ..video = ZegoUIKitVideoConfig.preset720P()
                   ..audioVideoView.useVideoViewAspectFill = true
                   ..turnOnCameraWhenJoining = true
                   ..turnOnMicrophoneWhenJoining = true
@@ -473,32 +518,143 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
           Positioned(
             top: 10,
             right: 60,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.5),
-                borderRadius: BorderRadius.circular(4),
-                border: Border.all(color: AppColors.neonCyan),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.wifi, color: AppColors.neonCyan, size: 12),
-                  const SizedBox(width: 4),
-                  const Text(
-                    "Good", // Placeholder
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold,
+            child: ValueListenableBuilder<HostStats>(
+              valueListenable: _hostStats,
+              builder: (context, stats, _) {
+                return GestureDetector(
+                  onTap: () {
+                    showDialog(
+                      context: context,
+                      builder: (context) => _buildStatsDialog(context),
+                    );
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.5),
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(
+                        color: _getQualityColor(stats.qualityLevel),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.wifi,
+                          color: _getQualityColor(stats.qualityLevel),
+                          size: 12,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          stats.qualityLevel.name,
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                ],
-              ),
+                );
+              },
             ),
           ),
         ],
       ),
     );
   }
+
+  Widget _buildStatsDialog(BuildContext context) {
+    return ValueListenableBuilder<HostStats>(
+      valueListenable: _hostStats,
+      builder: (context, stats, _) {
+        return AlertDialog(
+          backgroundColor: AppColors.deepVoid.withValues(alpha: 0.9),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: BorderSide(color: AppColors.neonCyan),
+          ),
+          title: Text(
+            "Stream Quality",
+            style: TextStyle(
+              color: AppColors.neonCyan,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildStatRow("FPS", "${stats.fps.toStringAsFixed(1)} fps"),
+              SizedBox(height: 8),
+              _buildStatRow(
+                "Bitrate",
+                "${stats.bitrate.toStringAsFixed(1)} kbps",
+              ),
+              SizedBox(height: 8),
+              _buildStatRow("Latency (RTT)", "${stats.rtt} ms"),
+              SizedBox(height: 8),
+              _buildStatRow(
+                "Packet Loss",
+                "${(stats.packetLoss * 100).toStringAsFixed(1)}%",
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text("Close", style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildStatRow(String label, String value) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(label, style: TextStyle(color: Colors.white70)),
+        Text(
+          value,
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        ),
+      ],
+    );
+  }
+
+  Color _getQualityColor(ZegoStreamQualityLevel quality) {
+    switch (quality) {
+      case ZegoStreamQualityLevel.Excellent:
+        return AppColors.neonCyan; // Green-ish/Cyan for good
+      case ZegoStreamQualityLevel.Medium:
+        return Colors.yellowAccent;
+      case ZegoStreamQualityLevel.Bad:
+        return AppColors.neonPink; // Red/Pink for bad
+      default:
+        return AppColors.neonCyan;
+    }
+  }
+}
+
+class HostStats {
+  final double fps;
+  final double bitrate;
+  final int rtt;
+  final double packetLoss;
+  final ZegoStreamQualityLevel qualityLevel;
+
+  const HostStats({
+    this.fps = 0.0,
+    this.bitrate = 0.0,
+    this.rtt = 0,
+    this.packetLoss = 0.0,
+    this.qualityLevel = ZegoStreamQualityLevel.Excellent,
+  });
 }
