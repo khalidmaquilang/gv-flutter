@@ -42,9 +42,15 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
   // Host State
   bool _isLive = false; // False = Preview Mode, True = Streaming Mode
   bool _isZIMConnected = false;
-  bool _isStreamEnded = false;
+  bool _isStreamEnded = false; // Network Quality
   String _networkQualityLabel = '';
-  Color _networkQualityColor = Colors.green;
+  Color _networkQualityColor = Colors.grey;
+
+  // Advanced Stream Stats
+  double _fps = 0.0;
+  double _bitrate = 0.0; // kbps
+  int _rtt = 0; // ms
+  double _packetLoss = 0.0; // %
 
   // Room State
   int _viewerCount = 0;
@@ -256,6 +262,30 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
             }
           });
         }
+      }
+    };
+
+    // Advanced Stats: Publisher (Host)
+    ZegoExpressEngine.onPublisherQualityUpdate = (streamID, quality) {
+      if (mounted) {
+        setState(() {
+          _fps = quality.videoSendFPS;
+          _bitrate = quality.videoKBPS;
+          _rtt = quality.rtt;
+          _packetLoss = quality.packetLostRate;
+        });
+      }
+    };
+
+    // Advanced Stats: Player (Audience)
+    ZegoExpressEngine.onPlayerQualityUpdate = (streamID, quality) {
+      if (mounted) {
+        setState(() {
+          _fps = quality.videoRecvFPS;
+          _bitrate = quality.videoKBPS;
+          _rtt = quality.rtt;
+          _packetLoss = quality.packetLostRate;
+        });
       }
     };
   }
@@ -819,24 +849,27 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
                           if (widget.isBroadcaster &&
                               _isLive &&
                               _networkQualityLabel.isNotEmpty)
-                            Container(
-                              margin: const EdgeInsets.only(left: 6),
-                              padding: const EdgeInsets.all(
-                                6,
-                              ), // Square padding
-                              decoration: BoxDecoration(
-                                color: Colors.black.withValues(alpha: 0.5),
-                                shape: BoxShape.circle, // Circular
-                                border: Border.all(
-                                  color: _networkQualityColor.withValues(
-                                    alpha: 0.6,
+                            GestureDetector(
+                              onTap: _showNetworkStats,
+                              child: Container(
+                                margin: const EdgeInsets.only(left: 6),
+                                padding: const EdgeInsets.all(
+                                  6,
+                                ), // Square padding
+                                decoration: BoxDecoration(
+                                  color: Colors.black.withValues(alpha: 0.5),
+                                  shape: BoxShape.circle, // Circular
+                                  border: Border.all(
+                                    color: _networkQualityColor.withValues(
+                                      alpha: 0.6,
+                                    ),
                                   ),
                                 ),
-                              ),
-                              child: Icon(
-                                Icons.wifi,
-                                color: _networkQualityColor,
-                                size: 16, // Slightly larger icon
+                                child: Icon(
+                                  Icons.wifi,
+                                  color: _networkQualityColor,
+                                  size: 16, // Slightly larger icon
+                                ),
                               ),
                             ),
                         ],
@@ -1080,6 +1113,115 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
                 ),
               ],
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Show Network Stats Modal
+  void _showNetworkStats() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: Colors.black.withValues(alpha: 0.9),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+            border: const Border(top: BorderSide(color: AppColors.neonCyan)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                "Stream Status",
+                style: TextStyle(
+                  color: Colors.white,
+                  fontFamily: 'Orbitron',
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 20),
+              // Grid of Stats
+              GridView.count(
+                shrinkWrap: true,
+                crossAxisCount: 2,
+                childAspectRatio: 2.5,
+                crossAxisSpacing: 15,
+                mainAxisSpacing: 15,
+                children: [
+                  _buildStatItem(
+                    "Bitrate",
+                    "${_bitrate.toStringAsFixed(0)} kbps",
+                    Icons.speed,
+                    Colors.blue,
+                  ),
+                  _buildStatItem(
+                    "FPS",
+                    "${_fps.toStringAsFixed(0)}",
+                    Icons.videocam,
+                    Colors.green,
+                  ),
+                  _buildStatItem(
+                    "Latency (RTT)",
+                    "$_rtt ms",
+                    Icons.timer,
+                    Colors.orange,
+                  ),
+                  _buildStatItem(
+                    "Packet Loss",
+                    "${(_packetLoss * 100).toStringAsFixed(1)}%",
+                    Icons.warning_amber,
+                    Colors.red,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildStatItem(
+    String label,
+    String value,
+    IconData icon,
+    Color color,
+  ) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.deepVoid,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.5)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: color, size: 24),
+          const SizedBox(width: 12),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                value,
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  fontFamily: 'Orbitron',
+                ),
+              ),
+              Text(
+                label,
+                style: TextStyle(color: Colors.white70, fontSize: 10),
+              ),
+            ],
           ),
         ],
       ),
