@@ -509,6 +509,17 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
   }
 
   Future<void> _startPublishing() async {
+    // Best Practice: Set a robust config for generic CDN/RTMP compatibility
+    ZegoVideoConfig config = ZegoVideoConfig.preset(
+      ZegoVideoConfigPreset.Preset540P,
+    );
+
+    config.bitrate = 1200; // Solid quality for mobile 540p
+    config.fps = 15; // Standard for mobile streaming (saves bandwidth, stable)
+    // config.codecID = ZegoVideoCodecID.Default; // H.264 (Crucial for HLS Compatibility)
+
+    await ZegoExpressEngine.instance.setVideoConfig(config);
+
     String streamID = '${widget.channelId}_${_localUserID}_main';
     await ZegoExpressEngine.instance.startPublishingStream(streamID);
     setState(() {
