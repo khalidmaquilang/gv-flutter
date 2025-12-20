@@ -19,6 +19,7 @@ import package_info_plus
 import path_provider_foundation
 import photo_manager
 import share_plus
+import shared_preferences_foundation
 import sqflite_darwin
 import video_player_avfoundation
 import video_player_rtmp_ext
@@ -41,6 +42,7 @@ func RegisterGeneratedPlugins(registry: FlutterPluginRegistry) {
   PathProviderPlugin.register(with: registry.registrar(forPlugin: "PathProviderPlugin"))
   PhotoManagerPlugin.register(with: registry.registrar(forPlugin: "PhotoManagerPlugin"))
   SharePlusMacosPlugin.register(with: registry.registrar(forPlugin: "SharePlusMacosPlugin"))
+  SharedPreferencesPlugin.register(with: registry.registrar(forPlugin: "SharedPreferencesPlugin"))
   SqflitePlugin.register(with: registry.registrar(forPlugin: "SqflitePlugin"))
   FVPVideoPlayerPlugin.register(with: registry.registrar(forPlugin: "FVPVideoPlayerPlugin"))
   VideoPlayerRtmpExtPlugin.register(with: registry.registrar(forPlugin: "VideoPlayerRtmpExtPlugin"))

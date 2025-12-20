@@ -2,8 +2,9 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:agora_rtm/agora_rtm.dart';
 import 'package:flutter/foundation.dart';
-import '../../../../core/constants/api_constants.dart';
+
 import '../models/live_interaction_model.dart';
+import 'package:test_flutter/core/constants/api_constants.dart';
 import '../models/live_stream_model.dart';
 import '../../../auth/data/models/user_model.dart';
 import 'dart:math';
@@ -221,6 +222,21 @@ class LiveService {
   Future<List<LiveStream>> getActiveStreams() async {
     await Future.delayed(const Duration(milliseconds: 500));
     return List.generate(10, (index) {
+      // FORCE SYNC: First stream matches the Host's "Go Live" ID
+      if (index == 0) {
+        return LiveStream(
+          channelId: ApiConstants.fixedTestChannelId,
+          user: User(
+            id: "host_user",
+            name: "Test Host",
+            email: "host@test.com",
+            avatar: "https://dummyimage.com/50",
+          ),
+          thumbnailUrl: "https://dummyimage.com/300x400",
+          viewersCount: 0,
+          title: "LIVE NOW (Test Channel)",
+        );
+      }
       return LiveStream(
         channelId: "channel_$index",
         user: User(

@@ -1,6 +1,5 @@
-import 'dart:typed_data';
-
 import 'package:flutter/material.dart';
+import 'dart:math' as math;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:test_flutter/core/constants/api_constants.dart';
@@ -11,6 +10,8 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:zego_express_engine/zego_express_engine.dart';
 import 'package:zego_zim/zego_zim.dart';
 import 'package:video_player/video_player.dart';
+import 'package:zego_uikit_prebuilt_live_streaming/zego_uikit_prebuilt_live_streaming.dart';
+import 'package:zego_uikit_signaling_plugin/zego_uikit_signaling_plugin.dart';
 
 class LiveStreamScreen extends ConsumerStatefulWidget {
   final bool isBroadcaster;
@@ -27,45 +28,12 @@ class LiveStreamScreen extends ConsumerStatefulWidget {
 }
 
 class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
-  // Zego State
-  int? _previewViewID;
-  Widget? _hostView;
-  bool _isEngineActive = false;
-
   // Audience Video
   VideoPlayerController? _videoController;
   bool _isVideoInitialized = false;
 
   String? _localUserID;
   String? _localUserName;
-
-  // Host State
-  bool _isLive = false; // False = Preview Mode, True = Streaming Mode
-  bool _isZIMConnected = false;
-  bool _isStreamEnded = false; // Network Quality
-  String _networkQualityLabel = '';
-  Color _networkQualityColor = Colors.grey;
-
-  // Advanced Stream Stats
-  double _fps = 0.0;
-  double _bitrate = 0.0; // kbps
-  int _rtt = 0; // ms
-  double _packetLoss = 0.0; // %
-
-  // Room State
-  int _viewerCount = 0;
-
-  // ZIM State
-  final List<ZIMTextMessage> _messages = [];
-  final TextEditingController _chatController = TextEditingController();
-
-  final List<GiftItem> _gifts = [
-    GiftItem(id: 'rose', name: 'Rose', icon: '🌹', cost: 1),
-    GiftItem(id: 'heart', name: 'Heart', icon: '❤️', cost: 5),
-    GiftItem(id: 'party', name: 'Party', icon: '🎉', cost: 10),
-    GiftItem(id: 'diamond', name: 'Diamond', icon: '💎', cost: 50),
-    GiftItem(id: 'rocket', name: 'Rocket', icon: '🚀', cost: 100),
-  ];
 
   @override
   void initState() {
@@ -88,6 +56,12 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
 
     await [Permission.camera, Permission.microphone].request();
 
+    // HOST: Skip custom engine init - let UIKit manage it
+    if (widget.isBroadcaster) {
+      return; // Exit early - UIKit handles everything
+    }
+
+    // AUDIENCE: Initialize custom engine for playback
     await ZegoExpressEngine.createEngineWithProfile(
       ZegoEngineProfile(
         ApiConstants.zegoAppId,
@@ -117,30 +91,16 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
       config: roomConfig,
     );
 
-    setState(() {
-      _isEngineActive = true;
-    });
-
     // Initialize ZIM
-
     await _initializeZIM(zegoUser, widget.channelId);
 
-    if (widget.isBroadcaster) {
-      // Host Logic: Create View
-      _hostView = await ZegoExpressEngine.instance.createCanvasView((viewID) {
-        _previewViewID = viewID;
-        // Do NOT start preview here. We control it in _startPreview.
-      });
-      // Set to preview mode
-      await _startPreview();
-    } else {
-      // Audience Logic: Just start the player (no Zego Canvas needed)
-      _startAudienceMode();
+    // Mute RTC Audio to prevent double audio (CDN + RTC)
+    if (!widget.isBroadcaster) {
+      await ZegoExpressEngine.instance.muteAllPlayStreamAudio(true);
     }
 
-    setState(() {
-      _isEngineActive = true;
-    });
+    // Audience Logic: Start the HLS player
+    _startAudienceMode();
   }
 
   void _setZegoEventHandlers() {
@@ -163,24 +123,9 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
           }
         };
 
-    // Viewer Count & User Update
-    ZegoExpressEngine.onRoomOnlineUserCountUpdate = (String roomID, int count) {
-      setState(() {
-        _viewerCount = count;
-      });
-    };
-
     ZegoExpressEngine.onRoomUserUpdate =
         (String roomID, ZegoUpdateType updateType, List<ZegoUser> userList) {
-          if (updateType == ZegoUpdateType.Add) {
-            for (var user in userList) {
-              _addSystemMessage("${user.userName} joined the stream 🚀");
-            }
-          } else {
-            for (var _ in userList) {
-              // _addSystemMessage("${user.userName} left the stream 👋"); // Disabled by user
-            }
-          }
+          // Manual notifications removed as UIKit handles them
         };
 
     ZegoExpressEngine.onPublisherStateUpdate =
@@ -209,80 +154,10 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
             }
           } else if (state == ZegoPublisherState.NoPublish && errorCode != 0) {
             if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text("Publish Error: $errorCode"),
-                  backgroundColor: Colors.red,
-                ),
-              );
+              debugPrint("Publish Error: $errorCode");
             }
           }
         };
-
-    ZegoExpressEngine
-        .onNetworkQuality = (userID, upstreamQuality, downstreamQuality) {
-      // DEBUG LOGGING
-      // debugPrint("NetworkQuality: user=$userID, local=$_localUserID, up=$upstreamQuality");
-
-      if (userID == _localUserID || (userID.isEmpty && widget.isBroadcaster)) {
-        // Host's Upstream Quality
-        // Sometimes local user ID might be empty string in callback?
-        if (mounted) {
-          setState(() {
-            switch (upstreamQuality) {
-              case ZegoStreamQualityLevel.Excellent:
-                _networkQualityLabel = 'Excellent';
-                _networkQualityColor = Colors.green;
-                break;
-              case ZegoStreamQualityLevel.Good:
-                _networkQualityLabel = 'Good';
-                _networkQualityColor = Colors.lightGreen;
-                break;
-              case ZegoStreamQualityLevel.Medium:
-                _networkQualityLabel = 'Medium';
-                _networkQualityColor = Colors.yellow;
-                break;
-              case ZegoStreamQualityLevel.Bad:
-                _networkQualityLabel = 'Weak';
-                _networkQualityColor = Colors.orange;
-                break;
-              case ZegoStreamQualityLevel.Die:
-                _networkQualityLabel = 'Bad';
-                _networkQualityColor = Colors.red;
-                break;
-              default:
-                _networkQualityLabel = 'Unknown';
-                _networkQualityColor = Colors.grey;
-                break;
-            }
-          });
-        }
-      }
-    };
-
-    // Advanced Stats: Publisher (Host)
-    ZegoExpressEngine.onPublisherQualityUpdate = (streamID, quality) {
-      if (mounted) {
-        setState(() {
-          _fps = quality.videoSendFPS;
-          _bitrate = quality.videoKBPS;
-          _rtt = quality.rtt;
-          _packetLoss = quality.packetLostRate;
-        });
-      }
-    };
-
-    // Advanced Stats: Player (Audience)
-    ZegoExpressEngine.onPlayerQualityUpdate = (streamID, quality) {
-      if (mounted) {
-        setState(() {
-          _fps = quality.videoRecvFPS;
-          _bitrate = quality.videoKBPS;
-          _rtt = quality.rtt;
-          _packetLoss = quality.packetLostRate;
-        });
-      }
-    };
   }
 
   Future<void> _initializeZIM(ZegoUser user, String roomID) async {
@@ -299,103 +174,7 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
     ZIMEventHandler.onConnectionStateChanged =
         (zim, state, event, extendedData) {
           debugPrint("ZIM Connection State: $state, Event: $event");
-          if (mounted) {
-            setState(() {
-              _isZIMConnected = (state == ZIMConnectionState.connected);
-            });
-          }
         };
-
-    ZIMEventHandler.onRoomMessageReceived =
-        (zim, messageList, info, fromRoomID) {
-          if (fromRoomID != widget.channelId) return;
-
-          for (var msg in messageList) {
-            if (msg is ZIMTextMessage) {
-              // Check for Command Prefix
-              if (msg.message.startsWith("CMD:")) {
-                debugPrint("ZIM CMD Received: ${msg.message}");
-
-                if (msg.message == "CMD:STREAM_PAUSED") {
-                  if (!widget.isBroadcaster) {
-                    setState(() {
-                      _isPaused = true;
-                    });
-                  }
-                } else if (msg.message == "CMD:STREAM_RESUMED") {
-                  if (!widget.isBroadcaster) {
-                    setState(() {
-                      _isPaused = false;
-                      _isVideoInitialized = false;
-                    });
-                    _startAudienceMode();
-                  }
-                }
-                // Do NOT add to chat list
-                continue;
-              }
-
-              if (mounted) {
-                setState(() {
-                  _messages.insert(0, msg);
-                });
-              }
-            } else if (msg is ZIMCommandMessage) {
-              // ... (Same Command Logic as before) ...
-              final data = String.fromCharCodes(msg.message);
-              debugPrint("ZIM Command Received: $data"); // Debug Log
-
-              if (data == "STREAM_PAUSED") {
-                if (!widget.isBroadcaster) {
-                  setState(() {
-                    _isPaused = true;
-                  });
-                }
-              } else if (data == "STREAM_RESUMED") {
-                if (!widget.isBroadcaster) {
-                  setState(() {
-                    _isPaused = false;
-                    _isVideoInitialized = false; // Reset init state
-                  });
-                  _startAudienceMode(); // Force player reload
-                }
-              } else if (data.startsWith("GIFT:")) {
-                final parts = data.split(":");
-                if (parts.length > 1) {
-                  final giftId = parts[1];
-                  GiftItem? gift;
-                  try {
-                    gift = _gifts.firstWhere((g) => g.id == giftId);
-                  } catch (e) {
-                    gift = _gifts[1];
-                  }
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Row(
-                          children: [
-                            Text("Received: ${gift.name} ${gift.icon}"),
-                            const SizedBox(width: 10),
-                            const Icon(Icons.celebration, color: Colors.white),
-                          ],
-                        ),
-                        backgroundColor: AppColors.neonPink,
-                        behavior: SnackBarBehavior.floating,
-                      ),
-                    );
-                  }
-                }
-              }
-            }
-          }
-        };
-
-    ZIMEventHandler.onRoomMemberJoined = (zim, memberList, roomID) {
-      // Using ZegoEngine for this
-    };
-    ZIMEventHandler.onRoomMemberLeft = (zim, memberList, roomID) {
-      // Using ZegoEngine for this
-    };
 
     try {
       await ZIM.getInstance()!.login(
@@ -409,191 +188,64 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
     }
   }
 
-  Future<void> _sendChatMessage() async {
-    // ... existing chat logic ...
-    final text = _chatController.text.trim();
-    if (text.isEmpty) return;
-
-    final myMsg = ZIMTextMessage(message: text);
-    myMsg.senderUserID = _localUserID!;
-
-    setState(() {
-      _messages.insert(0, myMsg);
-      _chatController.clear();
-    });
-
-    try {
-      await ZIM.getInstance()?.sendMessage(
-        myMsg,
-        widget.channelId,
-        ZIMConversationType.room,
-        ZIMMessageSendConfig(),
-      );
-    } catch (e) {
-      debugPrint("Send Error: $e");
-    }
-  }
-
-  Future<void> _sendGift(String giftName) async {
-    if (!_isZIMConnected) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Not connected to Chat yet. Please wait."),
-          backgroundColor: Colors.orange,
-        ),
-      );
-      return;
-    }
-
-    debugPrint(
-      "Attempting to send gift: $giftName into room ${widget.channelId}",
-    );
-    final command = ZIMCommandMessage(
-      message: Uint8List.fromList("GIFT:$giftName".codeUnits),
-    );
-    try {
-      final result = await ZIM
-          .getInstance()
-          ?.sendMessage(
-            command,
-            widget.channelId,
-            ZIMConversationType.room,
-            ZIMMessageSendConfig(),
-          )
-          .then((value) {
-            debugPrint("Gift Sent Successfully: ${value.message.messageID}");
-
-            // Optimistic UI Update for Sender
-            final gift = _gifts.firstWhere(
-              (g) => g.id == giftName,
-              orElse: () => _gifts[1],
-            );
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text("You sent ${gift.icon} ${gift.name}!"),
-                  backgroundColor: AppColors.neonCyan,
-                ),
-              );
-            }
-          });
-    } catch (e) {
-      debugPrint("Gift Send Error: $e");
-    }
-  }
-
-  // --- HOST LOGIC ---
-
-  Future<void> _startPreview() async {
-    // Enable WakeLock to keep screen on
-    await WakelockPlus.enable();
-
-    // Ensure camera/mic are enabled (Critical for Emulator/Black Screen)
-    await ZegoExpressEngine.instance.enableCamera(true);
-    await ZegoExpressEngine.instance.muteMicrophone(false);
-
-    // Just enable camera/preview view
-    await ZegoExpressEngine.instance.useFrontCamera(true);
-
-    // If previewViewID is properly set, ensure preview is started.
-    // This covers cases where the first startPreview call in createView might have missed due to race conditions.
-    if (_previewViewID != null) {
-      await ZegoExpressEngine.instance.startPreview(
-        canvas: ZegoCanvas.view(_previewViewID!),
-      );
-    }
-
-    setState(() {
-      _isLive = false; // Ready to preview
-    });
-  }
-
-  Future<void> _startPublishing() async {
-    // Best Practice: Set a robust config for generic CDN/RTMP compatibility
-    ZegoVideoConfig config = ZegoVideoConfig.preset(
-      ZegoVideoConfigPreset.Preset540P,
-    );
-
-    config.bitrate = 1200; // Solid quality for mobile 540p
-    config.fps = 15; // Standard for mobile streaming (saves bandwidth, stable)
-    // config.codecID = ZegoVideoCodecID.Default; // H.264 (Crucial for HLS Compatibility)
-
-    await ZegoExpressEngine.instance.setVideoConfig(config);
-
-    String streamID = '${widget.channelId}_${_localUserID}_main';
-    await ZegoExpressEngine.instance.startPublishingStream(streamID);
-    setState(() {
-      _isLive = true;
-    });
-  }
-
   // --- AUDIENCE LOGIC ---
 
   void _startAudienceMode() {
-    // Dispose previous controller to prevent leaks/conflicts
-    _videoController?.dispose();
-    _videoController = null;
+    // Enable WakeLock for audience
+    WakelockPlus.enable();
+
+    // Reset state immediately to prevent UI from trying to render a disposed/null controller
+    if (mounted) {
+      setState(() {
+        _isVideoInitialized = false;
+        _videoController?.dispose();
+        _videoController = null;
+      });
+    } else {
+      _videoController?.dispose();
+      _videoController = null;
+    }
 
     // Slight delay to allow HLS segments to propagate after resume
     Future.delayed(const Duration(seconds: 2), () {
       if (!mounted) return;
 
-      _videoController =
-          VideoPlayerController.networkUrl(Uri.parse(ApiConstants.hlsPlayUrl))
-            ..initialize()
-                .then((_) {
-                  if (!mounted) return;
-                  // Ensure the first frame is shown after the video is initialized
-                  setState(() {
-                    _isVideoInitialized = true;
-                  });
-                  _videoController!.play();
-                })
-                .catchError((e) {
-                  debugPrint("Video Player Init Error: $e");
-                });
-    });
-  }
-
-  /*
-  Future<void> _playHLSStream() async {
-     // Deprecated: Using VideoPlayerController instead
-  }
-  */
-
-  bool _isPaused = false;
-
-  Future<void> _togglePause() async {
-    setState(() {
-      _isPaused = !_isPaused;
-    });
-    // Mute/Unmute Video & Audio
-    ZegoExpressEngine.instance.mutePublishStreamVideo(_isPaused);
-    ZegoExpressEngine.instance.mutePublishStreamAudio(_isPaused);
-
-    // Send Signal to Audience
-    final signal = _isPaused ? "CMD:STREAM_PAUSED" : "CMD:STREAM_RESUMED";
-
-    if (ZIM.getInstance() == null) return;
-
-    final command = ZIMTextMessage(message: signal);
-    try {
-      await ZIM.getInstance()!.sendMessage(
-        command,
-        widget.channelId,
-        ZIMConversationType.room,
-        ZIMMessageSendConfig(),
+      final newController = VideoPlayerController.networkUrl(
+        Uri.parse(ApiConstants.hlsPlayUrl),
       );
-    } catch (e) {
-      debugPrint("ZIM Send Failed: $e");
-    }
+
+      _videoController = newController;
+
+      newController
+          .initialize()
+          .then((_) {
+            if (!mounted) {
+              newController.dispose();
+              return;
+            }
+            // Ensure the first frame is shown after the video is initialized
+            if (_videoController == newController) {
+              // Check if still the active controller
+              setState(() {
+                _isVideoInitialized = true;
+              });
+              newController.play();
+            }
+          })
+          .catchError((e) {
+            debugPrint("Video Player Init Error: $e");
+            if (mounted && _videoController == newController) {
+              // Optionally handle error state in UI
+            }
+          });
+    });
   }
 
   void _stopPlaying() {
     _videoController?.pause();
     if (mounted) {
       setState(() {
-        _isStreamEnded = true;
+        _isVideoInitialized = false;
       });
     }
   }
@@ -601,105 +253,15 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
   @override
   void dispose() {
     _videoController?.dispose();
-    _destroy();
+
+    // Only destroy engine for audience (hosts use UIKit which manages its own lifecycle)
+    if (!widget.isBroadcaster) {
+      _destroy();
+    }
+
     WakelockPlus.disable();
     ref.read(isFeedAudioEnabledProvider.notifier).state = true;
     super.dispose();
-  }
-
-  // ... (Keep _destroy)
-
-  // ... (Keep build)
-
-  // ... (Keep _buildHostView)
-
-  Widget _buildAudienceView() {
-    if (_isStreamEnded) {
-      return Center(
-        child: Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: Colors.black.withValues(alpha: 0.8),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: AppColors.neonPink),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.videocam_off, color: Colors.white, size: 50),
-              const SizedBox(height: 10),
-              const Text(
-                "Live Stream Ended",
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  fontFamily: 'Orbitron',
-                ),
-              ),
-              const SizedBox(height: 20),
-              _buildNeonActionButton(Icons.exit_to_app, AppColors.neonPink, () {
-                Navigator.pop(context);
-              }),
-            ],
-          ),
-        ),
-      );
-    }
-
-    if (_isPaused) {
-      return Center(
-        child: Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: Colors.black.withValues(alpha: 0.8),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: AppColors.neonCyan),
-          ),
-          child: const Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                Icons.pause_circle_outline,
-                color: AppColors.neonCyan,
-                size: 50,
-              ),
-              SizedBox(height: 10),
-              Text(
-                "Stream Paused by Host",
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  fontFamily: 'Orbitron',
-                ),
-              ),
-              SizedBox(height: 5),
-              Text("Please wait...", style: TextStyle(color: Colors.white70)),
-            ],
-          ),
-        ),
-      );
-    }
-
-    if (_isVideoInitialized && _videoController != null) {
-      return Center(
-        child: AspectRatio(
-          aspectRatio: _videoController!.value.aspectRatio,
-          child: VideoPlayer(_videoController!),
-        ),
-      );
-    }
-    return const Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          CircularProgressIndicator(color: AppColors.neonPink),
-          SizedBox(height: 20),
-          Text("Waiting for Host...", style: TextStyle(color: Colors.white)),
-        ],
-      ),
-    );
   }
 
   Future<void> _destroy() async {
@@ -717,695 +279,188 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (!_isEngineActive) {
-      return const Scaffold(
-        backgroundColor: AppColors.deepVoid,
-        body: Center(
-          child: CircularProgressIndicator(color: AppColors.neonPink),
-        ),
-      );
-    }
-
-    return Scaffold(
-      backgroundColor: AppColors.deepVoid,
-      resizeToAvoidBottomInset: false,
-      body: Stack(
-        children: [
-          Positioned.fill(
-            child: widget.isBroadcaster
-                ? _buildHostView()
-                : _buildAudienceView(),
-          ),
-
-          // HOST PREVIEW OVERLAY
-          if (widget.isBroadcaster && !_isLive)
-            Container(
-              color: Colors.black.withValues(alpha: 0.4),
-              padding: const EdgeInsets.only(bottom: 50),
-              alignment: Alignment.bottomCenter, // Moved to bottom
-              child: GestureDetector(
-                onTap: _startPublishing,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 40,
-                    vertical: 15,
-                  ),
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [AppColors.neonPink, AppColors.neonCyan],
-                    ),
-                    borderRadius: BorderRadius.circular(30),
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppColors.neonPink.withValues(alpha: 0.5),
-                        blurRadius: 15,
-                        spreadRadius: 2,
-                      ),
-                    ],
-                  ),
-                  child: const Text(
-                    "GO LIVE",
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 1.5,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-
-          SafeArea(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                // Top Bar
-                Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      // User Info
-                      Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 6,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.black.withValues(alpha: 0.5),
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(
-                                color: AppColors.neonCyan.withValues(
-                                  alpha: 0.3,
-                                ),
-                              ),
-                            ),
-                            child: Row(
-                              children: [
-                                const CircleAvatar(
-                                  backgroundColor: AppColors.neonPink,
-                                  radius: 15,
-                                ),
-                                const SizedBox(width: 8),
-                                Text(
-                                  widget.isBroadcaster ? "YOU (Host)" : "Host",
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          // Viewer Count
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 6,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.black.withValues(alpha: 0.5),
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: Row(
-                              children: [
-                                const Icon(
-                                  Icons.remove_red_eye,
-                                  color: Colors.white70,
-                                  size: 16,
-                                ),
-                                const SizedBox(width: 5),
-                                Text(
-                                  "$_viewerCount",
-                                  style: const TextStyle(
-                                    color: Colors.white70,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-
-                          // Network Quality Indicator
-                          if (widget.isBroadcaster &&
-                              _isLive &&
-                              _networkQualityLabel.isNotEmpty)
-                            GestureDetector(
-                              onTap: _showNetworkStats,
-                              child: Container(
-                                margin: const EdgeInsets.only(left: 6),
-                                padding: const EdgeInsets.all(
-                                  6,
-                                ), // Square padding
-                                decoration: BoxDecoration(
-                                  color: Colors.black.withValues(alpha: 0.5),
-                                  shape: BoxShape.circle, // Circular
-                                  border: Border.all(
-                                    color: _networkQualityColor.withValues(
-                                      alpha: 0.6,
-                                    ),
-                                  ),
-                                ),
-                                child: Icon(
-                                  Icons.wifi,
-                                  color: _networkQualityColor,
-                                  size: 16, // Slightly larger icon
-                                ),
-                              ),
-                            ),
-                        ],
-                      ),
-
-                      Row(
-                        children: [
-                          if (widget.isBroadcaster)
-                            Padding(
-                              padding: const EdgeInsets.only(right: 10),
-                              child: GestureDetector(
-                                onTap: _togglePause,
-                                child: CircleAvatar(
-                                  backgroundColor: _isPaused
-                                      ? AppColors.neonPink
-                                      : Colors.black.withValues(alpha: 0.5),
-                                  radius: 20,
-                                  child: Icon(
-                                    _isPaused ? Icons.play_arrow : Icons.pause,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          GestureDetector(
-                            onTap: () {
-                              if (widget.isBroadcaster) {
-                                showDialog(
-                                  context: context,
-                                  builder: (context) => AlertDialog(
-                                    backgroundColor: Colors.black.withOpacity(
-                                      0.9,
-                                    ),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(20),
-                                      side: const BorderSide(
-                                        color: AppColors.neonPink,
-                                      ),
-                                    ),
-                                    title: const Text(
-                                      "End Live Stream?",
-                                      style: TextStyle(
-                                        color: Colors.white,
-                                        fontFamily: 'Orbitron',
-                                      ),
-                                    ),
-                                    content: const Text(
-                                      "Are you sure you want to end the live stream?",
-                                      style: TextStyle(color: Colors.white70),
-                                    ),
-                                    actions: [
-                                      TextButton(
-                                        onPressed: () => Navigator.pop(context),
-                                        child: const Text(
-                                          "Cancel",
-                                          style: TextStyle(color: Colors.grey),
-                                        ),
-                                      ),
-                                      TextButton(
-                                        onPressed: () {
-                                          Navigator.pop(
-                                            context,
-                                          ); // Close dialog
-                                          Navigator.pop(
-                                            context,
-                                          ); // Close screen
-                                        },
-                                        child: const Text(
-                                          "End Stream",
-                                          style: TextStyle(
-                                            color: AppColors.neonPink,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                );
-                              } else {
-                                Navigator.of(context).pop();
-                              }
-                            },
-                            child: CircleAvatar(
-                              backgroundColor: Colors.black.withValues(
-                                alpha: 0.5,
-                              ),
-                              radius: 20,
-                              child: const Icon(
-                                Icons.close,
-                                color: Colors.white,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                // Bottom Bar
-                Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    children: [
-                      Container(
-                        height: 200,
-                        alignment: Alignment.bottomLeft,
-                        child: ListView.builder(
-                          reverse: true,
-                          itemCount: _messages.length,
-                          itemBuilder: (context, index) {
-                            final msg = _messages[index];
-                            final isMe = msg.senderUserID == _localUserID;
-                            return Container(
-                              margin: const EdgeInsets.only(
-                                bottom: 8,
-                                right: 40,
-                              ),
-                              padding: const EdgeInsets.all(10),
-                              decoration: BoxDecoration(
-                                color: isMe
-                                    ? AppColors.neonPink.withValues(alpha: 0.15)
-                                    : Colors.black.withValues(alpha: 0.6),
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(
-                                  color: isMe
-                                      ? AppColors.neonPink.withValues(
-                                          alpha: 0.4,
-                                        )
-                                      : AppColors.neonCyan.withValues(
-                                          alpha: 0.2,
-                                        ),
-                                ),
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  // Sender Name
-                                  if (!isMe && msg.senderUserID != "SYSTEM")
-                                    Padding(
-                                      padding: const EdgeInsets.only(bottom: 2),
-                                      child: Text(
-                                        msg.senderUserID, // Ideally senderUserName if available
-                                        style: TextStyle(
-                                          color: AppColors.neonCyan.withOpacity(
-                                            0.8,
-                                          ),
-                                          fontSize: 10,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    ),
-                                  // Message Content
-                                  Text(
-                                    msg.message,
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 13,
-                                      shadows: [
-                                        Shadow(
-                                          blurRadius: 2,
-                                          color: Colors.black,
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      Row(
-                        children: [
-                          if (!widget.isBroadcaster)
-                            Expanded(
-                              child: Container(
-                                height: 50,
-                                decoration: BoxDecoration(
-                                  color: Colors.black.withValues(alpha: 0.8),
-                                  borderRadius: BorderRadius.circular(25),
-                                  border: Border.all(
-                                    color: AppColors.neonCyan,
-                                    width: 1.5,
-                                  ),
-                                ),
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 16,
-                                ),
-                                alignment: Alignment.centerLeft,
-                                child: TextField(
-                                  controller: _chatController,
-                                  style: const TextStyle(color: Colors.white),
-                                  decoration: InputDecoration(
-                                    border: InputBorder.none,
-                                    hintText: "Say something...",
-                                    hintStyle: TextStyle(
-                                      color: Colors.white.withValues(
-                                        alpha: 0.5,
-                                      ),
-                                    ),
-                                    suffixIcon: IconButton(
-                                      icon: const Icon(
-                                        Icons.send_rounded,
-                                        color: AppColors.neonCyan,
-                                      ),
-                                      onPressed: _sendChatMessage,
-                                    ),
-                                  ),
-                                  onSubmitted: (_) => _sendChatMessage(),
-                                ),
-                              ),
-                            ),
-
-                          if (widget.isBroadcaster) const Spacer(),
-
-                          // Hide Buttons for Host (Host shouldn't gift themselves)
-                          if (!widget.isBroadcaster) ...[
-                            const SizedBox(width: 10),
-                            _buildNeonActionButton(
-                              Icons.card_giftcard,
-                              AppColors.neonPink,
-                              _showGiftPicker,
-                            ),
-                            const SizedBox(width: 10),
-                            _buildNeonActionButton(
-                              Icons.favorite,
-                              AppColors.neonCyan,
-                              () => _sendGift("heart"), // Quick Like
-                            ),
-                          ],
-
-                          const SizedBox(width: 10),
-                          _buildNeonActionButton(Icons.share, Colors.white, () {
-                            // Share logic would go here
-                          }),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // Show Network Stats Modal
-  void _showNetworkStats() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (context) {
-        return Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: Colors.black.withValues(alpha: 0.9),
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-            border: const Border(top: BorderSide(color: AppColors.neonCyan)),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text(
-                "Stream Status",
-                style: TextStyle(
-                  color: Colors.white,
-                  fontFamily: 'Orbitron',
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 20),
-              // Grid of Stats
-              GridView.count(
-                shrinkWrap: true,
-                crossAxisCount: 2,
-                childAspectRatio: 2.5,
-                crossAxisSpacing: 15,
-                mainAxisSpacing: 15,
-                children: [
-                  _buildStatItem(
-                    "Bitrate",
-                    "${_bitrate.toStringAsFixed(0)} kbps",
-                    Icons.speed,
-                    Colors.blue,
-                  ),
-                  _buildStatItem(
-                    "FPS",
-                    "${_fps.toStringAsFixed(0)}",
-                    Icons.videocam,
-                    Colors.green,
-                  ),
-                  _buildStatItem(
-                    "Latency (RTT)",
-                    "$_rtt ms",
-                    Icons.timer,
-                    Colors.orange,
-                  ),
-                  _buildStatItem(
-                    "Packet Loss",
-                    "${(_packetLoss * 100).toStringAsFixed(1)}%",
-                    Icons.warning_amber,
-                    Colors.red,
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
-            ],
-          ),
-        );
+    // Disable system back swipe gesture
+    return PopScope(
+      canPop: false,
+      onPopInvoked: (didPop) async {
+        if (didPop) return;
+        // Optionally show exit confirmation here if needed,
+        // but typically Zego UI handles exit button.
       },
+      child: widget.isBroadcaster
+          ? _buildHostUIKit(context)
+          : _buildAudienceUIKit(context),
     );
   }
 
-  Widget _buildStatItem(
-    String label,
-    String value,
-    IconData icon,
-    Color color,
-  ) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppColors.deepVoid,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withValues(alpha: 0.5)),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, color: color, size: 24),
-          const SizedBox(width: 12),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                value,
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  fontFamily: 'Orbitron',
-                ),
-              ),
-              Text(
-                label,
-                style: TextStyle(color: Colors.white70, fontSize: 10),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
+  Widget _buildAudienceUIKit(BuildContext context) {
+    // Capture controller locally to ensure null safety during build
+    final activeController = _videoController;
+    final isReady =
+        _isVideoInitialized &&
+        activeController != null &&
+        activeController.value.isInitialized;
 
-  void _showGiftPicker() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (context) {
-        return Container(
-          height: 300,
-          decoration: BoxDecoration(
-            color: Colors.black.withValues(alpha: 0.9),
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-            border: const Border(top: BorderSide(color: AppColors.neonPink)),
-          ),
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                "Send a Gift",
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  fontFamily: 'Orbitron',
-                ),
-              ),
-              const SizedBox(height: 20),
-              Expanded(
-                child: GridView.builder(
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 4,
-                    childAspectRatio: 0.8,
-                    crossAxisSpacing: 15,
-                    mainAxisSpacing: 15,
-                  ),
-                  itemCount: _gifts.length,
-                  itemBuilder: (context, index) {
-                    final gift = _gifts[index];
-                    return GestureDetector(
-                      onTap: () {
-                        Navigator.pop(context);
-                        _sendGift(gift.id);
-                      },
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: AppColors.deepVoid,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: AppColors.neonCyan.withValues(alpha: 0.5),
-                          ),
+    return ZegoUIKitPrebuiltLiveStreaming(
+      appID: ApiConstants.zegoAppId,
+      appSign: ApiConstants.zegoAppSign,
+      userID: _localUserID ?? 'guest',
+      userName: _localUserName ?? 'Guest',
+      liveID: widget.channelId,
+      config:
+          ZegoUIKitPrebuiltLiveStreamingConfig.audience(
+              plugins: [ZegoUIKitSignalingPlugin()],
+            )
+            // Neon theme customization matching Host
+            ..topMenuBar.backgroundColor = Colors.transparent
+            ..bottomMenuBar.backgroundColor = Colors.transparent
+            ..inRoomMessage.backgroundColor = AppColors.deepVoid.withValues(
+              alpha: 0.7,
+            )
+            ..inRoomMessage.nameTextStyle = TextStyle(
+              color: AppColors.neonCyan,
+              fontWeight: FontWeight.bold,
+              fontSize: 12,
+            )
+            ..inRoomMessage.messageTextStyle = TextStyle(
+              color: Colors.white,
+              fontSize: 14,
+            )
+            // User join notifications
+            ..inRoomMessage.notifyUserJoin = true
+            ..inRoomMessage.notifyUserLeave = false
+            ..innerText.userEnter = 'joined'
+            // INJECT HLS PLAYER DIRECTLY INTO ZEGO VIEW
+            // This replaces the RTC Video View with our Custom HLS VideoPlayer
+            ..audioVideoView
+                .containerBuilder = (context, size, user, extraInfo) {
+              // Only replace for the host/broadcaster or main stream
+              // For now, replacing for ANY user in the view (typically just the host)
+              return isReady
+                  ? Center(
+                      child: AspectRatio(
+                        aspectRatio: activeController.value.aspectRatio,
+                        child: Transform(
+                          alignment: Alignment.center,
+                          transform: Matrix4.rotationY(math.pi), // Mirror fix
+                          child: VideoPlayer(activeController),
                         ),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Text(
-                              gift.icon,
-                              style: const TextStyle(fontSize: 32),
-                            ),
-                            const SizedBox(height: 5),
-                            Text(
-                              gift.name,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 12,
-                              ),
-                            ),
-                            Text(
-                              "${gift.cost} coins",
-                              style: TextStyle(
-                                color: AppColors.neonPink.withValues(
-                                  alpha: 0.8,
-                                ),
-                                fontSize: 10,
-                              ),
-                            ),
-                          ],
+                      ),
+                    )
+                  : Container(
+                      color: AppColors.deepVoid,
+                      child: const Center(
+                        child: CircularProgressIndicator(
+                          color: AppColors.neonCyan,
                         ),
                       ),
                     );
-                  },
-                ),
-              ),
-            ],
-          ),
-        );
-      },
+            },
     );
   }
 
-  Widget _buildHostView() {
-    if (_hostView != null) {
-      return Stack(
-        children: [
-          _hostView!,
-          if (_isPaused)
-            Container(
-              color: Colors.black.withValues(alpha: 0.7),
-              child: const Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.pause, color: Colors.white, size: 60),
-                    SizedBox(height: 10),
-                    Text(
-                      "STREAM PAUSED",
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 2,
-                        fontFamily: 'Orbitron',
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-        ],
-      );
-    }
-    return const Center(
-      child: CircularProgressIndicator(color: AppColors.neonPink),
-    );
-  }
-
-  Widget _buildNeonActionButton(
-    IconData icon,
-    Color color,
-    VoidCallback onTap,
-  ) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 45,
-        height: 45,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: Colors.black.withValues(alpha: 0.5),
-          border: Border.all(color: color),
-          boxShadow: [
-            BoxShadow(
-              color: color.withValues(alpha: 0.3),
-              blurRadius: 8,
-              spreadRadius: 1,
-            ),
-          ],
+  Widget _buildHostUIKit(BuildContext context) {
+    return SafeArea(
+      child: ZegoUIKitPrebuiltLiveStreaming(
+        appID: ApiConstants.zegoAppId,
+        appSign: ApiConstants.zegoAppSign,
+        userID: _localUserID ?? 'unknown',
+        userName: _localUserName ?? 'Unknown User',
+        liveID: widget.channelId,
+        events: ZegoUIKitPrebuiltLiveStreamingEvents(
+          onLeaveConfirmation:
+              (
+                ZegoLiveStreamingLeaveConfirmationEvent event,
+                Future<bool> Function() defaultAction,
+              ) async {
+                return await showDialog(
+                      context: context,
+                      barrierDismissible: false,
+                      builder: (BuildContext dialogContext) {
+                        return AlertDialog(
+                          backgroundColor: AppColors.deepVoid,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(20),
+                            side: BorderSide(
+                              color: AppColors.neonPink,
+                              width: 2,
+                            ),
+                          ),
+                          title: Text(
+                            "End Live Stream?",
+                            style: TextStyle(
+                              color: AppColors.neonCyan,
+                              fontWeight: FontWeight.bold,
+                              fontFamily: 'Orbitron',
+                            ),
+                          ),
+                          content: Text(
+                            "Are you sure you want to end your live stream?",
+                            style: TextStyle(color: Colors.white70),
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () =>
+                                  Navigator.of(dialogContext).pop(false),
+                              child: Text(
+                                "Cancel",
+                                style: TextStyle(color: Colors.white70),
+                              ),
+                            ),
+                            ElevatedButton(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppColors.neonPink,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                              ),
+                              onPressed: () =>
+                                  Navigator.of(dialogContext).pop(true),
+                              child: Text(
+                                "End Stream",
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
+                        );
+                      },
+                    ) ??
+                    false;
+              },
         ),
-        child: Icon(icon, color: color, size: 24),
+        config:
+            ZegoUIKitPrebuiltLiveStreamingConfig.host(
+                plugins: [ZegoUIKitSignalingPlugin()],
+              )
+              // Camera settings
+              ..audioVideoView.useVideoViewAspectFill = true
+              ..turnOnCameraWhenJoining = true
+              ..turnOnMicrophoneWhenJoining = true
+              ..useFrontFacingCamera = true
+              // Neon theme customization
+              ..topMenuBar.backgroundColor = Colors.transparent
+              ..bottomMenuBar.backgroundColor = Colors.transparent
+              // Chat message styling (neon theme)
+              ..inRoomMessage.backgroundColor = AppColors.deepVoid.withValues(
+                alpha: 0.7,
+              )
+              ..inRoomMessage.nameTextStyle = TextStyle(
+                color: AppColors.neonCyan,
+                fontWeight: FontWeight.bold,
+                fontSize: 12,
+              )
+              ..inRoomMessage.messageTextStyle = TextStyle(
+                color: Colors.white,
+                fontSize: 14,
+              )
+              // User join/leave notifications
+              ..inRoomMessage.notifyUserJoin = true
+              ..inRoomMessage.notifyUserLeave = false
+              ..innerText.userEnter = 'joined',
       ),
     );
   }
-
-  void _addSystemMessage(String text) {
-    final sysMsg = ZIMTextMessage(message: text);
-    sysMsg.senderUserID = "SYSTEM";
-    if (mounted) {
-      setState(() {
-        _messages.insert(0, sysMsg);
-      });
-    }
-  }
-}
-
-class GiftItem {
-  final String id;
-  final String name;
-  final String icon;
-  final int cost;
-
-  GiftItem({
-    required this.id,
-    required this.name,
-    required this.icon,
-    required this.cost,
-  });
 }
