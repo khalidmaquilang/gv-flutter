@@ -43,6 +43,8 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
   bool _isLive = false; // False = Preview Mode, True = Streaming Mode
   bool _isZIMConnected = false;
   bool _isStreamEnded = false;
+  String _networkQualityLabel = '';
+  Color _networkQualityColor = Colors.green;
 
   // Room State
   int _viewerCount = 0;
@@ -215,6 +217,47 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
             }
           }
         };
+
+    ZegoExpressEngine
+        .onNetworkQuality = (userID, upstreamQuality, downstreamQuality) {
+      // DEBUG LOGGING
+      // debugPrint("NetworkQuality: user=$userID, local=$_localUserID, up=$upstreamQuality");
+
+      if (userID == _localUserID || (userID.isEmpty && widget.isBroadcaster)) {
+        // Host's Upstream Quality
+        // Sometimes local user ID might be empty string in callback?
+        if (mounted) {
+          setState(() {
+            switch (upstreamQuality) {
+              case ZegoStreamQualityLevel.Excellent:
+                _networkQualityLabel = 'Excellent';
+                _networkQualityColor = Colors.green;
+                break;
+              case ZegoStreamQualityLevel.Good:
+                _networkQualityLabel = 'Good';
+                _networkQualityColor = Colors.lightGreen;
+                break;
+              case ZegoStreamQualityLevel.Medium:
+                _networkQualityLabel = 'Medium';
+                _networkQualityColor = Colors.yellow;
+                break;
+              case ZegoStreamQualityLevel.Bad:
+                _networkQualityLabel = 'Weak';
+                _networkQualityColor = Colors.orange;
+                break;
+              case ZegoStreamQualityLevel.Die:
+                _networkQualityLabel = 'Bad';
+                _networkQualityColor = Colors.red;
+                break;
+              default:
+                _networkQualityLabel = 'Unknown';
+                _networkQualityColor = Colors.grey;
+                break;
+            }
+          });
+        }
+      }
+    };
   }
 
   Future<void> _initializeZIM(ZegoUser user, String roomID) async {
@@ -540,7 +583,7 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
         child: Container(
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
-            color: Colors.black.withOpacity(0.8),
+            color: Colors.black.withValues(alpha: 0.8),
             borderRadius: BorderRadius.circular(20),
             border: Border.all(color: AppColors.neonPink),
           ),
@@ -573,7 +616,7 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
         child: Container(
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
-            color: Colors.black.withOpacity(0.8),
+            color: Colors.black.withValues(alpha: 0.8),
             borderRadius: BorderRadius.circular(20),
             border: Border.all(color: AppColors.neonCyan),
           ),
@@ -661,7 +704,7 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
           // HOST PREVIEW OVERLAY
           if (widget.isBroadcaster && !_isLive)
             Container(
-              color: Colors.black.withOpacity(0.4),
+              color: Colors.black.withValues(alpha: 0.4),
               padding: const EdgeInsets.only(bottom: 50),
               alignment: Alignment.bottomCenter, // Moved to bottom
               child: GestureDetector(
@@ -678,7 +721,7 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
                     borderRadius: BorderRadius.circular(30),
                     boxShadow: [
                       BoxShadow(
-                        color: AppColors.neonPink.withOpacity(0.5),
+                        color: AppColors.neonPink.withValues(alpha: 0.5),
                         blurRadius: 15,
                         spreadRadius: 2,
                       ),
@@ -717,10 +760,12 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
                               vertical: 6,
                             ),
                             decoration: BoxDecoration(
-                              color: Colors.black.withOpacity(0.5),
+                              color: Colors.black.withValues(alpha: 0.5),
                               borderRadius: BorderRadius.circular(20),
                               border: Border.all(
-                                color: AppColors.neonCyan.withOpacity(0.3),
+                                color: AppColors.neonCyan.withValues(
+                                  alpha: 0.3,
+                                ),
                               ),
                             ),
                             child: Row(
@@ -748,7 +793,7 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
                               vertical: 6,
                             ),
                             decoration: BoxDecoration(
-                              color: Colors.black.withOpacity(0.5),
+                              color: Colors.black.withValues(alpha: 0.5),
                               borderRadius: BorderRadius.circular(20),
                             ),
                             child: Row(
@@ -769,6 +814,31 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
                               ],
                             ),
                           ),
+
+                          // Network Quality Indicator
+                          if (widget.isBroadcaster &&
+                              _isLive &&
+                              _networkQualityLabel.isNotEmpty)
+                            Container(
+                              margin: const EdgeInsets.only(left: 6),
+                              padding: const EdgeInsets.all(
+                                6,
+                              ), // Square padding
+                              decoration: BoxDecoration(
+                                color: Colors.black.withValues(alpha: 0.5),
+                                shape: BoxShape.circle, // Circular
+                                border: Border.all(
+                                  color: _networkQualityColor.withValues(
+                                    alpha: 0.6,
+                                  ),
+                                ),
+                              ),
+                              child: Icon(
+                                Icons.wifi,
+                                color: _networkQualityColor,
+                                size: 16, // Slightly larger icon
+                              ),
+                            ),
                         ],
                       ),
 
@@ -782,7 +852,7 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
                                 child: CircleAvatar(
                                   backgroundColor: _isPaused
                                       ? AppColors.neonPink
-                                      : Colors.black.withOpacity(0.5),
+                                      : Colors.black.withValues(alpha: 0.5),
                                   radius: 20,
                                   child: Icon(
                                     _isPaused ? Icons.play_arrow : Icons.pause,
@@ -850,7 +920,9 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
                               }
                             },
                             child: CircleAvatar(
-                              backgroundColor: Colors.black.withOpacity(0.5),
+                              backgroundColor: Colors.black.withValues(
+                                alpha: 0.5,
+                              ),
                               radius: 20,
                               child: const Icon(
                                 Icons.close,
@@ -885,13 +957,17 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
                               padding: const EdgeInsets.all(10),
                               decoration: BoxDecoration(
                                 color: isMe
-                                    ? AppColors.neonPink.withOpacity(0.15)
-                                    : Colors.black.withOpacity(0.6),
+                                    ? AppColors.neonPink.withValues(alpha: 0.15)
+                                    : Colors.black.withValues(alpha: 0.6),
                                 borderRadius: BorderRadius.circular(12),
                                 border: Border.all(
                                   color: isMe
-                                      ? AppColors.neonPink.withOpacity(0.4)
-                                      : AppColors.neonCyan.withOpacity(0.2),
+                                      ? AppColors.neonPink.withValues(
+                                          alpha: 0.4,
+                                        )
+                                      : AppColors.neonCyan.withValues(
+                                          alpha: 0.2,
+                                        ),
                                 ),
                               ),
                               child: Column(
@@ -940,7 +1016,7 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
                               child: Container(
                                 height: 50,
                                 decoration: BoxDecoration(
-                                  color: Colors.black.withOpacity(0.8),
+                                  color: Colors.black.withValues(alpha: 0.8),
                                   borderRadius: BorderRadius.circular(25),
                                   border: Border.all(
                                     color: AppColors.neonCyan,
@@ -958,7 +1034,9 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
                                     border: InputBorder.none,
                                     hintText: "Say something...",
                                     hintStyle: TextStyle(
-                                      color: Colors.white.withOpacity(0.5),
+                                      color: Colors.white.withValues(
+                                        alpha: 0.5,
+                                      ),
                                     ),
                                     suffixIcon: IconButton(
                                       icon: const Icon(
@@ -1016,7 +1094,7 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
         return Container(
           height: 300,
           decoration: BoxDecoration(
-            color: Colors.black.withOpacity(0.9),
+            color: Colors.black.withValues(alpha: 0.9),
             borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
             border: const Border(top: BorderSide(color: AppColors.neonPink)),
           ),
@@ -1055,7 +1133,7 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
                           color: AppColors.deepVoid,
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(
-                            color: AppColors.neonCyan.withOpacity(0.5),
+                            color: AppColors.neonCyan.withValues(alpha: 0.5),
                           ),
                         ),
                         child: Column(
@@ -1076,7 +1154,9 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
                             Text(
                               "${gift.cost} coins",
                               style: TextStyle(
-                                color: AppColors.neonPink.withOpacity(0.8),
+                                color: AppColors.neonPink.withValues(
+                                  alpha: 0.8,
+                                ),
                                 fontSize: 10,
                               ),
                             ),
@@ -1101,7 +1181,7 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
           _hostView!,
           if (_isPaused)
             Container(
-              color: Colors.black.withOpacity(0.7),
+              color: Colors.black.withValues(alpha: 0.7),
               child: const Center(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -1142,11 +1222,11 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
         height: 45,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          color: Colors.black.withOpacity(0.5),
+          color: Colors.black.withValues(alpha: 0.5),
           border: Border.all(color: color),
           boxShadow: [
             BoxShadow(
-              color: color.withOpacity(0.3),
+              color: color.withValues(alpha: 0.3),
               blurRadius: 8,
               spreadRadius: 1,
             ),
