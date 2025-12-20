@@ -42,6 +42,7 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
   // Host State
   bool _isLive = false; // False = Preview Mode, True = Streaming Mode
   bool _isZIMConnected = false;
+  bool _isStreamEnded = false;
 
   // Room State
   int _viewerCount = 0;
@@ -441,7 +442,11 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
 
   void _stopPlaying() {
     _videoController?.pause();
-    // setState(() {});
+    if (mounted) {
+      setState(() {
+        _isStreamEnded = true;
+      });
+    }
   }
 
   @override
@@ -460,6 +465,39 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
   // ... (Keep _buildHostView)
 
   Widget _buildAudienceView() {
+    if (_isStreamEnded) {
+      return Center(
+        child: Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: Colors.black.withOpacity(0.8),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: AppColors.neonPink),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.videocam_off, color: Colors.white, size: 50),
+              const SizedBox(height: 10),
+              const Text(
+                "Live Stream Ended",
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  fontFamily: 'Orbitron',
+                ),
+              ),
+              const SizedBox(height: 20),
+              _buildNeonActionButton(Icons.exit_to_app, AppColors.neonPink, () {
+                Navigator.pop(context);
+              }),
+            ],
+          ),
+        ),
+      );
+    }
+
     if (_isVideoInitialized && _videoController != null) {
       return Center(
         child: AspectRatio(
