@@ -195,20 +195,15 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
               // We need to mark this lambda as async to await result
               Future(() async {
                 try {
-                  await ZegoExpressEngine.instance.addPublishCdnUrl(
-                    streamID,
-                    ApiConstants.rtmpUrl,
-                  ); // result ignored
-                } catch (e) {
-                  debugPrint("RTMP Push Error: $e");
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text("RTMP Push Exception: $e"),
-                        backgroundColor: Colors.red,
-                      ),
-                    );
+                  final result = await ZegoExpressEngine.instance
+                      .addPublishCdnUrl(streamID, ApiConstants.rtmpUrl);
+                  if (result.errorCode == 0) {
+                    debugPrint("RTMP Push Success: ${ApiConstants.rtmpUrl}");
+                  } else {
+                    debugPrint("RTMP Push Failed: Error ${result.errorCode}");
                   }
+                } catch (e) {
+                  debugPrint("RTMP Push Exception: $e");
                 }
               });
             }
