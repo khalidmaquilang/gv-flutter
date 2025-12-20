@@ -32,4 +32,10 @@ class ApiConstants {
   // Streaming
   static const String rtmpUrl = "rtmp://rtmp.maralabs.ph/live/test";
   static const String hlsPlayUrl = "http://rtmp.maralabs.ph/hls/test.m3u8";
+
+  // Zego Cloud
+  // TODO: Get these from ZEGOCLOUD Admin Console
+  static const int zegoAppId = 525017043; // Replace with your AppID (int)
+  static const String zegoAppSign =
+      "a446793304316b50287aaf6be77e77758b3cda1be376b289af8c9db899c15f92"; // Replace with your AppSign (String)
 }

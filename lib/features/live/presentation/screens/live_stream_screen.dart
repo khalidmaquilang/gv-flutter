@@ -1,19 +1,17 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:agora_rtc_engine/agora_rtc_engine.dart';
-import 'package:permission_handler/permission_handler.dart';
-import 'package:test_flutter/core/theme/app_theme.dart';
-import 'package:test_flutter/core/constants/api_constants.dart';
-import '../../data/services/live_service.dart';
-import '../../data/models/live_interaction_model.dart';
+import 'dart:math' as math;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../../features/feed/presentation/providers/feed_audio_provider.dart';
-import 'package:video_player/video_player.dart' hide VideoFormat;
-import '../../data/services/media_push_service.dart';
-import '../widgets/gift_overlay.dart';
-import '../widgets/floating_hearts_overlay.dart';
-
+import 'package:permission_handler/permission_handler.dart';
+import 'package:test_flutter/core/constants/api_constants.dart';
+import 'package:test_flutter/core/theme/app_theme.dart';
+import 'package:test_flutter/features/auth/presentation/providers/auth_provider.dart';
+import 'package:test_flutter/features/feed/presentation/providers/feed_audio_provider.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
+import 'package:zego_express_engine/zego_express_engine.dart';
+import 'package:zego_zim/zego_zim.dart';
+import 'package:video_player/video_player.dart';
+import 'package:zego_uikit_prebuilt_live_streaming/zego_uikit_prebuilt_live_streaming.dart';
+import 'package:zego_uikit_signaling_plugin/zego_uikit_signaling_plugin.dart';
 
 class LiveStreamScreen extends ConsumerStatefulWidget {
   final bool isBroadcaster;
@@ -29,629 +27,535 @@ class LiveStreamScreen extends ConsumerStatefulWidget {
   ConsumerState<LiveStreamScreen> createState() => _LiveStreamScreenState();
 }
 
-class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen>
-    with TickerProviderStateMixin {
-  final _liveService = LiveService();
-  final List<LiveMessage> _messages = [];
-  final TextEditingController _commentController = TextEditingController();
-  final ScrollController _scrollController = ScrollController();
-
-  // Agora Engine
-  late RtcEngine _engine;
-  bool _isBroadcasterReady = false;
-  String _statusMessage = "Initializing Agora...";
-
-  // Services
-  final MediaPushService _mediaPushService = MediaPushService();
-
-  // Video Player for Audience (HLS)
+class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
+  // Audience Video
   VideoPlayerController? _videoController;
+  bool _isVideoInitialized = false;
 
-  // Animations
-  late AnimationController _heartAnimController;
+  // Host Network Stats (Notifier for real-time updates)
+  final ValueNotifier<HostStats> _hostStats = ValueNotifier(const HostStats());
+
+  String? _localUserID;
+  String? _localUserName;
 
   @override
   void initState() {
     super.initState();
-    // Keep screen on
-    WakelockPlus.enable();
+    _handleAudio();
+    _initializeEngine();
+    if (widget.isBroadcaster) {
+      _startMonitoringHostStats();
+    }
+  }
 
-    // Mute feed audio when entering live stream
+  void _startMonitoringHostStats() {
+    // Wait for Zego UIKit to initialize and potentially set its own listeners
+    Future.delayed(const Duration(seconds: 2), () {
+      if (!mounted) return;
+
+      // Capture the existing callback to avoid breaking ZegoUIKit
+      final originalCallback = ZegoExpressEngine.onPublisherQualityUpdate;
+
+      ZegoExpressEngine.onPublisherQualityUpdate =
+          (String roomID, ZegoPublishStreamQuality quality) {
+            // Call the original callback first
+            originalCallback?.call(roomID, quality);
+
+            if (mounted) {
+              // Simple quality heuristic
+              ZegoStreamQualityLevel qualityLevel;
+              if (quality.rtt < 100 && quality.packetLostRate < 0.01) {
+                qualityLevel = ZegoStreamQualityLevel.Excellent;
+              } else if (quality.rtt < 200 && quality.packetLostRate < 0.05) {
+                qualityLevel = ZegoStreamQualityLevel.Medium;
+              } else {
+                qualityLevel = ZegoStreamQualityLevel.Bad;
+              }
+
+              _hostStats.value = HostStats(
+                fps: quality.videoSendFPS,
+                bitrate: quality.videoKBPS,
+                rtt: quality.rtt,
+                packetLoss: quality.packetLostRate,
+                qualityLevel: qualityLevel,
+              );
+            }
+          };
+    });
+  }
+
+  void _handleAudio() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(isFeedAudioEnabledProvider.notifier).state = false;
     });
-
-    if (widget.isBroadcaster) {
-      _initBroadcaster();
-    } else {
-      _initPlayer();
-    }
-
-    // Initialize RTM Service
-    // Using a random int for UID (string format) since we don't have real auth
-    _liveService.initialize(
-      uid: (1000 + DateTime.now().millisecondsSinceEpoch % 10000).toString(),
-      channelId: widget.channelId,
-    );
-
-    _heartAnimController = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 2),
-    );
-
-    // Stream Listeners
-    _liveService.messageStream.listen((msg) {
-      if (mounted) {
-        setState(() => _messages.add(msg));
-        _scrollToBottom();
-      }
-    });
-
-    _liveService.reactionStream.listen((_) {
-      if (mounted) _showHeartAnimation();
-    });
-
-    _liveService.giftStream.listen((gift) {
-      if (mounted) _showGiftAnimation(gift);
-    });
   }
 
-  Future<void> _initBroadcaster() async {
+  Future<void> _initializeEngine() async {
+    final user = ref.read(authControllerProvider).value;
+    _localUserID =
+        user?.id.toString() ?? 'guest_${DateTime.now().millisecondsSinceEpoch}';
+    _localUserName = user?.name ?? 'Guest User';
+
     await [Permission.camera, Permission.microphone].request();
 
-    _engine = createAgoraRtcEngine();
-    await _engine.initialize(
-      const RtcEngineContext(
-        appId: ApiConstants.agoraAppId,
-        channelProfile: ChannelProfileType.channelProfileLiveBroadcasting,
-        audioScenario: AudioScenarioType.audioScenarioDefault,
+    // HOST: Skip custom engine init - let UIKit manage it
+    if (widget.isBroadcaster) {
+      return; // Exit early - UIKit handles everything
+    }
+
+    // AUDIENCE: Initialize custom engine for playback
+    await ZegoExpressEngine.createEngineWithProfile(
+      ZegoEngineProfile(
+        ApiConstants.zegoAppId,
+        ZegoScenario.Broadcast,
+        appSign: ApiConstants.zegoAppSign,
       ),
     );
 
-    _engine.registerEventHandler(
-      RtcEngineEventHandler(
-        onJoinChannelSuccess: (RtcConnection connection, int elapsed) {
-          debugPrint(
-            "Agora: Joined Channel ${connection.channelId} uid=${connection.localUid}",
-          );
-          setState(() {
-            _statusMessage = "Joined. Triggering Media Push API...";
-          });
-          // Call REST API instead of SDK Method
-          if (connection.localUid != null) {
-            _triggerMediaPushApi(connection.localUid!);
-          }
-        },
-        onUserJoined: (connection, remoteUid, elapsed) {
-          debugPrint("Remote user joined: $remoteUid");
-        },
-        onRtmpStreamingStateChanged:
-            (
-              String url,
-              RtmpStreamPublishState state,
-              RtmpStreamPublishReason errCode,
-            ) {
-              // Providing visibility on SDK state, though REST API governs it now
-              debugPrint("SDK State: $state, $errCode");
-            },
-        onError: (ErrorCodeType err, String msg) {
-          debugPrint("Agora Error: $err $msg");
-        },
-      ),
+    // Disable Hardware Decoding (Fixes Black Screen on Emulators viewing H264)
+    await ZegoExpressEngine.instance.enableHardwareDecoder(false);
+
+    // Set 720p for better quality (Check device performance if needed)
+    ZegoVideoConfig videoConfig = ZegoVideoConfig.preset(
+      ZegoVideoConfigPreset.Preset720P,
+    );
+    await ZegoExpressEngine.instance.setVideoConfig(videoConfig);
+
+    _setZegoEventHandlers();
+
+    final ZegoUser zegoUser = ZegoUser(_localUserID!, _localUserName!);
+    final ZegoRoomConfig roomConfig = ZegoRoomConfig.defaultConfig()
+      ..isUserStatusNotify = true;
+
+    await ZegoExpressEngine.instance.loginRoom(
+      widget.channelId,
+      zegoUser,
+      config: roomConfig,
     );
 
-    await _engine.setClientRole(role: ClientRoleType.clientRoleBroadcaster);
-    await _engine.enableVideo();
-    // Set Video Quality to HD (720p) - Landscape Input + Portrait Mode = Standard Vertical
-    await _engine.setVideoEncoderConfiguration(
-      const VideoEncoderConfiguration(
-        // Vertical HD Resolution
-        dimensions: VideoDimensions(width: 720, height: 1280),
-        frameRate: 24,
-        bitrate: 3000,
-        orientationMode: OrientationMode.orientationModeAdaptive,
-      ),
-    );
-    await _engine.enableAudio();
+    // Initialize ZIM
+    await _initializeZIM(zegoUser, widget.channelId);
 
-    await _engine.startPreview();
-    setState(() => _isBroadcasterReady = true);
+    // Mute RTC Audio to prevent double audio (CDN + RTC)
+    if (!widget.isBroadcaster) {
+      await ZegoExpressEngine.instance.muteAllPlayStreamAudio(true);
+    }
 
-    await _engine.setCameraCapturerConfiguration(
-      const CameraCapturerConfiguration(
-        cameraDirection: CameraDirection.cameraFront,
-        format: VideoFormat(width: 1280, height: 720, fps: 24),
-      ),
-    );
-
-    await _engine.joinChannel(
-      token: ApiConstants.agoraTempToken,
-      channelId: ApiConstants.fixedTestChannelId,
-      uid: 1000,
-      options: const ChannelMediaOptions(
-        publishCameraTrack: true,
-        publishMicrophoneTrack: true,
-        clientRoleType: ClientRoleType.clientRoleBroadcaster,
-      ),
-    );
-
-    // Prioritize Clear Video over Smooth Frame Rate
-    await _engine.setParameters(
-      "{\"che.video.enableLowBitRateStream\": false}",
-    );
+    // Audience Logic: Start the HLS player
+    _startAudienceMode();
   }
 
-  Future<void> _triggerMediaPushApi(int uid) async {
+  void _setZegoEventHandlers() {
+    ZegoExpressEngine.onRoomStreamUpdate =
+        (
+          String roomID,
+          ZegoUpdateType updateType,
+          List<ZegoStream> streamList,
+          Map<String, dynamic> extendedData,
+        ) {
+          if (updateType == ZegoUpdateType.Add) {
+            if (!widget.isBroadcaster) {
+              // Audience: Play HLS when stream is added
+              _startAudienceMode();
+            }
+          } else if (updateType == ZegoUpdateType.Delete) {
+            if (!widget.isBroadcaster) {
+              _stopPlaying(); // Host stopped
+            }
+          }
+        };
+
+    ZegoExpressEngine.onRoomUserUpdate =
+        (String roomID, ZegoUpdateType updateType, List<ZegoUser> userList) {
+          // Manual notifications removed as UIKit handles them
+        };
+
+    ZegoExpressEngine.onPublisherStateUpdate =
+        (
+          String streamID,
+          ZegoPublisherState state,
+          int errorCode,
+          Map<String, dynamic> extendedData,
+        ) {
+          if (state == ZegoPublisherState.Publishing) {
+            if (widget.isBroadcaster) {
+              // We need to mark this lambda as async to await result
+              Future(() async {
+                try {
+                  final result = await ZegoExpressEngine.instance
+                      .addPublishCdnUrl(streamID, ApiConstants.rtmpUrl);
+                  if (result.errorCode == 0) {
+                    debugPrint("RTMP Push Success: ${ApiConstants.rtmpUrl}");
+                  } else {
+                    debugPrint("RTMP Push Failed: Error ${result.errorCode}");
+                  }
+                } catch (e) {
+                  debugPrint("RTMP Push Exception: $e");
+                }
+              });
+            }
+          } else if (state == ZegoPublisherState.NoPublish && errorCode != 0) {
+            if (mounted) {
+              debugPrint("Publish Error: $errorCode");
+            }
+          }
+        };
+  }
+
+  Future<void> _initializeZIM(ZegoUser user, String roomID) async {
+    // Ensure any previous instance is destroyed before creating a new one
+    ZIM.getInstance()?.destroy();
+
+    ZIM.create(
+      ZIMAppConfig()
+        ..appID = ApiConstants.zegoAppId
+        ..appSign = ApiConstants.zegoAppSign,
+    );
+
+    // Event Handler (Must be set before login)
+    ZIMEventHandler.onConnectionStateChanged =
+        (zim, state, event, extendedData) {
+          debugPrint("ZIM Connection State: $state, Event: $event");
+        };
+
     try {
-      await _mediaPushService.startMediaPush(
-        channelId: ApiConstants.fixedTestChannelId,
-        uid: uid,
-        rtmpUrl: ApiConstants.rtmpUrl,
+      await ZIM.getInstance()!.login(
+        user.userID,
+        ZIMLoginConfig()..userName = user.userName,
       );
-      if (mounted) {
-        setState(() => _statusMessage = "LIVE! (API Request Sent)");
-      }
+
+      await ZIM.getInstance()!.joinRoom(roomID);
     } catch (e) {
-      debugPrint("API Failure: $e");
-      if (mounted) {
-        setState(() => _statusMessage = "API Failed: $e");
-      }
+      debugPrint("ZIM Init Error: $e");
     }
   }
 
-  Future<void> _initPlayer() async {
-    try {
-      _videoController = VideoPlayerController.networkUrl(
+  // --- AUDIENCE LOGIC ---
+
+  void _startAudienceMode() {
+    // Enable WakeLock for audience
+    WakelockPlus.enable();
+
+    // Reset state immediately to prevent UI from trying to render a disposed/null controller
+    if (mounted) {
+      setState(() {
+        _isVideoInitialized = false;
+        _videoController?.dispose();
+        _videoController = null;
+      });
+    } else {
+      _videoController?.dispose();
+      _videoController = null;
+    }
+
+    // Slight delay to allow HLS segments to propagate after resume
+    Future.delayed(const Duration(seconds: 2), () {
+      if (!mounted) return;
+
+      final newController = VideoPlayerController.networkUrl(
         Uri.parse(ApiConstants.hlsPlayUrl),
       );
-      await _videoController!.initialize();
-      await _videoController!.play();
-      if (mounted) setState(() {});
-    } catch (e) {
-      debugPrint("Error init player: $e");
+
+      _videoController = newController;
+
+      newController
+          .initialize()
+          .then((_) {
+            if (!mounted) {
+              newController.dispose();
+              return;
+            }
+            // Ensure the first frame is shown after the video is initialized
+            if (_videoController == newController) {
+              // Check if still the active controller
+              setState(() {
+                _isVideoInitialized = true;
+              });
+              newController.play();
+            }
+          })
+          .catchError((e) {
+            debugPrint("Video Player Init Error: $e");
+            if (mounted && _videoController == newController) {
+              // Optionally handle error state in UI
+            }
+          });
+    });
+  }
+
+  void _stopPlaying() {
+    _videoController?.pause();
+    if (mounted) {
+      setState(() {
+        _isVideoInitialized = false;
+      });
     }
   }
 
   @override
   void dispose() {
-    WakelockPlus.disable();
-    _heartAnimController.dispose();
-    _commentController.dispose();
-    _scrollController.dispose();
     _videoController?.dispose();
 
-    if (widget.isBroadcaster) {
-      // Async method but we can't await in dispose.
-      // Fire and forget, or call a separate shutdown method before popping screen.
-      // For safety, we just call it.
-      _mediaPushService.stopMediaPush(
-        channelId: ApiConstants.fixedTestChannelId,
-      );
-
-      _engine.stopRtmpStream(ApiConstants.rtmpUrl);
-      _engine.stopDirectCdnStreaming(); // Stop both just in case
-      _engine.leaveChannel();
-      _engine.release();
+    // Only destroy engine for audience (hosts use UIKit which manages its own lifecycle)
+    if (!widget.isBroadcaster) {
+      _destroy();
     }
 
+    WakelockPlus.disable();
     ref.read(isFeedAudioEnabledProvider.notifier).state = true;
     super.dispose();
   }
 
-  void _scrollToBottom() {
-    if (_scrollController.hasClients) {
-      _scrollController.animateTo(
-        _scrollController.position.maxScrollExtent + 60,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOut,
-      );
+  Future<void> _destroy() async {
+    await ZegoExpressEngine.instance.logoutRoom(widget.channelId);
+    await ZegoExpressEngine.destroyEngine();
+
+    try {
+      ZIM.getInstance()?.leaveRoom(widget.channelId);
+      ZIM.getInstance()?.logout();
+      ZIM.getInstance()?.destroy();
+    } catch (e) {
+      debugPrint("ZIM Destroy Error: $e");
     }
-  }
-
-  void _showHeartAnimation() {
-    _heartAnimController.forward(from: 0).then((_) {
-      _heartAnimController.reset();
-    });
-  }
-
-  void _showGiftAnimation(LiveGift gift) {
-    // Handled by GiftOverlay stream listener
-  }
-
-  void _sendMessage() {
-    if (_commentController.text.trim().isEmpty) return;
-    final msg = LiveMessage(username: 'Me', message: _commentController.text);
-    setState(() => _messages.add(msg));
-    _commentController.clear();
-    _scrollToBottom();
-  }
-
-  void _sendHeart() {
-    _liveService.sendReaction();
-    _showHeartAnimation();
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: Stack(
+    // Disable system back swipe gesture
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        // Optionally show exit confirmation here if needed,
+        // but typically Zego UI handles exit button.
+      },
+      child: widget.isBroadcaster
+          ? _buildHostUIKit(context)
+          : _buildAudienceUIKit(context),
+    );
+  }
+
+  Widget _buildAudienceUIKit(BuildContext context) {
+    // Capture controller locally to ensure null safety during build
+    final activeController = _videoController;
+    final isReady =
+        _isVideoInitialized &&
+        activeController != null &&
+        activeController.value.isInitialized;
+
+    return ZegoUIKitPrebuiltLiveStreaming(
+      appID: ApiConstants.zegoAppId,
+      appSign: ApiConstants.zegoAppSign,
+      userID: _localUserID ?? 'guest',
+      userName: _localUserName ?? 'Guest',
+      liveID: widget.channelId,
+      config:
+          ZegoUIKitPrebuiltLiveStreamingConfig.audience(
+              plugins: [ZegoUIKitSignalingPlugin()],
+            )
+            // Neon theme customization matching Host
+            ..topMenuBar.backgroundColor = Colors.transparent
+            ..bottomMenuBar.backgroundColor = Colors.transparent
+            // Remove co-host button by restricting visible buttons
+            // Correct property name is 'audienceButtons' (or hostButtons)
+            ..bottomMenuBar.audienceButtons = [
+              ZegoLiveStreamingMenuBarButtonName.chatButton,
+            ]
+            ..inRoomMessage.backgroundColor = AppColors.deepVoid.withValues(
+              alpha: 0.7,
+            )
+            ..innerText.startLiveStreamingButton = 'Start Live'
+            ..innerText.noHostOnline = 'No host online'
+            ..inRoomMessage.nameTextStyle = TextStyle(
+              color: AppColors.neonCyan,
+              fontWeight: FontWeight.bold,
+              fontSize: 12,
+            )
+            ..inRoomMessage.messageTextStyle = TextStyle(
+              color: Colors.white,
+              fontSize: 14,
+            )
+            // User join notifications
+            ..inRoomMessage.notifyUserJoin = true
+            ..inRoomMessage.notifyUserLeave = false
+            ..innerText.userEnter = 'joined'
+            // INJECT HLS PLAYER DIRECTLY INTO ZEGO VIEW
+            // This replaces the RTC Video View with our Custom HLS VideoPlayer
+            ..audioVideoView
+                .containerBuilder = (context, size, user, extraInfo) {
+              // Only replace for the host/broadcaster or main stream
+              // For now, replacing for ANY user in the view (typically just the host)
+              return isReady
+                  ? Center(
+                      child: AspectRatio(
+                        aspectRatio: activeController.value.aspectRatio,
+                        child: Transform(
+                          alignment: Alignment.center,
+                          transform: Matrix4.rotationY(math.pi), // Mirror fix
+                          child: VideoPlayer(activeController),
+                        ),
+                      ),
+                    )
+                  : Container(
+                      color: AppColors.deepVoid,
+                      child: const Center(
+                        child: CircularProgressIndicator(
+                          color: AppColors.neonCyan,
+                        ),
+                      ),
+                    );
+            },
+    );
+  }
+
+  Widget _buildHostUIKit(BuildContext context) {
+    return SafeArea(
+      child: Stack(
         children: [
-          // Video Layer
-          Center(
-            child: widget.isBroadcaster
-                ? _renderBroadcasterVideo()
-                : _renderAudienceVideo(),
-          ),
-
-          // Status Overlay
-          if (widget.isBroadcaster)
-            Positioned(
-              top: 100,
-              left: 20,
-              child: Container(
-                padding: const EdgeInsets.all(8),
-                color: Colors.black54,
-                child: Text(
-                  _statusMessage,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ),
-
-          // Close Button
-          Positioned(
-            top: 40,
-            right: 20,
-            child: IconButton(
-              icon: const Icon(Icons.close, color: Colors.white, size: 30),
-              onPressed: () {
-                if (widget.isBroadcaster) {
-                  _showEndLiveDialog(context);
-                } else {
-                  Navigator.pop(context);
-                }
-              },
-            ),
-          ),
-
-          // LIVE Tag
-          Positioned(
-            top: 40,
-            left: 20,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-              decoration: BoxDecoration(
-                color: AppColors.neonPink,
-                borderRadius: BorderRadius.circular(5),
-              ),
-              child: const Text(
-                'LIVE',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          ),
-
-          // Floating Hearts
-          FloatingHeartsOverlay(
-            triggerStream: _liveService.reactionStream.map((_) {}),
-          ),
-
-          // Gift Overlay
-          GiftOverlay(giftStream: _liveService.giftStream),
-
-          // Bottom Controls
-          Positioned(
-            bottom: 0,
-            left: 0,
-            right: 0,
-            height: 300,
-            child: Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.bottomCenter,
-                  end: Alignment.topCenter,
-                  colors: [
-                    Colors.black.withValues(alpha: 0.8),
-                    Colors.transparent,
-                  ],
-                ),
-              ),
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.end,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Messages
-                  Expanded(
-                    child: ListView.builder(
-                      controller: _scrollController,
-                      itemCount: _messages.length,
-                      itemBuilder: (context, index) {
-                        final msg = _messages[index];
-                        return Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 4.0),
-                          child: RichText(
-                            text: TextSpan(
-                              children: [
-                                TextSpan(
-                                  text: "${msg.username}: ",
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.white70,
+          ZegoUIKitPrebuiltLiveStreaming(
+            appID: ApiConstants.zegoAppId,
+            appSign: ApiConstants.zegoAppSign,
+            userID: _localUserID ?? 'unknown',
+            userName: _localUserName ?? 'Unknown User',
+            liveID: widget.channelId,
+            events: ZegoUIKitPrebuiltLiveStreamingEvents(
+              onLeaveConfirmation:
+                  (
+                    ZegoLiveStreamingLeaveConfirmationEvent event,
+                    Future<bool> Function() defaultAction,
+                  ) async {
+                    return await showDialog(
+                          context: context,
+                          barrierDismissible: false,
+                          builder: (BuildContext dialogContext) {
+                            return AlertDialog(
+                              backgroundColor: AppColors.deepVoid,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(20),
+                                side: BorderSide(
+                                  color: AppColors.neonPink,
+                                  width: 2,
+                                ),
+                              ),
+                              title: Text(
+                                "End Live Stream?",
+                                style: TextStyle(
+                                  color: AppColors.neonCyan,
+                                  fontWeight: FontWeight.bold,
+                                  fontFamily: 'Orbitron',
+                                ),
+                              ),
+                              content: Text(
+                                "Are you sure you want to end your live stream?",
+                                style: TextStyle(color: Colors.white70),
+                              ),
+                              actions: [
+                                TextButton(
+                                  onPressed: () =>
+                                      Navigator.of(dialogContext).pop(false),
+                                  child: Text(
+                                    "Cancel",
+                                    style: TextStyle(color: Colors.white70),
                                   ),
                                 ),
-                                TextSpan(
-                                  text: msg.message,
-                                  style: const TextStyle(color: Colors.white),
+                                ElevatedButton(
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: AppColors.neonPink,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                  ),
+                                  onPressed: () =>
+                                      Navigator.of(dialogContext).pop(true),
+                                  child: Text(
+                                    "End Stream",
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
                                 ),
                               ],
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                  // Input & Buttons
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: _commentController,
-                          style: const TextStyle(color: Colors.white),
-                          decoration: InputDecoration(
-                            hintText: 'Say something...',
-                            hintStyle: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.5),
-                            ),
-                            filled: true,
-                            fillColor: Colors.white.withValues(alpha: 0.1),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(20),
-                              borderSide: BorderSide.none,
-                            ),
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                            ),
-                          ),
-                          onSubmitted: (_) => _sendMessage(),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      IconButton(
-                        icon: const Icon(
-                          Icons.favorite,
-                          color: AppColors.neonPink,
-                        ),
-                        onPressed: _sendHeart,
-                      ),
-                      if (!widget.isBroadcaster)
-                        IconButton(
-                          icon: const Icon(
-                            Icons.card_giftcard,
-                            color: Colors.amber,
-                          ),
-                          onPressed: () => _showGiftPicker(context),
-                        ),
-                    ],
-                  ),
-                ],
-              ),
+                            );
+                          },
+                        ) ??
+                        false;
+                  },
             ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _renderBroadcasterVideo() {
-    if (_isBroadcasterReady) {
-      return SizedBox.expand(
-        child: AgoraVideoView(
-          controller: VideoViewController(
-            rtcEngine: _engine,
-            canvas: const VideoCanvas(
-              uid: 0,
-              renderMode: RenderModeType.renderModeHidden, // Fill screen (crop)
-              mirrorMode: VideoMirrorModeType
-                  .videoMirrorModeEnabled, // Mirror local preview
-            ),
-          ),
-        ),
-      );
-    } else {
-      return const Center(child: CircularProgressIndicator());
-    }
-  }
-
-  Widget _renderAudienceVideo() {
-    if (_videoController != null && _videoController!.value.isInitialized) {
-      return SizedBox.expand(
-        child: FittedBox(
-          fit: BoxFit.cover, // Fill screen (crop)
-          child: SizedBox(
-            width: _videoController!.value.size.width,
-            height: _videoController!.value.size.height,
-            child: VideoPlayer(_videoController!),
-          ),
-        ),
-      );
-    } else {
-      return const Center(
-        child: CircularProgressIndicator(color: Colors.white),
-      );
-    }
-  }
-
-  void _showEndLiveDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text("End Live Stream?"),
-        content: const Text("Are you sure you want to end your live?"),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text("Cancel"),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(ctx);
-              Navigator.pop(context);
-            },
-            child: const Text("End", style: TextStyle(color: Colors.red)),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showGiftPicker(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (context) => GiftPickerBottomSheet(
-        onGiftSent: (name, value) {
-          _liveService.sendGift(name, value);
-          Navigator.pop(context);
-        },
-      ),
-    );
-  }
-}
-
-class GiftPickerBottomSheet extends StatefulWidget {
-  final Function(String name, int value) onGiftSent;
-  const GiftPickerBottomSheet({super.key, required this.onGiftSent});
-  @override
-  State<GiftPickerBottomSheet> createState() => _GiftPickerBottomSheetState();
-}
-
-class _GiftPickerBottomSheetState extends State<GiftPickerBottomSheet> {
-  int _selectedIndex = -1;
-  int _balance = 20;
-
-  final List<Map<String, dynamic>> _gifts = [
-    {'name': 'Rose', 'value': 1, 'icon': '🌹'},
-    {'name': 'Heart', 'value': 5, 'icon': '❤️'},
-    {'name': 'Mic', 'value': 10, 'icon': '🎤'},
-    {'name': 'Panda', 'value': 50, 'icon': '🐼'},
-    {'name': 'Car', 'value': 100, 'icon': '🏎️'},
-    {'name': 'Castle', 'value': 500, 'icon': '🏰'},
-    {'name': 'Rocket', 'value': 1000, 'icon': '🚀'},
-    {'name': 'Planet', 'value': 5000, 'icon': '🪐'},
-  ];
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 400,
-      decoration: const BoxDecoration(
-        color: Color(0xFF1E1E1E),
-        borderRadius: BorderRadius.only(
-          topLeft: Radius.circular(20),
-          topRight: Radius.circular(20),
-        ),
-      ),
-      child: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  "Send a Gift",
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
+            config:
+                ZegoUIKitPrebuiltLiveStreamingConfig.host(
+                    plugins: [ZegoUIKitSignalingPlugin()],
+                  )
+                  // Camera settings
+                  ..video = ZegoUIKitVideoConfig.preset720P()
+                  ..audioVideoView.useVideoViewAspectFill = true
+                  ..turnOnCameraWhenJoining = true
+                  ..turnOnMicrophoneWhenJoining = true
+                  ..useFrontFacingCamera = true
+                  // Neon theme customization
+                  ..topMenuBar.backgroundColor = Colors.transparent
+                  ..bottomMenuBar.backgroundColor = Colors.transparent
+                  // Chat message styling (neon theme)
+                  ..inRoomMessage.backgroundColor = AppColors.deepVoid
+                      .withValues(alpha: 0.7)
+                  ..inRoomMessage.nameTextStyle = TextStyle(
+                    color: AppColors.neonCyan,
                     fontWeight: FontWeight.bold,
-                  ),
-                ),
-                Row(
-                  children: [
-                    const Icon(
-                      Icons.monetization_on,
-                      color: Colors.amber,
-                      size: 20,
-                    ),
-                    const SizedBox(width: 5),
-                    Text(
-                      "Balance: $_balance",
-                      style: const TextStyle(color: Colors.white),
-                    ),
-                  ],
-                ),
-              ],
-            ),
+                    fontSize: 12,
+                  )
+                  ..inRoomMessage.messageTextStyle = TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                  )
+                  // User join/leave notifications
+                  ..inRoomMessage.notifyUserJoin = true
+                  ..inRoomMessage.notifyUserLeave = false
+                  ..innerText.userEnter = 'joined'
+                  ..bottomMenuBar.showInRoomMessageButton =
+                      false, // Hide message button
           ),
-          Expanded(
-            child: GridView.builder(
-              padding: const EdgeInsets.all(10),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 4,
-                childAspectRatio: 0.8,
-                crossAxisSpacing: 10,
-                mainAxisSpacing: 10,
-              ),
-              itemCount: _gifts.length,
-              itemBuilder: (context, index) {
-                final gift = _gifts[index];
-                final isSelected = _selectedIndex == index;
+          // Custom Quality Indicator Overlay (Added via Stack)
+          Positioned(
+            top: 10,
+            right: 60,
+            child: ValueListenableBuilder<HostStats>(
+              valueListenable: _hostStats,
+              builder: (context, stats, _) {
                 return GestureDetector(
-                  onTap: () => setState(() => _selectedIndex = index),
+                  onTap: () {
+                    showDialog(
+                      context: context,
+                      builder: (context) => _buildStatsDialog(context),
+                    );
+                  },
                   child: Container(
-                    decoration: BoxDecoration(
-                      color: isSelected
-                          ? AppColors.neonPink.withAlpha(25)
-                          : Colors.transparent,
-                      border: Border.all(
-                        color: isSelected
-                            ? AppColors.neonPink
-                            : Colors.transparent,
-                        width: 2,
-                      ),
-                      borderRadius: BorderRadius.circular(10),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
                     ),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.5),
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(
+                        color: _getQualityColor(stats.qualityLevel),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text(
-                          gift['icon'],
-                          style: const TextStyle(fontSize: 30),
+                        Icon(
+                          Icons.wifi,
+                          color: _getQualityColor(stats.qualityLevel),
+                          size: 12,
                         ),
-                        const SizedBox(height: 5),
+                        const SizedBox(width: 4),
                         Text(
-                          gift['name'],
-                          style: const TextStyle(
+                          stats.qualityLevel.name,
+                          style: TextStyle(
                             color: Colors.white,
-                            fontSize: 12,
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
                           ),
-                        ),
-                        const SizedBox(height: 5),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const Icon(
-                              Icons.monetization_on,
-                              color: Colors.amber,
-                              size: 12,
-                            ),
-                            const SizedBox(width: 2),
-                            Text(
-                              "${gift['value']}",
-                              style: const TextStyle(
-                                color: Colors.grey,
-                                fontSize: 10,
-                              ),
-                            ),
-                          ],
                         ),
                       ],
                     ),
@@ -660,79 +564,97 @@ class _GiftPickerBottomSheetState extends State<GiftPickerBottomSheet> {
               },
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: SizedBox(
-              width: double.infinity,
-              height: 50,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.neonPink,
-                ),
-                onPressed: _selectedIndex == -1
-                    ? null
-                    : () {
-                        final gift = _gifts[_selectedIndex];
-                        if (_balance >= (gift['value'] as int)) {
-                          setState(() => _balance -= gift['value'] as int);
-                          widget.onGiftSent(gift['name'], gift['value']);
-                        } else {
-                          // Show Recharge Dialog
-                          _showRechargeDialog(context);
-                        }
-                      },
-                child: const Text(
-                  "Send",
-                  style: TextStyle(color: Colors.white, fontSize: 16),
-                ),
-              ),
-            ),
-          ),
         ],
       ),
     );
   }
 
-  void _showRechargeDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1E1E1E),
-        title: const Text(
-          "Insufficient Coins",
-          style: TextStyle(color: Colors.white),
-        ),
-        content: const Text(
-          "You don't have enough coins to send this gift. Recharge now?",
-          style: TextStyle(color: Colors.white70),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text("Cancel"),
+  Widget _buildStatsDialog(BuildContext context) {
+    return ValueListenableBuilder<HostStats>(
+      valueListenable: _hostStats,
+      builder: (context, stats, _) {
+        return AlertDialog(
+          backgroundColor: AppColors.deepVoid.withValues(alpha: 0.9),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: BorderSide(color: AppColors.neonCyan),
           ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.neonPink,
-            ),
-            onPressed: () {
-              // Mock recharge
-              setState(() => _balance += 100);
-              Navigator.pop(ctx);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text("Recharged 100 Coins!"),
-                  backgroundColor: Colors.green,
-                ),
-              );
-            },
-            child: const Text(
-              "Buy 100 Coins",
-              style: TextStyle(color: Colors.white),
+          title: Text(
+            "Stream Quality",
+            style: TextStyle(
+              color: AppColors.neonCyan,
+              fontWeight: FontWeight.bold,
             ),
           ),
-        ],
-      ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildStatRow("FPS", "${stats.fps.toStringAsFixed(1)} fps"),
+              SizedBox(height: 8),
+              _buildStatRow(
+                "Bitrate",
+                "${stats.bitrate.toStringAsFixed(1)} kbps",
+              ),
+              SizedBox(height: 8),
+              _buildStatRow("Latency (RTT)", "${stats.rtt} ms"),
+              SizedBox(height: 8),
+              _buildStatRow(
+                "Packet Loss",
+                "${(stats.packetLoss * 100).toStringAsFixed(1)}%",
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text("Close", style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        );
+      },
     );
   }
+
+  Widget _buildStatRow(String label, String value) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(label, style: TextStyle(color: Colors.white70)),
+        Text(
+          value,
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        ),
+      ],
+    );
+  }
+
+  Color _getQualityColor(ZegoStreamQualityLevel quality) {
+    switch (quality) {
+      case ZegoStreamQualityLevel.Excellent:
+        return AppColors.neonCyan; // Green-ish/Cyan for good
+      case ZegoStreamQualityLevel.Medium:
+        return Colors.yellowAccent;
+      case ZegoStreamQualityLevel.Bad:
+        return AppColors.neonPink; // Red/Pink for bad
+      default:
+        return AppColors.neonCyan;
+    }
+  }
+}
+
+class HostStats {
+  final double fps;
+  final double bitrate;
+  final int rtt;
+  final double packetLoss;
+  final ZegoStreamQualityLevel qualityLevel;
+
+  const HostStats({
+    this.fps = 0.0,
+    this.bitrate = 0.0,
+    this.rtt = 0,
+    this.packetLoss = 0.0,
+    this.qualityLevel = ZegoStreamQualityLevel.Excellent,
+  });
 }

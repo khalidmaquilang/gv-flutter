@@ -52,9 +52,9 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
   final List<String> _effects = ['none', 'beats-headphones-ad', 'makeup-kim'];
   int _selectedEffectIndex = 0;
 
-  List<XFile> _recordedFiles = [];
+  final List<XFile> _recordedFiles = [];
   Timer? _timer;
-  List<double> _segments = [];
+  final List<double> _segments = [];
   double _currentSegmentProgress = 0.0;
   int _maxDuration = 15;
   bool isPaused = false;
@@ -198,6 +198,8 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
   void dispose() {
     _timer?.cancel();
     _audioPlayer.dispose();
+    // Ensure DeepAR is destroyed when leaving screen (e.g. back button)
+    _deepArController?.destroy();
     super.dispose();
   }
 
@@ -595,7 +597,7 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
 
     // Photo Mode
     if (_modes[_selectedModeIndex] == 'Photo') {
-      final File? file = await _deepArController!.takeScreenshot();
+      final File file = await _deepArController!.takeScreenshot();
       if (file != null && mounted) {
         Navigator.of(context).push(
           MaterialPageRoute(

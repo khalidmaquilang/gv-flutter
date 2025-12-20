@@ -41,7 +41,7 @@ class _PreviewScreenState extends ConsumerState<PreviewScreen> {
   int _currentFileIndex = 0;
 
   bool _isVoiceMuted = false;
-  bool _isMusicMuted = false;
+  final bool _isMusicMuted = false;
 
   @override
   void initState() {
