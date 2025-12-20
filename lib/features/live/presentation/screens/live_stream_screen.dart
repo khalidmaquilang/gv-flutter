@@ -114,6 +114,7 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
     });
 
     // Initialize ZIM
+
     await _initializeZIM(zegoUser, widget.channelId);
 
     if (widget.isBroadcaster) {
@@ -243,6 +244,29 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
 
           for (var msg in messageList) {
             if (msg is ZIMTextMessage) {
+              // Check for Command Prefix
+              if (msg.message.startsWith("CMD:")) {
+                debugPrint("ZIM CMD Received: ${msg.message}");
+
+                if (msg.message == "CMD:STREAM_PAUSED") {
+                  if (!widget.isBroadcaster) {
+                    setState(() {
+                      _isPaused = true;
+                    });
+                  }
+                } else if (msg.message == "CMD:STREAM_RESUMED") {
+                  if (!widget.isBroadcaster) {
+                    setState(() {
+                      _isPaused = false;
+                      _isVideoInitialized = false;
+                    });
+                    _startAudienceMode();
+                  }
+                }
+                // Do NOT add to chat list
+                continue;
+              }
+
               if (mounted) {
                 setState(() {
                   _messages.insert(0, msg);
@@ -251,7 +275,23 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
             } else if (msg is ZIMCommandMessage) {
               // ... (Same Command Logic as before) ...
               final data = String.fromCharCodes(msg.message);
-              if (data.startsWith("GIFT:")) {
+              debugPrint("ZIM Command Received: $data"); // Debug Log
+
+              if (data == "STREAM_PAUSED") {
+                if (!widget.isBroadcaster) {
+                  setState(() {
+                    _isPaused = true;
+                  });
+                }
+              } else if (data == "STREAM_RESUMED") {
+                if (!widget.isBroadcaster) {
+                  setState(() {
+                    _isPaused = false;
+                    _isVideoInitialized = false; // Reset init state
+                  });
+                  _startAudienceMode(); // Force player reload
+                }
+              } else if (data.startsWith("GIFT:")) {
                 final parts = data.split(":");
                 if (parts.length > 1) {
                   final giftId = parts[1];
@@ -290,26 +330,14 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
     };
 
     try {
-      debugPrint("ZIM Logging in as ${user.userID}...");
       await ZIM.getInstance()!.login(
         user.userID,
         ZIMLoginConfig()..userName = user.userName,
       );
-      debugPrint("ZIM Login Success!");
 
-      debugPrint("ZIM Joining Room $roomID...");
       await ZIM.getInstance()!.joinRoom(roomID);
-      debugPrint("ZIM Join Room Success!");
     } catch (e) {
       debugPrint("ZIM Init Error: $e");
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text("Chat Init Failed: $e"),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
     }
   }
 
@@ -423,15 +451,29 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
   // --- AUDIENCE LOGIC ---
 
   void _startAudienceMode() {
-    _videoController =
-        VideoPlayerController.networkUrl(Uri.parse(ApiConstants.hlsPlayUrl))
-          ..initialize().then((_) {
-            // Ensure the first frame is shown after the video is initialized
-            setState(() {
-              _isVideoInitialized = true;
-            });
-            _videoController!.play();
-          });
+    // Dispose previous controller to prevent leaks/conflicts
+    _videoController?.dispose();
+    _videoController = null;
+
+    // Slight delay to allow HLS segments to propagate after resume
+    Future.delayed(const Duration(seconds: 2), () {
+      if (!mounted) return;
+
+      _videoController =
+          VideoPlayerController.networkUrl(Uri.parse(ApiConstants.hlsPlayUrl))
+            ..initialize()
+                .then((_) {
+                  if (!mounted) return;
+                  // Ensure the first frame is shown after the video is initialized
+                  setState(() {
+                    _isVideoInitialized = true;
+                  });
+                  _videoController!.play();
+                })
+                .catchError((e) {
+                  debugPrint("Video Player Init Error: $e");
+                });
+    });
   }
 
   /*
@@ -439,6 +481,34 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
      // Deprecated: Using VideoPlayerController instead
   }
   */
+
+  bool _isPaused = false;
+
+  Future<void> _togglePause() async {
+    setState(() {
+      _isPaused = !_isPaused;
+    });
+    // Mute/Unmute Video & Audio
+    ZegoExpressEngine.instance.mutePublishStreamVideo(_isPaused);
+    ZegoExpressEngine.instance.mutePublishStreamAudio(_isPaused);
+
+    // Send Signal to Audience
+    final signal = _isPaused ? "CMD:STREAM_PAUSED" : "CMD:STREAM_RESUMED";
+
+    if (ZIM.getInstance() == null) return;
+
+    final command = ZIMTextMessage(message: signal);
+    try {
+      await ZIM.getInstance()!.sendMessage(
+        command,
+        widget.channelId,
+        ZIMConversationType.room,
+        ZIMMessageSendConfig(),
+      );
+    } catch (e) {
+      debugPrint("ZIM Send Failed: $e");
+    }
+  }
 
   void _stopPlaying() {
     _videoController?.pause();
@@ -498,6 +568,41 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
       );
     }
 
+    if (_isPaused) {
+      return Center(
+        child: Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: Colors.black.withOpacity(0.8),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: AppColors.neonCyan),
+          ),
+          child: const Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.pause_circle_outline,
+                color: AppColors.neonCyan,
+                size: 50,
+              ),
+              SizedBox(height: 10),
+              Text(
+                "Stream Paused by Host",
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  fontFamily: 'Orbitron',
+                ),
+              ),
+              SizedBox(height: 5),
+              Text("Please wait...", style: TextStyle(color: Colors.white70)),
+            ],
+          ),
+        ),
+      );
+    }
+
     if (_isVideoInitialized && _videoController != null) {
       return Center(
         child: AspectRatio(
@@ -512,10 +617,7 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
         children: [
           CircularProgressIndicator(color: AppColors.neonPink),
           SizedBox(height: 20),
-          Text(
-            "Connecting to Live Stream...",
-            style: TextStyle(color: Colors.white),
-          ),
+          Text("Waiting for Host...", style: TextStyle(color: Colors.white)),
         ],
       ),
     );
@@ -670,63 +772,93 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
                         ],
                       ),
 
-                      GestureDetector(
-                        onTap: () {
-                          if (widget.isBroadcaster) {
-                            showDialog(
-                              context: context,
-                              builder: (context) => AlertDialog(
-                                backgroundColor: Colors.black.withOpacity(0.9),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(20),
-                                  side: const BorderSide(
-                                    color: AppColors.neonPink,
-                                  ),
-                                ),
-                                title: const Text(
-                                  "End Live Stream?",
-                                  style: TextStyle(
+                      Row(
+                        children: [
+                          if (widget.isBroadcaster)
+                            Padding(
+                              padding: const EdgeInsets.only(right: 10),
+                              child: GestureDetector(
+                                onTap: _togglePause,
+                                child: CircleAvatar(
+                                  backgroundColor: _isPaused
+                                      ? AppColors.neonPink
+                                      : Colors.black.withOpacity(0.5),
+                                  radius: 20,
+                                  child: Icon(
+                                    _isPaused ? Icons.play_arrow : Icons.pause,
                                     color: Colors.white,
-                                    fontFamily: 'Orbitron',
                                   ),
                                 ),
-                                content: const Text(
-                                  "Are you sure you want to end the live stream?",
-                                  style: TextStyle(color: Colors.white70),
-                                ),
-                                actions: [
-                                  TextButton(
-                                    onPressed: () => Navigator.pop(context),
-                                    child: const Text(
-                                      "Cancel",
-                                      style: TextStyle(color: Colors.grey),
+                              ),
+                            ),
+                          GestureDetector(
+                            onTap: () {
+                              if (widget.isBroadcaster) {
+                                showDialog(
+                                  context: context,
+                                  builder: (context) => AlertDialog(
+                                    backgroundColor: Colors.black.withOpacity(
+                                      0.9,
                                     ),
-                                  ),
-                                  TextButton(
-                                    onPressed: () {
-                                      Navigator.pop(context); // Close dialog
-                                      Navigator.pop(context); // Close screen
-                                    },
-                                    child: const Text(
-                                      "End Stream",
-                                      style: TextStyle(
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(20),
+                                      side: const BorderSide(
                                         color: AppColors.neonPink,
-                                        fontWeight: FontWeight.bold,
                                       ),
                                     ),
+                                    title: const Text(
+                                      "End Live Stream?",
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontFamily: 'Orbitron',
+                                      ),
+                                    ),
+                                    content: const Text(
+                                      "Are you sure you want to end the live stream?",
+                                      style: TextStyle(color: Colors.white70),
+                                    ),
+                                    actions: [
+                                      TextButton(
+                                        onPressed: () => Navigator.pop(context),
+                                        child: const Text(
+                                          "Cancel",
+                                          style: TextStyle(color: Colors.grey),
+                                        ),
+                                      ),
+                                      TextButton(
+                                        onPressed: () {
+                                          Navigator.pop(
+                                            context,
+                                          ); // Close dialog
+                                          Navigator.pop(
+                                            context,
+                                          ); // Close screen
+                                        },
+                                        child: const Text(
+                                          "End Stream",
+                                          style: TextStyle(
+                                            color: AppColors.neonPink,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                                ],
+                                );
+                              } else {
+                                Navigator.of(context).pop();
+                              }
+                            },
+                            child: CircleAvatar(
+                              backgroundColor: Colors.black.withOpacity(0.5),
+                              radius: 20,
+                              child: const Icon(
+                                Icons.close,
+                                color: Colors.white,
                               ),
-                            );
-                          } else {
-                            Navigator.of(context).pop();
-                          }
-                        },
-                        child: CircleAvatar(
-                          backgroundColor: Colors.black.withOpacity(0.5),
-                          radius: 20,
-                          child: const Icon(Icons.close, color: Colors.white),
-                        ),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -964,7 +1096,34 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
 
   Widget _buildHostView() {
     if (_hostView != null) {
-      return Stack(children: [_hostView!]);
+      return Stack(
+        children: [
+          _hostView!,
+          if (_isPaused)
+            Container(
+              color: Colors.black.withOpacity(0.7),
+              child: const Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.pause, color: Colors.white, size: 60),
+                    SizedBox(height: 10),
+                    Text(
+                      "STREAM PAUSED",
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 2,
+                        fontFamily: 'Orbitron',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+        ],
+      );
     }
     return const Center(
       child: CircularProgressIndicator(color: AppColors.neonPink),
