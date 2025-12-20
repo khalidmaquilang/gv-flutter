@@ -41,6 +41,7 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
 
   // Host State
   bool _isLive = false; // False = Preview Mode, True = Streaming Mode
+  bool _isZIMConnected = false;
 
   // Room State
   int _viewerCount = 0;
@@ -48,6 +49,14 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
   // ZIM State
   final List<ZIMTextMessage> _messages = [];
   final TextEditingController _chatController = TextEditingController();
+
+  final List<GiftItem> _gifts = [
+    GiftItem(id: 'rose', name: 'Rose', icon: '🌹', cost: 1),
+    GiftItem(id: 'heart', name: 'Heart', icon: '❤️', cost: 5),
+    GiftItem(id: 'party', name: 'Party', icon: '🎉', cost: 10),
+    GiftItem(id: 'diamond', name: 'Diamond', icon: '💎', cost: 50),
+    GiftItem(id: 'rocket', name: 'Rocket', icon: '🚀', cost: 100),
+  ];
 
   @override
   void initState() {
@@ -144,12 +153,25 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
           }
         };
 
-    // Viewer Count Update
+    // Viewer Count & User Update
     ZegoExpressEngine.onRoomOnlineUserCountUpdate = (String roomID, int count) {
       setState(() {
         _viewerCount = count;
       });
     };
+
+    ZegoExpressEngine.onRoomUserUpdate =
+        (String roomID, ZegoUpdateType updateType, List<ZegoUser> userList) {
+          if (updateType == ZegoUpdateType.Add) {
+            for (var user in userList) {
+              _addSystemMessage("${user.userName} joined the stream 🚀");
+            }
+          } else {
+            for (var _ in userList) {
+              // _addSystemMessage("${user.userName} left the stream 👋"); // Disabled by user
+            }
+          }
+        };
 
     ZegoExpressEngine.onPublisherStateUpdate =
         (
@@ -160,32 +182,13 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
         ) {
           if (state == ZegoPublisherState.Publishing) {
             if (widget.isBroadcaster) {
-              debugPrint("Starting RTMP Push to: ${ApiConstants.rtmpUrl}");
               // We need to mark this lambda as async to await result
               Future(() async {
                 try {
-                  final result = await ZegoExpressEngine.instance
-                      .addPublishCdnUrl(streamID, ApiConstants.rtmpUrl);
-                  if (mounted) {
-                    if (result.errorCode == 0) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text("RTMP Push SUCCESS"),
-                          backgroundColor: Colors.green,
-                          duration: Duration(seconds: 2),
-                        ),
-                      );
-                    } else {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            "RTMP Push FAILED: ${result.errorCode}",
-                          ),
-                          backgroundColor: Colors.red,
-                        ),
-                      );
-                    }
-                  }
+                  await ZegoExpressEngine.instance.addPublishCdnUrl(
+                    streamID,
+                    ApiConstants.rtmpUrl,
+                  ); // result ignored
                 } catch (e) {
                   debugPrint("RTMP Push Error: $e");
                   if (mounted) {
@@ -213,62 +216,104 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
   }
 
   Future<void> _initializeZIM(ZegoUser user, String roomID) async {
+    // Ensure any previous instance is destroyed before creating a new one
+    ZIM.getInstance()?.destroy();
+
     ZIM.create(
       ZIMAppConfig()
         ..appID = ApiConstants.zegoAppId
         ..appSign = ApiConstants.zegoAppSign,
     );
 
+    // Event Handler (Must be set before login)
+    ZIMEventHandler.onConnectionStateChanged =
+        (zim, state, event, extendedData) {
+          debugPrint("ZIM Connection State: $state, Event: $event");
+          if (mounted) {
+            setState(() {
+              _isZIMConnected = (state == ZIMConnectionState.connected);
+            });
+          }
+        };
+
+    ZIMEventHandler.onRoomMessageReceived =
+        (zim, messageList, info, fromRoomID) {
+          if (fromRoomID != widget.channelId) return;
+
+          for (var msg in messageList) {
+            if (msg is ZIMTextMessage) {
+              if (mounted) {
+                setState(() {
+                  _messages.insert(0, msg);
+                });
+              }
+            } else if (msg is ZIMCommandMessage) {
+              // ... (Same Command Logic as before) ...
+              final data = String.fromCharCodes(msg.message);
+              if (data.startsWith("GIFT:")) {
+                final parts = data.split(":");
+                if (parts.length > 1) {
+                  final giftId = parts[1];
+                  GiftItem? gift;
+                  try {
+                    gift = _gifts.firstWhere((g) => g.id == giftId);
+                  } catch (e) {
+                    gift = _gifts[1];
+                  }
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Row(
+                          children: [
+                            Text("Received: ${gift.name} ${gift.icon}"),
+                            const SizedBox(width: 10),
+                            const Icon(Icons.celebration, color: Colors.white),
+                          ],
+                        ),
+                        backgroundColor: AppColors.neonPink,
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                  }
+                }
+              }
+            }
+          }
+        };
+
+    ZIMEventHandler.onRoomMemberJoined = (zim, memberList, roomID) {
+      // Using ZegoEngine for this
+    };
+    ZIMEventHandler.onRoomMemberLeft = (zim, memberList, roomID) {
+      // Using ZegoEngine for this
+    };
+
     try {
+      debugPrint("ZIM Logging in as ${user.userID}...");
       await ZIM.getInstance()!.login(
         user.userID,
         ZIMLoginConfig()..userName = user.userName,
       );
-    } catch (e) {
-      debugPrint("ZIM Login Error: $e");
-    }
+      debugPrint("ZIM Login Success!");
 
-    // Event Handler
-    ZIMEventHandler
-        .onRoomMessageReceived = (zim, messageList, info, fromRoomID) {
-      if (fromRoomID != widget.channelId) return;
-
-      for (var msg in messageList) {
-        if (msg is ZIMTextMessage) {
-          if (mounted) {
-            setState(() {
-              _messages.insert(0, msg);
-            });
-          }
-        } else if (msg is ZIMCommandMessage) {
-          final data = String.fromCharCodes(msg.message);
-          if (data.startsWith("GIFT:")) {
-            final giftName = data.split(":")[1];
-            debugPrint("Received Gift: $giftName");
-            // Show visual effect
-            if (mounted) {
-              // Using a simple toast/snackbar for now, can be upgraded to overlay
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text("Received Gift: $giftName"),
-                  backgroundColor: AppColors.neonPink,
-                  duration: const Duration(seconds: 1),
-                ),
-              );
-            }
-          }
-        }
-      }
-    };
-
-    try {
+      debugPrint("ZIM Joining Room $roomID...");
       await ZIM.getInstance()!.joinRoom(roomID);
+      debugPrint("ZIM Join Room Success!");
     } catch (e) {
-      debugPrint("ZIM Join Error: $e");
+      debugPrint("ZIM Init Error: $e");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Chat Init Failed: $e"),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
   Future<void> _sendChatMessage() async {
+    // ... existing chat logic ...
     final text = _chatController.text.trim();
     if (text.isEmpty) return;
 
@@ -293,16 +338,48 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
   }
 
   Future<void> _sendGift(String giftName) async {
+    if (!_isZIMConnected) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Not connected to Chat yet. Please wait."),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    debugPrint(
+      "Attempting to send gift: $giftName into room ${widget.channelId}",
+    );
     final command = ZIMCommandMessage(
       message: Uint8List.fromList("GIFT:$giftName".codeUnits),
     );
     try {
-      await ZIM.getInstance()?.sendMessage(
-        command,
-        widget.channelId,
-        ZIMConversationType.room,
-        ZIMMessageSendConfig(),
-      );
+      final result = await ZIM
+          .getInstance()
+          ?.sendMessage(
+            command,
+            widget.channelId,
+            ZIMConversationType.room,
+            ZIMMessageSendConfig(),
+          )
+          .then((value) {
+            debugPrint("Gift Sent Successfully: ${value.message.messageID}");
+
+            // Optimistic UI Update for Sender
+            final gift = _gifts.firstWhere(
+              (g) => g.id == giftName,
+              orElse: () => _gifts[1],
+            );
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text("You sent ${gift.icon} ${gift.name}!"),
+                  backgroundColor: AppColors.neonCyan,
+                ),
+              );
+            }
+          });
     } catch (e) {
       debugPrint("Gift Send Error: $e");
     }
@@ -556,7 +633,57 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
                       ),
 
                       GestureDetector(
-                        onTap: () => Navigator.of(context).pop(),
+                        onTap: () {
+                          if (widget.isBroadcaster) {
+                            showDialog(
+                              context: context,
+                              builder: (context) => AlertDialog(
+                                backgroundColor: Colors.black.withOpacity(0.9),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(20),
+                                  side: const BorderSide(
+                                    color: AppColors.neonPink,
+                                  ),
+                                ),
+                                title: const Text(
+                                  "End Live Stream?",
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontFamily: 'Orbitron',
+                                  ),
+                                ),
+                                content: const Text(
+                                  "Are you sure you want to end the live stream?",
+                                  style: TextStyle(color: Colors.white70),
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(context),
+                                    child: const Text(
+                                      "Cancel",
+                                      style: TextStyle(color: Colors.grey),
+                                    ),
+                                  ),
+                                  TextButton(
+                                    onPressed: () {
+                                      Navigator.pop(context); // Close dialog
+                                      Navigator.pop(context); // Close screen
+                                    },
+                                    child: const Text(
+                                      "End Stream",
+                                      style: TextStyle(
+                                        color: AppColors.neonPink,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          } else {
+                            Navigator.of(context).pop();
+                          }
+                        },
                         child: CircleAvatar(
                           backgroundColor: Colors.black.withOpacity(0.5),
                           radius: 20,
@@ -597,15 +724,39 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
                                       : AppColors.neonCyan.withOpacity(0.2),
                                 ),
                               ),
-                              child: Text(
-                                msg.message,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 13,
-                                  shadows: [
-                                    Shadow(blurRadius: 2, color: Colors.black),
-                                  ],
-                                ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  // Sender Name
+                                  if (!isMe && msg.senderUserID != "SYSTEM")
+                                    Padding(
+                                      padding: const EdgeInsets.only(bottom: 2),
+                                      child: Text(
+                                        msg.senderUserID, // Ideally senderUserName if available
+                                        style: TextStyle(
+                                          color: AppColors.neonCyan.withOpacity(
+                                            0.8,
+                                          ),
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ),
+                                  // Message Content
+                                  Text(
+                                    msg.message,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 13,
+                                      shadows: [
+                                        Shadow(
+                                          blurRadius: 2,
+                                          color: Colors.black,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
                               ),
                             );
                           },
@@ -654,28 +805,26 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
 
                           if (widget.isBroadcaster) const Spacer(),
 
-                          // Hide Buttons for Host
+                          // Hide Buttons for Host (Host shouldn't gift themselves)
                           if (!widget.isBroadcaster) ...[
                             const SizedBox(width: 10),
                             _buildNeonActionButton(
                               Icons.card_giftcard,
                               AppColors.neonPink,
-                              () => _sendGift("HEART"),
+                              _showGiftPicker,
                             ),
                             const SizedBox(width: 10),
                             _buildNeonActionButton(
                               Icons.favorite,
                               AppColors.neonCyan,
-                              () => _sendGift("LIKE"),
+                              () => _sendGift("heart"), // Quick Like
                             ),
                           ],
 
                           const SizedBox(width: 10),
-                          _buildNeonActionButton(
-                            Icons.share,
-                            Colors.white,
-                            () {},
-                          ),
+                          _buildNeonActionButton(Icons.share, Colors.white, () {
+                            // Share logic would go here
+                          }),
                         ],
                       ),
                     ],
@@ -686,6 +835,92 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  void _showGiftPicker() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return Container(
+          height: 300,
+          decoration: BoxDecoration(
+            color: Colors.black.withOpacity(0.9),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+            border: const Border(top: BorderSide(color: AppColors.neonPink)),
+          ),
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                "Send a Gift",
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  fontFamily: 'Orbitron',
+                ),
+              ),
+              const SizedBox(height: 20),
+              Expanded(
+                child: GridView.builder(
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 4,
+                    childAspectRatio: 0.8,
+                    crossAxisSpacing: 15,
+                    mainAxisSpacing: 15,
+                  ),
+                  itemCount: _gifts.length,
+                  itemBuilder: (context, index) {
+                    final gift = _gifts[index];
+                    return GestureDetector(
+                      onTap: () {
+                        Navigator.pop(context);
+                        _sendGift(gift.id);
+                      },
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: AppColors.deepVoid,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: AppColors.neonCyan.withOpacity(0.5),
+                          ),
+                        ),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              gift.icon,
+                              style: const TextStyle(fontSize: 32),
+                            ),
+                            const SizedBox(height: 5),
+                            Text(
+                              gift.name,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                              ),
+                            ),
+                            Text(
+                              "${gift.cost} coins",
+                              style: TextStyle(
+                                color: AppColors.neonPink.withOpacity(0.8),
+                                fontSize: 10,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -724,4 +959,28 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
       ),
     );
   }
+
+  void _addSystemMessage(String text) {
+    final sysMsg = ZIMTextMessage(message: text);
+    sysMsg.senderUserID = "SYSTEM";
+    if (mounted) {
+      setState(() {
+        _messages.insert(0, sysMsg);
+      });
+    }
+  }
+}
+
+class GiftItem {
+  final String id;
+  final String name;
+  final String icon;
+  final int cost;
+
+  GiftItem({
+    required this.id,
+    required this.name,
+    required this.icon,
+    required this.cost,
+  });
 }
