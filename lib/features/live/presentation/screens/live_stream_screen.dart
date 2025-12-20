@@ -10,6 +10,7 @@ import 'package:test_flutter/features/feed/presentation/providers/feed_audio_pro
 import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:zego_express_engine/zego_express_engine.dart';
 import 'package:zego_zim/zego_zim.dart';
+import 'package:video_player/video_player.dart';
 
 class LiveStreamScreen extends ConsumerStatefulWidget {
   final bool isBroadcaster;
@@ -28,16 +29,18 @@ class LiveStreamScreen extends ConsumerStatefulWidget {
 class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
   // Zego State
   int? _previewViewID;
-  int? _playViewID;
   Widget? _hostView;
-  Widget? _audienceView;
   bool _isEngineActive = false;
+
+  // Audience Video
+  VideoPlayerController? _videoController;
+  bool _isVideoInitialized = false;
+
   String? _localUserID;
   String? _localUserName;
 
   // Host State
   bool _isLive = false; // False = Preview Mode, True = Streaming Mode
-  bool _isUsingFrontCamera = true;
 
   // Room State
   int _viewerCount = 0;
@@ -112,12 +115,7 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
       // Set to preview mode
       await _startPreview();
     } else {
-      // Create Audience View Placeholder
-      _audienceView = await ZegoExpressEngine.instance.createCanvasView((
-        viewID,
-      ) {
-        _playViewID = viewID;
-      });
+      // Audience Logic: Just start the player (no Zego Canvas needed)
       _startAudienceMode();
     }
 
@@ -137,7 +135,7 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
           if (updateType == ZegoUpdateType.Add) {
             if (!widget.isBroadcaster) {
               // Audience: Play HLS when stream is added
-              _playHLSStream();
+              _startAudienceMode();
             }
           } else if (updateType == ZegoUpdateType.Delete) {
             if (!widget.isBroadcaster) {
@@ -347,47 +345,65 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
   // --- AUDIENCE LOGIC ---
 
   void _startAudienceMode() {
-    // Audience waits for stream update to call _playHLSStream
+    _videoController =
+        VideoPlayerController.networkUrl(Uri.parse(ApiConstants.hlsPlayUrl))
+          ..initialize().then((_) {
+            // Ensure the first frame is shown after the video is initialized
+            setState(() {
+              _isVideoInitialized = true;
+            });
+            _videoController!.play();
+          });
   }
 
+  /*
   Future<void> _playHLSStream() async {
-    // Play from constant HLS URL
-    // Use Zego Player with Resource Mode CDN
-    ZegoCDNConfig cdnConfig = ZegoCDNConfig(ApiConstants.hlsPlayUrl);
-
-    // IMPORTANT: When using CdnOnly, streamID parameter in startPlayingStream
-    // is typically mapped to the CDN URL via config, or we pass the URL as streamID if supported.
-    // Zego Express Docs says: for CDN, pass streamID, and config with URL.
-    // But if it's a direct URL (no Zego Stream ID mapping), we might need to use generic stream ID.
-    // Let's us the channelId as base.
-
-    ZegoPlayerConfig config = ZegoPlayerConfig(ZegoStreamResourceMode.OnlyCDN)
-      ..cdnConfig = cdnConfig;
-
-    String streamID =
-        '${widget.channelId}_host_main'; // Construct assumed ID or arbitrary
-
-    if (_playViewID != null) {
-      await ZegoExpressEngine.instance.startPlayingStream(
-        streamID,
-        config: config,
-        canvas: ZegoCanvas.view(_playViewID!),
-      );
-    }
-    setState(() {});
+     // Deprecated: Using VideoPlayerController instead
   }
+  */
 
   void _stopPlaying() {
-    // ZegoExpressEngine.instance.stopPlayingStream(streamID);
-    setState(() {});
+    _videoController?.pause();
+    // setState(() {});
   }
 
   @override
   void dispose() {
+    _videoController?.dispose();
     _destroy();
     WakelockPlus.disable();
     ref.read(isFeedAudioEnabledProvider.notifier).state = true;
     super.dispose();
+  }
+
+  // ... (Keep _destroy)
+
+  // ... (Keep build)
+
+  // ... (Keep _buildHostView)
+
+  Widget _buildAudienceView() {
+    if (_isVideoInitialized && _videoController != null) {
+      return Center(
+        child: AspectRatio(
+          aspectRatio: _videoController!.value.aspectRatio,
+          child: VideoPlayer(_videoController!),
+        ),
+      );
+    }
+    return const Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          CircularProgressIndicator(color: AppColors.neonPink),
+          SizedBox(height: 20),
+          Text(
+            "Connecting to Live Stream...",
+            style: TextStyle(color: Colors.white),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _destroy() async {
@@ -675,112 +691,10 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
 
   Widget _buildHostView() {
     if (_hostView != null) {
-      return Stack(
-        children: [
-          _hostView!,
-          // Debug Overlay
-          Positioned(
-            top: 100,
-            left: 20,
-            child: Container(
-              padding: const EdgeInsets.all(8),
-              color: Colors.black54,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    "Preview ID: $_previewViewID",
-                    style: const TextStyle(color: Colors.green, fontSize: 12),
-                  ),
-                  Text(
-                    "Engine Active: $_isEngineActive",
-                    style: const TextStyle(color: Colors.white, fontSize: 12),
-                  ),
-                  Text(
-                    "Is Live: $_isLive",
-                    style: const TextStyle(color: Colors.white, fontSize: 12),
-                  ),
-                  const SizedBox(height: 5),
-                  GestureDetector(
-                    onTap: () async {
-                      await ZegoExpressEngine.instance.stopPreview();
-                      await ZegoExpressEngine.instance.enableCamera(false);
-                      await Future.delayed(const Duration(milliseconds: 500));
-                      await ZegoExpressEngine.instance.enableCamera(true);
-                      await ZegoExpressEngine.instance.startPreview(
-                        canvas: ZegoCanvas.view(_previewViewID!),
-                      );
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text("Restarted Preview")),
-                      );
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
-                      color: Colors.blue,
-                      child: const Text(
-                        "Restart Camera",
-                        style: TextStyle(color: Colors.white, fontSize: 12),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 5),
-                  GestureDetector(
-                    onTap: () async {
-                      await ZegoExpressEngine.instance.useFrontCamera(
-                        !_isUsingFrontCamera,
-                      );
-                      setState(() {
-                        _isUsingFrontCamera = !_isUsingFrontCamera;
-                      });
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            "Switched to ${_isUsingFrontCamera ? 'Front' : 'Back'} Camera",
-                          ),
-                        ),
-                      );
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
-                      color: Colors.orange,
-                      child: const Text(
-                        "Switch Camera",
-                        style: TextStyle(color: Colors.white, fontSize: 12),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      );
+      return Stack(children: [_hostView!]);
     }
     return const Center(
       child: CircularProgressIndicator(color: AppColors.neonPink),
-    );
-  }
-
-  Widget _buildAudienceView() {
-    if (_audienceView != null) return _audienceView!;
-    return const Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          CircularProgressIndicator(color: AppColors.neonPink),
-          SizedBox(height: 20),
-          Text(
-            "Waiting for Host to start...",
-            style: TextStyle(color: Colors.white),
-          ),
-        ],
-      ),
     );
   }
 
