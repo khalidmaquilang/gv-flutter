@@ -314,6 +314,11 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
             // Neon theme customization matching Host
             ..topMenuBar.backgroundColor = Colors.transparent
             ..bottomMenuBar.backgroundColor = Colors.transparent
+            // Remove co-host button by restricting visible buttons
+            // Correct property name is 'audienceButtons' (or hostButtons)
+            ..bottomMenuBar.audienceButtons = [
+              ZegoLiveStreamingMenuBarButtonName.chatButton,
+            ]
             ..inRoomMessage.backgroundColor = AppColors.deepVoid.withValues(
               alpha: 0.7,
             )
@@ -361,105 +366,138 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
 
   Widget _buildHostUIKit(BuildContext context) {
     return SafeArea(
-      child: ZegoUIKitPrebuiltLiveStreaming(
-        appID: ApiConstants.zegoAppId,
-        appSign: ApiConstants.zegoAppSign,
-        userID: _localUserID ?? 'unknown',
-        userName: _localUserName ?? 'Unknown User',
-        liveID: widget.channelId,
-        events: ZegoUIKitPrebuiltLiveStreamingEvents(
-          onLeaveConfirmation:
-              (
-                ZegoLiveStreamingLeaveConfirmationEvent event,
-                Future<bool> Function() defaultAction,
-              ) async {
-                return await showDialog(
-                      context: context,
-                      barrierDismissible: false,
-                      builder: (BuildContext dialogContext) {
-                        return AlertDialog(
-                          backgroundColor: AppColors.deepVoid,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(20),
-                            side: BorderSide(
-                              color: AppColors.neonPink,
-                              width: 2,
-                            ),
-                          ),
-                          title: Text(
-                            "End Live Stream?",
-                            style: TextStyle(
-                              color: AppColors.neonCyan,
-                              fontWeight: FontWeight.bold,
-                              fontFamily: 'Orbitron',
-                            ),
-                          ),
-                          content: Text(
-                            "Are you sure you want to end your live stream?",
-                            style: TextStyle(color: Colors.white70),
-                          ),
-                          actions: [
-                            TextButton(
-                              onPressed: () =>
-                                  Navigator.of(dialogContext).pop(false),
-                              child: Text(
-                                "Cancel",
+      child: Stack(
+        children: [
+          ZegoUIKitPrebuiltLiveStreaming(
+            appID: ApiConstants.zegoAppId,
+            appSign: ApiConstants.zegoAppSign,
+            userID: _localUserID ?? 'unknown',
+            userName: _localUserName ?? 'Unknown User',
+            liveID: widget.channelId,
+            events: ZegoUIKitPrebuiltLiveStreamingEvents(
+              onLeaveConfirmation:
+                  (
+                    ZegoLiveStreamingLeaveConfirmationEvent event,
+                    Future<bool> Function() defaultAction,
+                  ) async {
+                    return await showDialog(
+                          context: context,
+                          barrierDismissible: false,
+                          builder: (BuildContext dialogContext) {
+                            return AlertDialog(
+                              backgroundColor: AppColors.deepVoid,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(20),
+                                side: BorderSide(
+                                  color: AppColors.neonPink,
+                                  width: 2,
+                                ),
+                              ),
+                              title: Text(
+                                "End Live Stream?",
+                                style: TextStyle(
+                                  color: AppColors.neonCyan,
+                                  fontWeight: FontWeight.bold,
+                                  fontFamily: 'Orbitron',
+                                ),
+                              ),
+                              content: Text(
+                                "Are you sure you want to end your live stream?",
                                 style: TextStyle(color: Colors.white70),
                               ),
-                            ),
-                            ElevatedButton(
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: AppColors.neonPink,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(10),
+                              actions: [
+                                TextButton(
+                                  onPressed: () =>
+                                      Navigator.of(dialogContext).pop(false),
+                                  child: Text(
+                                    "Cancel",
+                                    style: TextStyle(color: Colors.white70),
+                                  ),
                                 ),
-                              ),
-                              onPressed: () =>
-                                  Navigator.of(dialogContext).pop(true),
-                              child: Text(
-                                "End Stream",
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
+                                ElevatedButton(
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: AppColors.neonPink,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                  ),
+                                  onPressed: () =>
+                                      Navigator.of(dialogContext).pop(true),
+                                  child: Text(
+                                    "End Stream",
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
                                 ),
-                              ),
-                            ),
-                          ],
-                        );
-                      },
-                    ) ??
-                    false;
-              },
-        ),
-        config:
-            ZegoUIKitPrebuiltLiveStreamingConfig.host(
-                plugins: [ZegoUIKitSignalingPlugin()],
-              )
-              // Camera settings
-              ..audioVideoView.useVideoViewAspectFill = true
-              ..turnOnCameraWhenJoining = true
-              ..turnOnMicrophoneWhenJoining = true
-              ..useFrontFacingCamera = true
-              // Neon theme customization
-              ..topMenuBar.backgroundColor = Colors.transparent
-              ..bottomMenuBar.backgroundColor = Colors.transparent
-              // Chat message styling (neon theme)
-              ..inRoomMessage.backgroundColor = AppColors.deepVoid.withValues(
-                alpha: 0.7,
-              )
-              ..inRoomMessage.nameTextStyle = TextStyle(
-                color: AppColors.neonCyan,
-                fontWeight: FontWeight.bold,
-                fontSize: 12,
-              )
-              ..inRoomMessage.messageTextStyle = TextStyle(
-                color: Colors.white,
-                fontSize: 14,
-              )
-              // User join/leave notifications
-              ..inRoomMessage.notifyUserJoin = true
-              ..inRoomMessage.notifyUserLeave = false
-              ..innerText.userEnter = 'joined',
+                              ],
+                            );
+                          },
+                        ) ??
+                        false;
+                  },
+            ),
+            config:
+                ZegoUIKitPrebuiltLiveStreamingConfig.host(
+                    plugins: [ZegoUIKitSignalingPlugin()],
+                  )
+                  // Camera settings
+                  ..audioVideoView.useVideoViewAspectFill = true
+                  ..turnOnCameraWhenJoining = true
+                  ..turnOnMicrophoneWhenJoining = true
+                  ..useFrontFacingCamera = true
+                  // Neon theme customization
+                  ..topMenuBar.backgroundColor = Colors.transparent
+                  ..bottomMenuBar.backgroundColor = Colors.transparent
+                  // Chat message styling (neon theme)
+                  ..inRoomMessage.backgroundColor = AppColors.deepVoid
+                      .withValues(alpha: 0.7)
+                  ..inRoomMessage.nameTextStyle = TextStyle(
+                    color: AppColors.neonCyan,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                  )
+                  ..inRoomMessage.messageTextStyle = TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                  )
+                  // User join/leave notifications
+                  ..inRoomMessage.notifyUserJoin = true
+                  ..inRoomMessage.notifyUserLeave = false
+                  ..innerText.userEnter = 'joined'
+                  ..bottomMenuBar.showInRoomMessageButton =
+                      false, // Hide message button
+          ),
+          // Custom Quality Indicator Overlay (Added via Stack)
+          Positioned(
+            top: 10,
+            right: 60,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.black.withOpacity(0.5),
+                borderRadius: BorderRadius.circular(4),
+                border: Border.all(color: AppColors.neonCyan),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.wifi, color: AppColors.neonCyan, size: 12),
+                  const SizedBox(width: 4),
+                  const Text(
+                    "Good", // Placeholder
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
