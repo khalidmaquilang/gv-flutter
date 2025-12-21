@@ -12,8 +12,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/models/sound_model.dart';
 import '../../../feed/presentation/providers/drafts_provider.dart';
 import '../widgets/draggable_text_widget.dart';
-import 'video_editor_screen.dart';
 import 'text_editor_screen.dart';
+import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
+import 'package:ffmpeg_kit_flutter_new/return_code.dart';
+import 'package:path_provider/path_provider.dart';
+import 'dart:ui' as ui;
+import 'package:flutter/rendering.dart';
+import 'dart:typed_data';
 
 class PreviewScreen extends ConsumerStatefulWidget {
   final List<XFile> files;
@@ -38,6 +43,7 @@ class PreviewScreen extends ConsumerStatefulWidget {
 }
 
 class _PreviewScreenState extends ConsumerState<PreviewScreen> {
+  final GlobalKey _textOverlayKey = GlobalKey(); // Key for capturing text
   VideoPlayerController? _videoController;
   VideoPlayerController? _nextVideoController;
   AudioPlayer? _musicPlayer;
@@ -48,9 +54,7 @@ class _PreviewScreenState extends ConsumerState<PreviewScreen> {
 
   // Text Overlay State
   final List<OverlayText> _textOverlays = [];
-  // Video Trim State
-  // Map index -> {start, end}
-  final Map<int, Map<String, Duration>> _trimData = {};
+  // Video Trim State (Removed)
 
   // Delete Bin State
   bool _showDeleteBin = false;
@@ -124,12 +128,6 @@ class _PreviewScreenState extends ConsumerState<PreviewScreen> {
         await _videoController!.setVolume(_isVoiceMuted ? 0 : 1.0);
         _videoController!.addListener(_videoListener);
         if (mounted) {
-          // Apply Trim Start if exists
-          if (_trimData.containsKey(index)) {
-            final start = _trimData[index]!['start']!;
-            await _videoController!.seekTo(start);
-          }
-
           setState(() {});
           await _videoController!.play();
 
@@ -150,8 +148,6 @@ class _PreviewScreenState extends ConsumerState<PreviewScreen> {
       if (mounted) {
         setState(() {});
         await _videoController!.play();
-        // Ensure music is syncing if not first segment?
-        // Logic assumes music plays continuously.
       }
     }
 
@@ -193,15 +189,8 @@ class _PreviewScreenState extends ConsumerState<PreviewScreen> {
   void _videoListener() {
     final controller = _videoController;
     if (controller != null && controller.value.isInitialized) {
-      // Check for Trim End
-      Duration end = controller.value.duration;
-      if (_trimData.containsKey(_currentFileIndex)) {
-        end = _trimData[_currentFileIndex]!['end']!;
-      }
-
-      if (controller.value.position >= end ||
-          (!controller.value.isPlaying &&
-              controller.value.position >= controller.value.duration)) {
+      if (!controller.value.isPlaying &&
+          controller.value.position >= controller.value.duration) {
         _playNext();
       }
     }
@@ -262,6 +251,96 @@ class _PreviewScreenState extends ConsumerState<PreviewScreen> {
   }
 
   Future<bool> _onWillPop() async {
+    // 1. Check for Text Overlays first
+    if (_textOverlays.isNotEmpty) {
+      final shouldDiscard = await showDialog<bool>(
+        context: context,
+        builder: (context) => Dialog(
+          backgroundColor: Colors.transparent,
+          child: Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.black.withOpacity(0.9),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: AppColors.neonPink.withOpacity(0.5),
+                width: 1,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: AppColors.neonPink.withOpacity(0.2),
+                  blurRadius: 15,
+                  spreadRadius: 2,
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(
+                  Icons.warning_amber_rounded,
+                  color: AppColors.neonPink,
+                  size: 48,
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  "Discard Changes?",
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  "Your text overlays will be lost if you go back.",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.white70, fontSize: 14),
+                ),
+                const SizedBox(height: 24),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    TextButton(
+                      onPressed: () => Navigator.of(context).pop(false),
+                      child: const Text(
+                        "Cancel",
+                        style: TextStyle(color: Colors.white),
+                      ),
+                    ),
+                    ElevatedButton(
+                      onPressed: () => Navigator.of(context).pop(true),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.neonPink,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 10,
+                        ),
+                      ),
+                      child: const Text(
+                        "Discard",
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+
+      if (shouldDiscard != true) {
+        return false; // Stay on screen
+      }
+    }
+
     if (!widget.fromDraft) return true;
 
     // Show Options Dialog
@@ -444,10 +523,12 @@ class _PreviewScreenState extends ConsumerState<PreviewScreen> {
                 ),
               ),
 
-            // Sidebar Controls (Edit, Text)
+            // Sidebar Controls (Text Only)
             Positioned(
               right: 20,
-              top: 150,
+              top: (widget.fromDraft && widget.draftId != null)
+                  ? 120
+                  : 100, // Adjusted height (increased from 150)
               child: Column(
                 children: [
                   // Text Button
@@ -456,72 +537,57 @@ class _PreviewScreenState extends ConsumerState<PreviewScreen> {
                     label: "Text",
                     onTap: _showTextInputDialog,
                   ),
-                  const SizedBox(height: 20),
-                  // Edit Button (Only for Video)
-                  if (widget.isVideo)
-                    _buildSideButton(
-                      icon: Icons.cut,
-                      label: "Edit",
-                      onTap: _openVideoEditor,
-                    ),
                 ],
               ),
             ),
 
-            // Text Overlays
-            ..._textOverlays.map((overlay) {
-              return DraggableTextWidget(
-                key: ObjectKey(overlay),
-                overlayText: overlay,
-                onTap: () {
-                  _showTextInputDialog(overlay);
-                },
-                onDragStart: () {
-                  setState(() {
-                    _showDeleteBin = true;
-                  });
-                },
-                onDragUpdate: (offset) {
-                  // Check collision with global bin position
-                  // Bin is at bottom center.
-                  final screenWidth = MediaQuery.of(context).size.width;
-                  final screenHeight = MediaQuery.of(context).size.height;
-
-                  final binRect = Rect.fromCenter(
-                    center: Offset(
-                      screenWidth / 2,
-                      screenHeight - 60,
-                    ), // Adjusted center
-                    width: 160,
-                    height: 160, // Generous hit area
-                  );
-
-                  if (binRect.contains(offset)) {
-                    if (!_isHoveringDelete) {
-                      setState(() => _isHoveringDelete = true);
-                    }
-                  } else {
-                    if (_isHoveringDelete) {
-                      setState(() => _isHoveringDelete = false);
-                    }
-                  }
-                },
-                onDragEnd: (newPos) {
-                  if (_isHoveringDelete) {
-                    setState(() {
-                      _textOverlays.remove(overlay);
-                      _showDeleteBin = false;
-                      _isHoveringDelete = false;
-                    });
-                  } else {
-                    setState(() {
-                      overlay.position = newPos;
-                      _showDeleteBin = false;
-                    });
-                  }
-                },
-              );
-            }).toList(),
+            // Text Overlays (Captured Layer)
+            Positioned.fill(
+              child: RepaintBoundary(
+                key: _textOverlayKey,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: _textOverlays.map((overlay) {
+                    return DraggableTextWidget(
+                      key: ObjectKey(overlay),
+                      overlayText: overlay,
+                      onTap: () => _showTextInputDialog(overlay),
+                      onDragStart: () => setState(() => _showDeleteBin = true),
+                      onDragUpdate: (offset) {
+                        final screenWidth = MediaQuery.of(context).size.width;
+                        final screenHeight = MediaQuery.of(context).size.height;
+                        final binRect = Rect.fromCenter(
+                          center: Offset(screenWidth / 2, screenHeight - 60),
+                          width: 160,
+                          height: 160,
+                        );
+                        if (binRect.contains(offset)) {
+                          if (!_isHoveringDelete)
+                            setState(() => _isHoveringDelete = true);
+                        } else {
+                          if (_isHoveringDelete)
+                            setState(() => _isHoveringDelete = false);
+                        }
+                      },
+                      onDragEnd: (newPos) {
+                        if (_isHoveringDelete) {
+                          setState(() {
+                            _textOverlays.remove(overlay);
+                            _showDeleteBin = false;
+                            _isHoveringDelete = false;
+                          });
+                        } else {
+                          setState(() {
+                            overlay.position = newPos;
+                            _showDeleteBin = false;
+                          });
+                        }
+                      },
+                    );
+                  }).toList(),
+                ),
+              ),
+            ),
 
             // Trash Bin UI
             if (_showDeleteBin)
@@ -559,32 +625,31 @@ class _PreviewScreenState extends ConsumerState<PreviewScreen> {
                 bottom: 40,
                 right: 16,
                 child: ElevatedButton(
-                  onPressed: () {
-                    if (widget.files.isEmpty) return;
-
-                    // Pause playback before navigating
-                    _videoController?.pause();
-                    _musicPlayer?.pause();
-
-                    // Navigate to CreatePostScreen
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (context) => CreatePostScreen(
-                          files: widget.files,
-                          isVideo: widget.isVideo,
-                          sound: widget.sound,
-                          initialCaption: widget.initialCaption,
-                          draftId: widget.draftId,
-                        ),
-                      ),
-                    );
-                  },
+                  onPressed: _exportVideo,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.neonPink,
                   ),
                   child: const Text(
                     "Next",
                     style: TextStyle(color: Colors.white),
+                  ),
+                ),
+              ),
+            // Processing Indicator
+            if (_isExporting)
+              Container(
+                color: Colors.black.withOpacity(0.8),
+                child: Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: const [
+                      CircularProgressIndicator(color: AppColors.neonPink),
+                      SizedBox(height: 16),
+                      Text(
+                        "Processing Video...",
+                        style: TextStyle(color: Colors.white, fontSize: 16),
+                      ),
+                    ],
                   ),
                 ),
               ),
@@ -632,6 +697,121 @@ class _PreviewScreenState extends ConsumerState<PreviewScreen> {
     );
   }
 
+  bool _isExporting = false;
+
+  Future<void> _exportVideo() async {
+    if (widget.files.isEmpty) return;
+
+    // Pause playback
+    _videoController?.pause();
+    _musicPlayer?.pause();
+
+    // If no text, skip processing
+    if (_textOverlays.isEmpty) {
+      _navigateToPost(widget.files);
+      return;
+    }
+
+    setState(() => _isExporting = true);
+
+    try {
+      // 1. Capture Text Overlay
+      final overlayFile = await _captureTextOverlay();
+      if (overlayFile == null) {
+        throw Exception("Failed to capture overlay");
+      }
+
+      // 2. Process each video file
+      // Note: We burn the same static overlay onto each segment.
+      // This assumes the text shows for the whole duration.
+      List<XFile> processedFiles = [];
+      final tempDir = await getTemporaryDirectory();
+
+      for (int i = 0; i < widget.files.length; i++) {
+        final file = widget.files[i];
+        final outputPath =
+            '${tempDir.path}/processed_${DateTime.now().millisecondsSinceEpoch}_$i.mp4';
+
+        final command =
+            '-i "${file.path}" -i "${overlayFile.path}" '
+            '-filter_complex "[1:v][0:v]scale2ref[ovrl][base];[base][ovrl]overlay=0:0" '
+            '-c:v libx264 -crf 23 -preset medium -c:a copy "$outputPath"';
+
+        final session = await FFmpegKit.execute(command);
+        final returnCode = await session.getReturnCode();
+
+        if (ReturnCode.isSuccess(returnCode)) {
+          processedFiles.add(XFile(outputPath));
+        } else {
+          debugPrint(
+            "FFmpeg failed for file $i: ${await session.getAllLogsAsString()}",
+          );
+          // Fallback to original if failed? Or error?
+          // Let's use original as fallback to avoid blocking
+          processedFiles.add(file);
+        }
+      }
+
+      if (mounted) {
+        setState(() => _isExporting = false);
+        _navigateToPost(processedFiles);
+      }
+    } catch (e) {
+      debugPrint("Export failed: $e");
+      if (mounted) {
+        setState(() => _isExporting = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Export failed. Please try again.")),
+        );
+      }
+    }
+  }
+
+  Future<File?> _captureTextOverlay() async {
+    try {
+      RenderRepaintBoundary? boundary =
+          _textOverlayKey.currentContext?.findRenderObject()
+              as RenderRepaintBoundary?;
+      if (boundary == null) return null;
+
+      ui.Image image = await boundary.toImage(pixelRatio: 3.0);
+      ByteData? byteData = await image.toByteData(
+        format: ui.ImageByteFormat.png,
+      );
+      Uint8List pngBytes = byteData!.buffer.asUint8List();
+
+      final directory = await getTemporaryDirectory();
+      final path = '${directory.path}/overlay_capture.png';
+      final file = File(path);
+      await file.writeAsBytes(pngBytes);
+      return file;
+    } catch (e) {
+      debugPrint("Error capturing overlay: $e");
+      return null;
+    }
+  }
+
+  void _navigateToPost(List<XFile> files) {
+    Navigator.of(context)
+        .push(
+          MaterialPageRoute(
+            builder: (context) => CreatePostScreen(
+              files: files,
+              isVideo: widget.isVideo,
+              sound: widget.sound,
+              initialCaption: widget.initialCaption,
+              draftId: widget.draftId,
+            ),
+          ),
+        )
+        .then((_) {
+          if (mounted) {
+            _videoController?.play();
+            if (!_isMusicMuted) _musicPlayer?.play();
+          }
+        });
+  }
+
   void _showTextInputDialog([OverlayText? existingOverlay]) {
     Navigator.of(context)
         .push(
@@ -664,38 +844,5 @@ class _PreviewScreenState extends ConsumerState<PreviewScreen> {
             });
           }
         });
-  }
-
-  Future<void> _openVideoEditor() async {
-    _videoController?.pause();
-    _musicPlayer?.pause();
-
-    final file = widget.files[_currentFileIndex];
-    final result = await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => VideoEditorScreen(file: File(file.path)),
-      ),
-    );
-
-    if (result != null && result is Map) {
-      final start = result['start'] as Duration;
-      final end = result['end'] as Duration;
-
-      debugPrint("Trim applied: $start to $end");
-
-      setState(() {
-        _trimData[_currentFileIndex] = {'start': start, 'end': end};
-      });
-
-      // Replay current with new trim
-      await _videoController?.seekTo(start);
-      await _videoController?.play();
-      if (_isMusicMuted == false) _musicPlayer?.play();
-    } else {
-      // Resume if cancelled
-      await _videoController?.play();
-      if (_isMusicMuted == false) _musicPlayer?.play();
-    }
   }
 }

@@ -82,7 +82,7 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
       left: _position.dx,
       top: _position.dy,
       child: GestureDetector(
-        behavior: HitTestBehavior.translucent,
+        behavior: HitTestBehavior.opaque,
         onTap: widget.isEditable ? widget.onTap : null,
         onScaleStart: (details) {
           if (!widget.isEditable) return;
@@ -119,9 +119,7 @@ class _DraggableTextWidgetState extends State<DraggableTextWidget> {
                   ? widget.overlayText.backgroundColor
                   : Colors.transparent,
               borderRadius: BorderRadius.circular(8),
-              border: widget.isEditable
-                  ? Border.all(color: Colors.white.withOpacity(0.3), width: 1)
-                  : null,
+              border: null,
             ),
             child: Text(
               widget.overlayText.text,

@@ -46,21 +46,28 @@ class _TextEditorScreenState extends State<TextEditorScreen> {
     Colors.blueGrey,
   ];
 
-  final List<String> _fonts = [
-    'Roboto',
-    'Open Sans',
-    'Lato',
-    'Montserrat',
-    'Oswald',
-    'Raleway',
-    'Poppins',
-    'Merriweather',
-    'Pacifico',
-    'Lobster',
-    'Dancing Script',
-    'Caveat',
-    'Shadows Into Light',
-    'Indie Flower',
+  final List<FontOption> _fonts = [
+    // Great (Clean, Modern, Pro)
+    FontOption(fontFamily: 'Montserrat', displayName: 'Pro'),
+    FontOption(fontFamily: 'Poppins', displayName: 'Soft'),
+    FontOption(fontFamily: 'Open Sans', displayName: 'Modern'),
+    FontOption(fontFamily: 'Roboto', displayName: 'Classic'),
+    FontOption(fontFamily: 'Lato', displayName: 'Clean'),
+
+    // Good (Stylish, Display)
+    FontOption(fontFamily: 'Oswald', displayName: 'Bold'),
+    FontOption(fontFamily: 'Raleway', displayName: 'Thin'),
+    FontOption(fontFamily: 'Merriweather', displayName: 'Serif'),
+
+    // Fun / Script
+    FontOption(fontFamily: 'Pacifico', displayName: 'Brush'),
+    FontOption(fontFamily: 'Dancing Script', displayName: 'Dance'),
+    FontOption(fontFamily: 'Caveat', displayName: 'Hand'),
+
+    // "Ugly" / Novelty / Niche
+    FontOption(fontFamily: 'Shadows Into Light', displayName: 'Sketch'),
+    FontOption(fontFamily: 'Indie Flower', displayName: 'Marker'),
+    FontOption(fontFamily: 'Lobster', displayName: 'Retro'),
   ];
 
   @override
@@ -413,11 +420,12 @@ class _TextEditorScreenState extends State<TextEditorScreen> {
                   itemCount: _fonts.length,
                   itemBuilder: (context, index) {
                     final font = _fonts[index];
-                    final isSelected = _currentSettings.fontFamily == font;
+                    final isSelected =
+                        _currentSettings.fontFamily == font.fontFamily;
                     return GestureDetector(
                       onTap: () {
                         setState(() {
-                          _currentSettings.fontFamily = font;
+                          _currentSettings.fontFamily = font.fontFamily;
                         });
                       },
                       child: Container(
@@ -437,10 +445,10 @@ class _TextEditorScreenState extends State<TextEditorScreen> {
                               : Colors.transparent,
                         ),
                         child: Text(
-                          font,
+                          "Aa",
                           style: _getGoogleFont(
-                            font,
-                            16,
+                            font.fontFamily,
+                            18, // Slightly larger for "Aa" visibility
                             Colors.white,
                             withShadow: false,
                           ),
@@ -468,4 +476,11 @@ class _TextEditorScreenState extends State<TextEditorScreen> {
         return Icons.format_align_center;
     }
   }
+}
+
+class FontOption {
+  final String fontFamily;
+  final String displayName;
+
+  FontOption({required this.fontFamily, required this.displayName});
 }

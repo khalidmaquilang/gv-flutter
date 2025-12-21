@@ -77,6 +77,7 @@ dependencies:
   zego_uikit_signaling_plugin: ^2.8.20
   video_editor: ^3.0.0
   google_fonts: ^6.3.3
+  ffmpeg_kit_flutter_new: ^4.1.0
 
 dependency_overrides:
   ffi: ^2.1.0
