@@ -75,6 +75,8 @@ dependencies:
   zego_express_engine: ^3.22.1
   zego_zim: ^2.25.0+1
   zego_uikit_signaling_plugin: ^2.8.20
+  video_editor: ^3.0.0
+  google_fonts: ^6.3.3
 
 dependency_overrides:
   ffi: ^2.1.0

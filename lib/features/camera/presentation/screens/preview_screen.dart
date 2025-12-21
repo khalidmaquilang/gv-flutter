@@ -11,6 +11,9 @@ import 'package:audio_session/audio_session.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/models/sound_model.dart';
 import '../../../feed/presentation/providers/drafts_provider.dart';
+import '../widgets/draggable_text_widget.dart';
+import 'video_editor_screen.dart';
+import 'text_editor_screen.dart';
 
 class PreviewScreen extends ConsumerStatefulWidget {
   final List<XFile> files;
@@ -42,6 +45,16 @@ class _PreviewScreenState extends ConsumerState<PreviewScreen> {
 
   bool _isVoiceMuted = false;
   final bool _isMusicMuted = false;
+
+  // Text Overlay State
+  final List<OverlayText> _textOverlays = [];
+  // Video Trim State
+  // Map index -> {start, end}
+  final Map<int, Map<String, Duration>> _trimData = {};
+
+  // Delete Bin State
+  bool _showDeleteBin = false;
+  bool _isHoveringDelete = false;
 
   @override
   void initState() {
@@ -111,6 +124,12 @@ class _PreviewScreenState extends ConsumerState<PreviewScreen> {
         await _videoController!.setVolume(_isVoiceMuted ? 0 : 1.0);
         _videoController!.addListener(_videoListener);
         if (mounted) {
+          // Apply Trim Start if exists
+          if (_trimData.containsKey(index)) {
+            final start = _trimData[index]!['start']!;
+            await _videoController!.seekTo(start);
+          }
+
           setState(() {});
           await _videoController!.play();
 
@@ -173,11 +192,18 @@ class _PreviewScreenState extends ConsumerState<PreviewScreen> {
 
   void _videoListener() {
     final controller = _videoController;
-    if (controller != null &&
-        controller.value.isInitialized &&
-        !controller.value.isPlaying &&
-        controller.value.position >= controller.value.duration) {
-      _playNext();
+    if (controller != null && controller.value.isInitialized) {
+      // Check for Trim End
+      Duration end = controller.value.duration;
+      if (_trimData.containsKey(_currentFileIndex)) {
+        end = _trimData[_currentFileIndex]!['end']!;
+      }
+
+      if (controller.value.position >= end ||
+          (!controller.value.isPlaying &&
+              controller.value.position >= controller.value.duration)) {
+        _playNext();
+      }
     }
   }
 
@@ -418,42 +444,258 @@ class _PreviewScreenState extends ConsumerState<PreviewScreen> {
                 ),
               ),
 
+            // Sidebar Controls (Edit, Text)
             Positioned(
-              bottom: 40,
-              right: 16,
-              child: ElevatedButton(
-                onPressed: () {
-                  if (widget.files.isEmpty) return;
-
-                  // Pause playback before navigating
-                  _videoController?.pause();
-                  _musicPlayer?.pause();
-
-                  // Navigate to CreatePostScreen
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (context) => CreatePostScreen(
-                        files: widget.files,
-                        isVideo: widget.isVideo,
-                        sound: widget.sound,
-                        initialCaption: widget.initialCaption,
-                        draftId: widget.draftId,
-                      ),
+              right: 20,
+              top: 150,
+              child: Column(
+                children: [
+                  // Text Button
+                  _buildSideButton(
+                    icon: Icons.text_fields,
+                    label: "Text",
+                    onTap: _showTextInputDialog,
+                  ),
+                  const SizedBox(height: 20),
+                  // Edit Button (Only for Video)
+                  if (widget.isVideo)
+                    _buildSideButton(
+                      icon: Icons.cut,
+                      label: "Edit",
+                      onTap: _openVideoEditor,
                     ),
-                  );
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.neonPink,
-                ),
-                child: const Text(
-                  "Next",
-                  style: TextStyle(color: Colors.white),
-                ),
+                ],
               ),
             ),
+
+            // Text Overlays
+            ..._textOverlays.map((overlay) {
+              return DraggableTextWidget(
+                key: ObjectKey(overlay),
+                overlayText: overlay,
+                onTap: () {
+                  _showTextInputDialog(overlay);
+                },
+                onDragStart: () {
+                  setState(() {
+                    _showDeleteBin = true;
+                  });
+                },
+                onDragUpdate: (offset) {
+                  // Check collision with global bin position
+                  // Bin is at bottom center.
+                  final screenWidth = MediaQuery.of(context).size.width;
+                  final screenHeight = MediaQuery.of(context).size.height;
+
+                  final binRect = Rect.fromCenter(
+                    center: Offset(
+                      screenWidth / 2,
+                      screenHeight - 60,
+                    ), // Adjusted center
+                    width: 160,
+                    height: 160, // Generous hit area
+                  );
+
+                  if (binRect.contains(offset)) {
+                    if (!_isHoveringDelete) {
+                      setState(() => _isHoveringDelete = true);
+                    }
+                  } else {
+                    if (_isHoveringDelete) {
+                      setState(() => _isHoveringDelete = false);
+                    }
+                  }
+                },
+                onDragEnd: (newPos) {
+                  if (_isHoveringDelete) {
+                    setState(() {
+                      _textOverlays.remove(overlay);
+                      _showDeleteBin = false;
+                      _isHoveringDelete = false;
+                    });
+                  } else {
+                    setState(() {
+                      overlay.position = newPos;
+                      _showDeleteBin = false;
+                    });
+                  }
+                },
+              );
+            }).toList(),
+
+            // Trash Bin UI
+            if (_showDeleteBin)
+              Positioned(
+                bottom: 40,
+                left: 0,
+                right: 0,
+                child: Center(
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    width: _isHoveringDelete ? 80 : 60,
+                    height: _isHoveringDelete ? 80 : 60,
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.5),
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: _isHoveringDelete
+                            ? Colors.red
+                            : Colors.transparent,
+                        width: 2,
+                      ),
+                    ),
+                    child: Icon(
+                      Icons.delete,
+                      color: Colors.red,
+                      size: _isHoveringDelete ? 40 : 30,
+                    ),
+                  ),
+                ),
+              ),
+
+            // Hide "Next" button when dragging text to avoid clutter/conflict
+            if (!_showDeleteBin)
+              Positioned(
+                bottom: 40,
+                right: 16,
+                child: ElevatedButton(
+                  onPressed: () {
+                    if (widget.files.isEmpty) return;
+
+                    // Pause playback before navigating
+                    _videoController?.pause();
+                    _musicPlayer?.pause();
+
+                    // Navigate to CreatePostScreen
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (context) => CreatePostScreen(
+                          files: widget.files,
+                          isVideo: widget.isVideo,
+                          sound: widget.sound,
+                          initialCaption: widget.initialCaption,
+                          draftId: widget.draftId,
+                        ),
+                      ),
+                    );
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.neonPink,
+                  ),
+                  child: const Text(
+                    "Next",
+                    style: TextStyle(color: Colors.white),
+                  ),
+                ),
+              ),
           ],
         ),
       ),
     );
+  }
+
+  Widget _buildSideButton({
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: Colors.black.withOpacity(0.4),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, color: Colors.white, size: 28),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+              shadows: [
+                Shadow(
+                  offset: Offset(0, 1),
+                  blurRadius: 3.0,
+                  color: Colors.black,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showTextInputDialog([OverlayText? existingOverlay]) {
+    Navigator.of(context)
+        .push(
+          PageRouteBuilder(
+            opaque: false,
+            pageBuilder: (context, _, __) =>
+                TextEditorScreen(initialText: existingOverlay),
+            transitionsBuilder:
+                (context, animation, secondaryAnimation, child) {
+                  return FadeTransition(opacity: animation, child: child);
+                },
+          ),
+        )
+        .then((result) {
+          if (result != null && result is OverlayText) {
+            setState(() {
+              if (existingOverlay != null) {
+                // Update existing
+                existingOverlay.text = result.text;
+                existingOverlay.color = result.color;
+                existingOverlay.textAlign = result.textAlign;
+                existingOverlay.fontSize = result.fontSize;
+                existingOverlay.fontFamily = result.fontFamily;
+                existingOverlay.hasBackground = result.hasBackground;
+                existingOverlay.backgroundColor = result.backgroundColor;
+              } else {
+                // Add new
+                _textOverlays.add(result);
+              }
+            });
+          }
+        });
+  }
+
+  Future<void> _openVideoEditor() async {
+    _videoController?.pause();
+    _musicPlayer?.pause();
+
+    final file = widget.files[_currentFileIndex];
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => VideoEditorScreen(file: File(file.path)),
+      ),
+    );
+
+    if (result != null && result is Map) {
+      final start = result['start'] as Duration;
+      final end = result['end'] as Duration;
+
+      debugPrint("Trim applied: $start to $end");
+
+      setState(() {
+        _trimData[_currentFileIndex] = {'start': start, 'end': end};
+      });
+
+      // Replay current with new trim
+      await _videoController?.seekTo(start);
+      await _videoController?.play();
+      if (_isMusicMuted == false) _musicPlayer?.play();
+    } else {
+      // Resume if cancelled
+      await _videoController?.play();
+      if (_isMusicMuted == false) _musicPlayer?.play();
+    }
   }
 }
