@@ -3,18 +3,20 @@ import 'dart:io';
 import 'package:deepar_flutter_plus/deepar_flutter_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter/services.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:video_player/video_player.dart'; // Added for duration check
 import 'preview_screen.dart';
 import 'package:test_flutter/core/theme/app_theme.dart';
 import 'package:photo_manager/photo_manager.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
+import '../widgets/sound_pill_widget.dart';
+import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
+
 import '../../data/models/sound_model.dart';
 import 'sound_selection_screen.dart';
 import '../../data/services/deepar_service.dart';
-import 'package:path_provider/path_provider.dart';
-
 import '../../../live/presentation/screens/live_stream_setup_screen.dart';
 import 'package:test_flutter/core/widgets/neon_border_container.dart';
 import '../widgets/glass_action_button.dart';
@@ -580,6 +582,7 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
             isVideo: true,
             sound: soundToPass,
             draftId: widget.draftId,
+            isFromGallery: false,
           ),
         ),
       );
@@ -601,8 +604,11 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
       if (file != null && mounted) {
         Navigator.of(context).push(
           MaterialPageRoute(
-            builder: (context) =>
-                PreviewScreen(files: [XFile(file.path)], isVideo: false),
+            builder: (context) => PreviewScreen(
+              files: [XFile(file.path)],
+              isVideo: false,
+              isFromGallery: false,
+            ),
           ),
         );
       }
@@ -735,11 +741,85 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
           media.path.toLowerCase().endsWith('.mov') ||
           media.path.toLowerCase().endsWith('.avi');
 
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (context) => PreviewScreen(files: [media], isVideo: isVideo),
-        ),
-      );
+      if (isVideo) {
+        VideoPlayerController? tempController;
+        try {
+          // Check duration
+          tempController = VideoPlayerController.file(File(media.path));
+          await tempController.initialize();
+
+          if (tempController.value.duration.inSeconds > 60) {
+            // Needs trimming
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text(
+                    "Video longer than 60s. Trimming to first 60 seconds...",
+                  ),
+                ),
+              );
+            }
+
+            final tempDir = await getTemporaryDirectory();
+            final outputPath =
+                '${tempDir.path}/trimmed_${DateTime.now().millisecondsSinceEpoch}.mp4';
+
+            // -ss 0 -i input -t 60 -c copy output
+            // Using -c copy is fast and prevents re-encoding quality loss here.
+            final command =
+                '-ss 0 -i "${media.path}" -t 60 -c copy "$outputPath"';
+
+            await FFmpegKit.execute(command);
+
+            // Use the trimmed file
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => PreviewScreen(
+                  files: [XFile(outputPath)],
+                  isVideo: true,
+                  isFromGallery: true,
+                ),
+              ),
+            );
+          } else {
+            // Duration OK
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => PreviewScreen(
+                  files: [media],
+                  isVideo: true,
+                  isFromGallery: true,
+                ),
+              ),
+            );
+          }
+        } catch (e) {
+          debugPrint("Error checking/trimming video: $e");
+          // Fallback to original
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (context) => PreviewScreen(
+                files: [media],
+                isVideo: true,
+                isFromGallery: true,
+              ),
+            ),
+          );
+        } finally {
+          tempController?.dispose();
+        }
+      } else {
+        // Image
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => PreviewScreen(
+              files: [media],
+              isVideo: false,
+              isFromGallery: true,
+            ),
+          ),
+        );
+      }
     }
   }
 
@@ -820,81 +900,26 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
             top: 48,
             left: 0,
             right: 0,
-            child: IgnorePointer(
-              ignoring: isRecording || _recordedFiles.isNotEmpty,
-              child: AnimatedOpacity(
-                duration: const Duration(milliseconds: 200),
-                opacity: (isRecording || _recordedFiles.isNotEmpty) ? 0.0 : 1.0,
-                child: Center(
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(20),
-                    child: BackdropFilter(
-                      filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                      child: GestureDetector(
-                        onTap: _selectSound,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 15,
-                            vertical: 8,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withOpacity(0.3),
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(
-                              color: Colors.white.withOpacity(0.2),
-                            ),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(
-                                Icons.music_note,
-                                color: AppColors.neonCyan, // Neon Icon
-                                size: 16,
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                _selectedSound?.title ?? "Add Sound",
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                              if (_selectedSound != null) ...[
-                                const SizedBox(width: 8),
-                                GestureDetector(
-                                  onTap: () {
-                                    if (_recordedFiles.isNotEmpty) {
-                                      ScaffoldMessenger.of(
-                                        context,
-                                      ).showSnackBar(
-                                        const SnackBar(
-                                          content: Text(
-                                            "Cannot change sound after recording has started",
-                                          ),
-                                        ),
-                                      );
-                                      return;
-                                    }
-                                    setState(() {
-                                      _selectedSound = null;
-                                    });
-                                  },
-                                  child: const Icon(
-                                    Icons.close,
-                                    color: Colors.white,
-                                    size: 14,
-                                  ),
-                                ),
-                              ],
-                            ],
-                          ),
-                        ),
+            child: SoundPillWidget(
+              selectedSound: _selectedSound,
+              onTap: _selectSound,
+              onClear: () {
+                if (_recordedFiles.isNotEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                        "Cannot change sound after recording has started",
                       ),
                     ),
-                  ),
-                ),
-              ),
+                  );
+                  return;
+                }
+                setState(() {
+                  _selectedSound = null;
+                });
+              },
+              isRecording: isRecording,
+              hasRecordedFiles: _recordedFiles.isNotEmpty,
             ),
           ),
 

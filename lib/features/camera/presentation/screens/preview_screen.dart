@@ -13,8 +13,8 @@ import '../../data/models/sound_model.dart';
 import '../../../feed/presentation/providers/drafts_provider.dart';
 import '../widgets/draggable_text_widget.dart';
 import 'text_editor_screen.dart';
-import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
-import 'package:ffmpeg_kit_flutter_new/return_code.dart';
+import 'sound_selection_screen.dart';
+import '../widgets/sound_pill_widget.dart';
 import 'package:path_provider/path_provider.dart';
 import 'dart:ui' as ui;
 import 'package:flutter/rendering.dart';
@@ -36,7 +36,10 @@ class PreviewScreen extends ConsumerStatefulWidget {
     this.initialCaption,
     this.fromDraft = false,
     this.draftId,
+    this.isFromGallery = false,
   });
+
+  final bool isFromGallery;
 
   @override
   ConsumerState<PreviewScreen> createState() => _PreviewScreenState();
@@ -60,10 +63,14 @@ class _PreviewScreenState extends ConsumerState<PreviewScreen> {
   bool _showDeleteBin = false;
   bool _isHoveringDelete = false;
 
+  Sound? _selectedSound;
+
   @override
   void initState() {
     super.initState();
-    if (widget.sound != null) {
+    _selectedSound = widget.sound;
+
+    if (_selectedSound != null) {
       _isVoiceMuted = true;
       _initAudio();
     }
@@ -94,10 +101,12 @@ class _PreviewScreenState extends ConsumerState<PreviewScreen> {
     );
 
     try {
-      if (widget.sound!.url.startsWith('assets/')) {
-        await _musicPlayer?.setAsset(widget.sound!.url);
-      } else {
-        await _musicPlayer?.setUrl(widget.sound!.url);
+      if (_selectedSound != null) {
+        if (_selectedSound!.url.startsWith('assets/')) {
+          await _musicPlayer?.setAsset(_selectedSound!.url);
+        } else {
+          await _musicPlayer?.setUrl(_selectedSound!.url);
+        }
       }
 
       await _musicPlayer?.setVolume(_isMusicMuted ? 0 : 1.0);
@@ -125,7 +134,8 @@ class _PreviewScreenState extends ConsumerState<PreviewScreen> {
           videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
         );
         await _videoController!.initialize();
-        await _videoController!.setVolume(_isVoiceMuted ? 0 : 1.0);
+        // Check local mute OR implicit mute from sound selection (though _isVoiceMuted handles that)
+        await _videoController!.setVolume(_isVoiceMuted ? 0.0 : 1.0);
         _videoController!.addListener(_videoListener);
         if (mounted) {
           setState(() {});
@@ -179,7 +189,7 @@ class _PreviewScreenState extends ConsumerState<PreviewScreen> {
         videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
       );
       await _nextVideoController!.initialize();
-      await _nextVideoController!.setVolume(_isVoiceMuted ? 0 : 1.0);
+      await _nextVideoController!.setVolume(_isVoiceMuted ? 0.0 : 1.0);
       // Don't add listener or play yet
     } catch (e) {
       debugPrint("PreviewScreen: Error pre-loading next: $e");
@@ -226,6 +236,10 @@ class _PreviewScreenState extends ConsumerState<PreviewScreen> {
       _videoController = _nextVideoController;
       _nextVideoController = null;
       _videoController!.addListener(_videoListener);
+
+      // Enforce volume settings (in case it was preloaded before mute change)
+      await _videoController!.setVolume(_isVoiceMuted ? 0 : 1.0);
+
       // Play immediately
       await _videoController!.play();
       if (mounted) setState(() {});
@@ -440,6 +454,31 @@ class _PreviewScreenState extends ConsumerState<PreviewScreen> {
               ),
             ),
 
+            // Top Sound Selector (Centered)
+            Positioned(
+              top: 60,
+              left: 0,
+              right: 0,
+              child: SoundPillWidget(
+                selectedSound: _selectedSound,
+                onTap: _pickSound,
+                onClear: () {
+                  setState(() {
+                    _selectedSound = null;
+                    _isVoiceMuted = false;
+                  });
+                  // Stop music
+                  _musicPlayer?.stop();
+                  // Restore video audio
+                  _videoController?.setVolume(1.0);
+                },
+                // In PreviewScreen, we usually allow changing sound anytime unless strict requirements exist.
+                // Assuming we can change it freely.
+                isRecording: false,
+                hasRecordedFiles: false,
+              ),
+            ),
+
             // Progress Indication
             if (widget.files.length > 1)
               Positioned(
@@ -531,7 +570,6 @@ class _PreviewScreenState extends ConsumerState<PreviewScreen> {
                   : 100, // Adjusted height (increased from 150)
               child: Column(
                 children: [
-                  // Text Button
                   _buildSideButton(
                     icon: Icons.text_fields,
                     label: "Text",
@@ -717,44 +755,11 @@ class _PreviewScreenState extends ConsumerState<PreviewScreen> {
     try {
       // 1. Capture Text Overlay
       final overlayFile = await _captureTextOverlay();
-      if (overlayFile == null) {
-        throw Exception("Failed to capture overlay");
-      }
 
-      // 2. Process each video file
-      // Note: We burn the same static overlay onto each segment.
-      // This assumes the text shows for the whole duration.
-      List<XFile> processedFiles = [];
-      final tempDir = await getTemporaryDirectory();
-
-      for (int i = 0; i < widget.files.length; i++) {
-        final file = widget.files[i];
-        final outputPath =
-            '${tempDir.path}/processed_${DateTime.now().millisecondsSinceEpoch}_$i.mp4';
-
-        final command =
-            '-i "${file.path}" -i "${overlayFile.path}" '
-            '-filter_complex "[1:v][0:v]scale2ref[ovrl][base];[base][ovrl]overlay=0:0" '
-            '-c:v libx264 -crf 23 -preset medium -c:a copy "$outputPath"';
-
-        final session = await FFmpegKit.execute(command);
-        final returnCode = await session.getReturnCode();
-
-        if (ReturnCode.isSuccess(returnCode)) {
-          processedFiles.add(XFile(outputPath));
-        } else {
-          debugPrint(
-            "FFmpeg failed for file $i: ${await session.getAllLogsAsString()}",
-          );
-          // Fallback to original if failed? Or error?
-          // Let's use original as fallback to avoid blocking
-          processedFiles.add(file);
-        }
-      }
-
+      // If no overlay, just proceed. If overlay exists, pass it along.
       if (mounted) {
         setState(() => _isExporting = false);
-        _navigateToPost(processedFiles);
+        _navigateToPost(widget.files, overlayFile: overlayFile);
       }
     } catch (e) {
       debugPrint("Export failed: $e");
@@ -791,16 +796,18 @@ class _PreviewScreenState extends ConsumerState<PreviewScreen> {
     }
   }
 
-  void _navigateToPost(List<XFile> files) {
+  void _navigateToPost(List<XFile> files, {File? overlayFile}) {
     Navigator.of(context)
         .push(
           MaterialPageRoute(
             builder: (context) => CreatePostScreen(
               files: files,
               isVideo: widget.isVideo,
-              sound: widget.sound,
+              sound: _selectedSound,
               initialCaption: widget.initialCaption,
               draftId: widget.draftId,
+              overlayPath: overlayFile?.path,
+              isFromGallery: widget.isFromGallery,
             ),
           ),
         )
@@ -844,5 +851,56 @@ class _PreviewScreenState extends ConsumerState<PreviewScreen> {
             });
           }
         });
+  }
+
+  void _pickSound() async {
+    final Sound? result = await Navigator.of(context).push(
+      MaterialPageRoute(builder: (context) => const SoundSelectionScreen()),
+    );
+
+    if (result != null) {
+      setState(() {
+        _selectedSound = result;
+        _isVoiceMuted = true;
+      });
+
+      // Stop current playback
+      await _videoController?.pause();
+      await _musicPlayer?.stop();
+
+      // Update Audio Player
+      if (_musicPlayer == null) {
+        await _initAudio(); // Sets up player with _selectedSound
+      } else {
+        try {
+          if (_selectedSound!.url.startsWith('assets/')) {
+            await _musicPlayer?.setAsset(_selectedSound!.url);
+          } else {
+            await _musicPlayer?.setUrl(_selectedSound!.url);
+          }
+          await _musicPlayer?.setVolume(_isMusicMuted ? 0 : 1.0);
+          await _musicPlayer?.setLoopMode(LoopMode.one);
+        } catch (e) {
+          debugPrint("Error playing new sound: $e");
+        }
+      }
+
+      // Sync and Play
+      // Reset video to start
+      if (_videoController != null) {
+        await _videoController!.setVolume(0.0); // Mute video audio
+        await _videoController!.seekTo(Duration.zero);
+        await _videoController!.play();
+      }
+
+      // Also mute next controller if preloaded
+      if (_nextVideoController != null) {
+        await _nextVideoController!.setVolume(0.0);
+      }
+
+      // Reset audio to start (implicit in setUrl mostly, but good to ensure)
+      await _musicPlayer?.seek(Duration.zero);
+      await _musicPlayer?.play();
+    }
   }
 }
