@@ -821,10 +821,10 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
             left: 0,
             right: 0,
             child: IgnorePointer(
-              ignoring: isRecording,
+              ignoring: isRecording || _recordedFiles.isNotEmpty,
               child: AnimatedOpacity(
                 duration: const Duration(milliseconds: 200),
-                opacity: isRecording ? 0.0 : 1.0,
+                opacity: (isRecording || _recordedFiles.isNotEmpty) ? 0.0 : 1.0,
                 child: Center(
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(20),

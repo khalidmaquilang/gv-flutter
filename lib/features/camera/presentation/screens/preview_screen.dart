@@ -11,6 +11,14 @@ import 'package:audio_session/audio_session.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/models/sound_model.dart';
 import '../../../feed/presentation/providers/drafts_provider.dart';
+import '../widgets/draggable_text_widget.dart';
+import 'text_editor_screen.dart';
+import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
+import 'package:ffmpeg_kit_flutter_new/return_code.dart';
+import 'package:path_provider/path_provider.dart';
+import 'dart:ui' as ui;
+import 'package:flutter/rendering.dart';
+import 'dart:typed_data';
 
 class PreviewScreen extends ConsumerStatefulWidget {
   final List<XFile> files;
@@ -35,6 +43,7 @@ class PreviewScreen extends ConsumerStatefulWidget {
 }
 
 class _PreviewScreenState extends ConsumerState<PreviewScreen> {
+  final GlobalKey _textOverlayKey = GlobalKey(); // Key for capturing text
   VideoPlayerController? _videoController;
   VideoPlayerController? _nextVideoController;
   AudioPlayer? _musicPlayer;
@@ -42,6 +51,14 @@ class _PreviewScreenState extends ConsumerState<PreviewScreen> {
 
   bool _isVoiceMuted = false;
   final bool _isMusicMuted = false;
+
+  // Text Overlay State
+  final List<OverlayText> _textOverlays = [];
+  // Video Trim State (Removed)
+
+  // Delete Bin State
+  bool _showDeleteBin = false;
+  bool _isHoveringDelete = false;
 
   @override
   void initState() {
@@ -131,8 +148,6 @@ class _PreviewScreenState extends ConsumerState<PreviewScreen> {
       if (mounted) {
         setState(() {});
         await _videoController!.play();
-        // Ensure music is syncing if not first segment?
-        // Logic assumes music plays continuously.
       }
     }
 
@@ -173,11 +188,11 @@ class _PreviewScreenState extends ConsumerState<PreviewScreen> {
 
   void _videoListener() {
     final controller = _videoController;
-    if (controller != null &&
-        controller.value.isInitialized &&
-        !controller.value.isPlaying &&
-        controller.value.position >= controller.value.duration) {
-      _playNext();
+    if (controller != null && controller.value.isInitialized) {
+      if (!controller.value.isPlaying &&
+          controller.value.position >= controller.value.duration) {
+        _playNext();
+      }
     }
   }
 
@@ -236,6 +251,96 @@ class _PreviewScreenState extends ConsumerState<PreviewScreen> {
   }
 
   Future<bool> _onWillPop() async {
+    // 1. Check for Text Overlays first
+    if (_textOverlays.isNotEmpty) {
+      final shouldDiscard = await showDialog<bool>(
+        context: context,
+        builder: (context) => Dialog(
+          backgroundColor: Colors.transparent,
+          child: Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.black.withOpacity(0.9),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: AppColors.neonPink.withOpacity(0.5),
+                width: 1,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: AppColors.neonPink.withOpacity(0.2),
+                  blurRadius: 15,
+                  spreadRadius: 2,
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(
+                  Icons.warning_amber_rounded,
+                  color: AppColors.neonPink,
+                  size: 48,
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  "Discard Changes?",
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  "Your text overlays will be lost if you go back.",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.white70, fontSize: 14),
+                ),
+                const SizedBox(height: 24),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    TextButton(
+                      onPressed: () => Navigator.of(context).pop(false),
+                      child: const Text(
+                        "Cancel",
+                        style: TextStyle(color: Colors.white),
+                      ),
+                    ),
+                    ElevatedButton(
+                      onPressed: () => Navigator.of(context).pop(true),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.neonPink,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 10,
+                        ),
+                      ),
+                      child: const Text(
+                        "Discard",
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+
+      if (shouldDiscard != true) {
+        return false; // Stay on screen
+      }
+    }
+
     if (!widget.fromDraft) return true;
 
     // Show Options Dialog
@@ -418,42 +523,326 @@ class _PreviewScreenState extends ConsumerState<PreviewScreen> {
                 ),
               ),
 
+            // Sidebar Controls (Text Only)
             Positioned(
-              bottom: 40,
-              right: 16,
-              child: ElevatedButton(
-                onPressed: () {
-                  if (widget.files.isEmpty) return;
+              right: 20,
+              top: (widget.fromDraft && widget.draftId != null)
+                  ? 120
+                  : 100, // Adjusted height (increased from 150)
+              child: Column(
+                children: [
+                  // Text Button
+                  _buildSideButton(
+                    icon: Icons.text_fields,
+                    label: "Text",
+                    onTap: _showTextInputDialog,
+                  ),
+                ],
+              ),
+            ),
 
-                  // Pause playback before navigating
-                  _videoController?.pause();
-                  _musicPlayer?.pause();
-
-                  // Navigate to CreatePostScreen
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (context) => CreatePostScreen(
-                        files: widget.files,
-                        isVideo: widget.isVideo,
-                        sound: widget.sound,
-                        initialCaption: widget.initialCaption,
-                        draftId: widget.draftId,
-                      ),
-                    ),
-                  );
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.neonPink,
-                ),
-                child: const Text(
-                  "Next",
-                  style: TextStyle(color: Colors.white),
+            // Text Overlays (Captured Layer)
+            Positioned.fill(
+              child: RepaintBoundary(
+                key: _textOverlayKey,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: _textOverlays.map((overlay) {
+                    return DraggableTextWidget(
+                      key: ObjectKey(overlay),
+                      overlayText: overlay,
+                      onTap: () => _showTextInputDialog(overlay),
+                      onDragStart: () => setState(() => _showDeleteBin = true),
+                      onDragUpdate: (offset) {
+                        final screenWidth = MediaQuery.of(context).size.width;
+                        final screenHeight = MediaQuery.of(context).size.height;
+                        final binRect = Rect.fromCenter(
+                          center: Offset(screenWidth / 2, screenHeight - 60),
+                          width: 160,
+                          height: 160,
+                        );
+                        if (binRect.contains(offset)) {
+                          if (!_isHoveringDelete)
+                            setState(() => _isHoveringDelete = true);
+                        } else {
+                          if (_isHoveringDelete)
+                            setState(() => _isHoveringDelete = false);
+                        }
+                      },
+                      onDragEnd: (newPos) {
+                        if (_isHoveringDelete) {
+                          setState(() {
+                            _textOverlays.remove(overlay);
+                            _showDeleteBin = false;
+                            _isHoveringDelete = false;
+                          });
+                        } else {
+                          setState(() {
+                            overlay.position = newPos;
+                            _showDeleteBin = false;
+                          });
+                        }
+                      },
+                    );
+                  }).toList(),
                 ),
               ),
             ),
+
+            // Trash Bin UI
+            if (_showDeleteBin)
+              Positioned(
+                bottom: 40,
+                left: 0,
+                right: 0,
+                child: Center(
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    width: _isHoveringDelete ? 80 : 60,
+                    height: _isHoveringDelete ? 80 : 60,
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.5),
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: _isHoveringDelete
+                            ? Colors.red
+                            : Colors.transparent,
+                        width: 2,
+                      ),
+                    ),
+                    child: Icon(
+                      Icons.delete,
+                      color: Colors.red,
+                      size: _isHoveringDelete ? 40 : 30,
+                    ),
+                  ),
+                ),
+              ),
+
+            // Hide "Next" button when dragging text to avoid clutter/conflict
+            if (!_showDeleteBin)
+              Positioned(
+                bottom: 40,
+                right: 16,
+                child: ElevatedButton(
+                  onPressed: _exportVideo,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.neonPink,
+                  ),
+                  child: const Text(
+                    "Next",
+                    style: TextStyle(color: Colors.white),
+                  ),
+                ),
+              ),
+            // Processing Indicator
+            if (_isExporting)
+              Container(
+                color: Colors.black.withOpacity(0.8),
+                child: Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: const [
+                      CircularProgressIndicator(color: AppColors.neonPink),
+                      SizedBox(height: 16),
+                      Text(
+                        "Processing Video...",
+                        style: TextStyle(color: Colors.white, fontSize: 16),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
           ],
         ),
       ),
     );
+  }
+
+  Widget _buildSideButton({
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: Colors.black.withOpacity(0.4),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, color: Colors.white, size: 28),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+              shadows: [
+                Shadow(
+                  offset: Offset(0, 1),
+                  blurRadius: 3.0,
+                  color: Colors.black,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  bool _isExporting = false;
+
+  Future<void> _exportVideo() async {
+    if (widget.files.isEmpty) return;
+
+    // Pause playback
+    _videoController?.pause();
+    _musicPlayer?.pause();
+
+    // If no text, skip processing
+    if (_textOverlays.isEmpty) {
+      _navigateToPost(widget.files);
+      return;
+    }
+
+    setState(() => _isExporting = true);
+
+    try {
+      // 1. Capture Text Overlay
+      final overlayFile = await _captureTextOverlay();
+      if (overlayFile == null) {
+        throw Exception("Failed to capture overlay");
+      }
+
+      // 2. Process each video file
+      // Note: We burn the same static overlay onto each segment.
+      // This assumes the text shows for the whole duration.
+      List<XFile> processedFiles = [];
+      final tempDir = await getTemporaryDirectory();
+
+      for (int i = 0; i < widget.files.length; i++) {
+        final file = widget.files[i];
+        final outputPath =
+            '${tempDir.path}/processed_${DateTime.now().millisecondsSinceEpoch}_$i.mp4';
+
+        final command =
+            '-i "${file.path}" -i "${overlayFile.path}" '
+            '-filter_complex "[1:v][0:v]scale2ref[ovrl][base];[base][ovrl]overlay=0:0" '
+            '-c:v libx264 -crf 23 -preset medium -c:a copy "$outputPath"';
+
+        final session = await FFmpegKit.execute(command);
+        final returnCode = await session.getReturnCode();
+
+        if (ReturnCode.isSuccess(returnCode)) {
+          processedFiles.add(XFile(outputPath));
+        } else {
+          debugPrint(
+            "FFmpeg failed for file $i: ${await session.getAllLogsAsString()}",
+          );
+          // Fallback to original if failed? Or error?
+          // Let's use original as fallback to avoid blocking
+          processedFiles.add(file);
+        }
+      }
+
+      if (mounted) {
+        setState(() => _isExporting = false);
+        _navigateToPost(processedFiles);
+      }
+    } catch (e) {
+      debugPrint("Export failed: $e");
+      if (mounted) {
+        setState(() => _isExporting = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Export failed. Please try again.")),
+        );
+      }
+    }
+  }
+
+  Future<File?> _captureTextOverlay() async {
+    try {
+      RenderRepaintBoundary? boundary =
+          _textOverlayKey.currentContext?.findRenderObject()
+              as RenderRepaintBoundary?;
+      if (boundary == null) return null;
+
+      ui.Image image = await boundary.toImage(pixelRatio: 3.0);
+      ByteData? byteData = await image.toByteData(
+        format: ui.ImageByteFormat.png,
+      );
+      Uint8List pngBytes = byteData!.buffer.asUint8List();
+
+      final directory = await getTemporaryDirectory();
+      final path = '${directory.path}/overlay_capture.png';
+      final file = File(path);
+      await file.writeAsBytes(pngBytes);
+      return file;
+    } catch (e) {
+      debugPrint("Error capturing overlay: $e");
+      return null;
+    }
+  }
+
+  void _navigateToPost(List<XFile> files) {
+    Navigator.of(context)
+        .push(
+          MaterialPageRoute(
+            builder: (context) => CreatePostScreen(
+              files: files,
+              isVideo: widget.isVideo,
+              sound: widget.sound,
+              initialCaption: widget.initialCaption,
+              draftId: widget.draftId,
+            ),
+          ),
+        )
+        .then((_) {
+          if (mounted) {
+            _videoController?.play();
+            if (!_isMusicMuted) _musicPlayer?.play();
+          }
+        });
+  }
+
+  void _showTextInputDialog([OverlayText? existingOverlay]) {
+    Navigator.of(context)
+        .push(
+          PageRouteBuilder(
+            opaque: false,
+            pageBuilder: (context, _, __) =>
+                TextEditorScreen(initialText: existingOverlay),
+            transitionsBuilder:
+                (context, animation, secondaryAnimation, child) {
+                  return FadeTransition(opacity: animation, child: child);
+                },
+          ),
+        )
+        .then((result) {
+          if (result != null && result is OverlayText) {
+            setState(() {
+              if (existingOverlay != null) {
+                // Update existing
+                existingOverlay.text = result.text;
+                existingOverlay.color = result.color;
+                existingOverlay.textAlign = result.textAlign;
+                existingOverlay.fontSize = result.fontSize;
+                existingOverlay.fontFamily = result.fontFamily;
+                existingOverlay.hasBackground = result.hasBackground;
+                existingOverlay.backgroundColor = result.backgroundColor;
+              } else {
+                // Add new
+                _textOverlays.add(result);
+              }
+            });
+          }
+        });
   }
 }
