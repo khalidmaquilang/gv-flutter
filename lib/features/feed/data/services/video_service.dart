@@ -102,7 +102,11 @@ class VideoService {
       final response = await _apiClient.post(
         ApiConstants.createPost,
         data: formData,
-        options: Options(headers: {"Content-Type": "multipart/form-data"}),
+        options: Options(
+          headers: {"Content-Type": "multipart/form-data"},
+          sendTimeout: const Duration(minutes: 10), // Allow long uploads
+          receiveTimeout: const Duration(minutes: 10), // Allow long processing
+        ),
       );
 
       if (response.statusCode == 200 || response.statusCode == 201) {

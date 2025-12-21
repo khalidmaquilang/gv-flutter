@@ -29,7 +29,12 @@ class CreatePostScreen extends ConsumerStatefulWidget {
     this.sound,
     this.initialCaption,
     this.draftId,
+    this.overlayPath,
+    this.isFromGallery = false,
   });
+
+  final String? overlayPath;
+  final bool isFromGallery;
 
   @override
   ConsumerState<CreatePostScreen> createState() => _CreatePostScreenState();
@@ -228,14 +233,15 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
     }
   }
 
-  void _onPost() async {
-    // Start background upload
-    final path = _currentFiles.first.path;
+  void _onPost() {
+    // No async needed for UI
+    String path = _currentFiles.first.path;
     final caption = widget.isVideo
         ? _descriptionController.text
         : "${_titleController.text}\n${_descriptionController.text}";
 
-    await ref
+    // Fire and forget - The provider handles optimization and upload in background
+    ref
         .read(uploadProvider.notifier)
         .startUpload(
           path,
@@ -243,57 +249,16 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
           privacy: _privacy,
           allowComments: _allowComments,
           musicId: widget.sound?.id,
+          overlayPath: widget.overlayPath,
+          shouldOptimize: widget.isFromGallery,
         );
 
-    if (!mounted) return;
-
-    final uploadState = ref.read(uploadProvider);
-
-    if (uploadState.error != null) {
-      // Show error
-      String message = uploadState.error!;
-      if (uploadState.validationErrors != null) {
-        // Format validation errors nicely for user
-        final List<String> errorMessages = [];
-
-        uploadState.validationErrors!.forEach((key, value) {
-          if (value is List) {
-            for (var item in value) {
-              errorMessages.add(item.toString());
-            }
-          } else {
-            errorMessages.add(value.toString());
-          }
-        });
-
-        if (errorMessages.isNotEmpty) {
-          message = errorMessages.join('\n');
-        } else {
-          // Fallback if structure is unexpected
-          message = uploadState.validationErrors!.entries
-              .map((e) => "${e.key}: ${e.value}")
-              .join('\n');
-        }
-      }
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(message),
-          backgroundColor: Colors.red,
-          duration: const Duration(seconds: 4),
-        ),
-      );
-    } else {
-      // Success
-      if (mounted) {
-        Navigator.of(context).pop(); // Close create screen
-        // refresh will happen in background or on next load
-        ref.read(profileVideosProvider.notifier).refresh();
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text("Posted successfully!")));
-        Navigator.of(context).popUntil((route) => route.isFirst);
-      }
+    // Immediate feedback and exit
+    if (mounted) {
+      // Close CreatePostScreen immediately
+      Navigator.of(context).popUntil((route) => route.isFirst);
+      // Trigger feed refresh in background
+      ref.read(profileVideosProvider.notifier).refresh();
     }
   }
 
@@ -627,7 +592,7 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
             // Post Button
             Expanded(
               child: ElevatedButton(
-                onPressed: isUploading ? null : _onPost,
+                onPressed: _onPost,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.neonPink,
                   padding: const EdgeInsets.symmetric(vertical: 16),
@@ -635,22 +600,13 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
                     borderRadius: BorderRadius.circular(8),
                   ),
                 ),
-                child: isUploading
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      )
-                    : const Text(
-                        "Post",
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
+                child: const Text(
+                  "Post",
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
               ),
             ),
           ],
