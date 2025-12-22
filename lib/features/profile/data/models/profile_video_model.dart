@@ -29,16 +29,17 @@ class ProfileVideo {
   });
 
   factory ProfileVideo.fromJson(Map<String, dynamic> json) {
+    final feed = json['feed'] ?? {};
     return ProfileVideo(
-      id: json['id'].toString(),
-      thumbnail: json['thumbnail'] ?? '',
-      description: json['description'] ?? '',
-      videoPath: json['video_path'] ?? '',
+      id: feed['id']?.toString() ?? '',
+      thumbnail: json['thumbnail'] ?? '', // Root level
+      description: feed['title'] ?? '', // Maps to feed title
+      videoPath: json['video_path'] ?? '', // Root level
       allowComments:
-          json['allow_comments'] == 1 || json['allow_comments'] == true,
-      privacy: json['privacy'] ?? 'public',
-      views: json['views'] ?? 0,
-      status: json['status'] ?? 'processed',
+          feed['allow_comments'] == 1 || feed['allow_comments'] == true,
+      privacy: feed['privacy'] ?? 'public',
+      views: feed['views'] ?? 0,
+      status: feed['status'] ?? 'processed',
       sound: json['music'] != null ? Sound.fromJson(json['music']) : null,
     );
   }
