@@ -12,12 +12,14 @@ class VideoService {
 
   Future<List<Video>> getFeed() async {
     try {
-      final _ = await _apiClient.get(ApiConstants.videos);
+      final response = await _apiClient.get(ApiConstants.feed);
+      print(response);
 
-      // Mock data if 404/error for demo
-      // return (response.data as List).map((e) => Video.fromJson(e)).toList();
+      if (response.statusCode == 200 && response.data != null) {
+        final data = response.data['data'] as List;
+        return data.map((e) => Video.fromJson(e)).toList();
+      }
 
-      // Returning Mock Data for now as backend might not be ready
       return _getMockVideos();
     } catch (e) {
       // Fallback to mock data
@@ -128,7 +130,7 @@ class VideoService {
         thumbnailUrl: 'https://dummyimage.com/150',
         caption: 'Video $index #fyp',
         likesCount: 100 + index,
-        commentsCount: 20 + index,
+
         isLiked: false,
         user: User(
           id: "1",

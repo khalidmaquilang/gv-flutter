@@ -23,7 +23,7 @@ final feedProvider = FutureProvider<List<Video>>((ref) async {
     thumbnailUrl: '',
     caption: 'Zoom Test Video (Dummy)',
     likesCount: 999,
-    commentsCount: 42,
+
     isLiked: false,
   );
 

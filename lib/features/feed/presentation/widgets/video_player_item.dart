@@ -261,7 +261,7 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
                     const SizedBox(height: 16),
                     _buildAction(
                       Icons.comment,
-                      "${widget.video.commentsCount}",
+                      "Comment",
                       color: AppColors.neonCyan, // Cyan for comments
                       onTap: _showComments,
                     ),

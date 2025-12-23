@@ -7,10 +7,13 @@ class Video {
   final String thumbnailUrl;
   final String caption;
   final int likesCount;
-  final int commentsCount;
   final bool isLiked;
   final User user;
   final Sound? sound;
+  final String privacy;
+  final bool allowComments;
+  final String status;
+  final int views;
 
   Video({
     required this.id,
@@ -18,23 +21,31 @@ class Video {
     required this.thumbnailUrl,
     required this.caption,
     required this.likesCount,
-    required this.commentsCount,
     this.isLiked = false,
     required this.user,
     this.sound,
+    this.privacy = 'public',
+    this.allowComments = true,
+    this.status = 'processed',
+    this.views = 0,
   });
 
   factory Video.fromJson(Map<String, dynamic> json) {
+    final content = json['content'] as Map<String, dynamic>? ?? {};
+
     return Video(
-      id: json['id'].toString(),
-      videoUrl: json['video_url'] ?? '',
-      thumbnailUrl: json['thumbnail_url'] ?? '',
-      caption: json['description'] ?? '',
-      likesCount: json['likes_count'] ?? 0,
-      commentsCount: json['comments_count'] ?? 0,
-      isLiked: json['is_liked'] ?? false,
+      id: json['id']?.toString() ?? '',
+      videoUrl: content['video_path'] ?? json['video_url'] ?? '',
+      thumbnailUrl: content['thumbnail'] ?? json['thumbnail_url'] ?? '',
+      caption: json['title'] ?? json['description'] ?? '',
+      likesCount: json['reactions_count'] ?? json['likes_count'] ?? 0,
+      isLiked: json['is_reacted_by_user'] ?? json['is_liked'] ?? false,
       user: User.fromJson(json['user']),
       sound: json['music'] != null ? Sound.fromJson(json['music']) : null,
+      privacy: json['privacy'] ?? 'public',
+      allowComments: json['allow_comments'] ?? true,
+      status: json['status'] ?? 'processed',
+      views: json['views'] ?? 0,
     );
   }
 }

@@ -51,10 +51,14 @@ class ProfileVideo {
       thumbnailUrl: thumbnail,
       caption: description,
       likesCount: 0,
-      commentsCount: 0,
+
       isLiked: false,
       user: user,
       sound: sound,
+      privacy: privacy,
+      allowComments: allowComments,
+      status: status,
+      views: views,
     );
   }
 }

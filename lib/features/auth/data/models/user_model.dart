@@ -2,7 +2,7 @@ class User {
   final String id;
   final String name;
   final String? username;
-  final String email;
+  final String? email;
   final String? avatar;
   final String? bio;
 
@@ -10,7 +10,7 @@ class User {
     required this.id,
     required this.name,
     this.username,
-    required this.email,
+    this.email,
     this.avatar,
     this.bio,
   });
