@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:test_flutter/core/theme/app_theme.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../data/services/video_service.dart';
 import '../../data/models/comment_model.dart';
+import '../providers/feed_provider.dart';
 
 class CommentBottomSheet extends ConsumerStatefulWidget {
   final String videoId;
@@ -15,39 +15,102 @@ class CommentBottomSheet extends ConsumerStatefulWidget {
 
 class _CommentBottomSheetState extends ConsumerState<CommentBottomSheet> {
   final TextEditingController _commentController = TextEditingController();
-  final VideoService _videoService = VideoService(); // Should use provider
+  final ScrollController _scrollController = ScrollController();
+
   List<Comment> _comments = [];
+  String? _nextCursor;
   bool _isLoading = true;
+  bool _isLoadingMore = false;
+  bool _hasMore = true;
 
   @override
   void initState() {
     super.initState();
     _loadComments();
+    _scrollController.addListener(_onScroll);
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    _commentController.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (_scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent - 200) {
+      _loadMoreComments();
+    }
   }
 
   Future<void> _loadComments() async {
-    final comments = await _videoService.getComments(widget.videoId);
-    if (mounted) {
-      setState(() {
-        _comments = comments;
-        _isLoading = false;
-      });
+    try {
+      final response = await ref
+          .read(videoServiceProvider)
+          .getComments(widget.videoId);
+      if (mounted) {
+        setState(() {
+          _comments = response.comments;
+          _nextCursor = response.nextCursor;
+          _hasMore = response.nextCursor != null;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _loadMoreComments() async {
+    if (!_hasMore || _isLoadingMore) return;
+
+    setState(() {
+      _isLoadingMore = true;
+    });
+
+    try {
+      final response = await ref
+          .read(videoServiceProvider)
+          .getComments(widget.videoId, cursor: _nextCursor);
+
+      if (mounted) {
+        setState(() {
+          _comments.addAll(response.comments);
+          _nextCursor = response.nextCursor;
+          _hasMore = response.nextCursor != null;
+          _isLoadingMore = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoadingMore = false;
+        });
+      }
     }
   }
 
   Future<void> _postComment() async {
     if (_commentController.text.isEmpty) return;
 
-    final newComment = await _videoService.postComment(
-      widget.videoId,
-      _commentController.text,
-    );
+    try {
+      final newComment = await ref
+          .read(videoServiceProvider)
+          .postComment(widget.videoId, _commentController.text);
 
-    if (mounted) {
-      setState(() {
-        _comments.insert(0, newComment);
-        _commentController.clear();
-      });
+      if (mounted) {
+        setState(() {
+          _comments.insert(0, newComment);
+          _commentController.clear();
+        });
+      }
+    } catch (e) {
+      // Handle error
     }
   }
 
@@ -65,7 +128,9 @@ class _CommentBottomSheetState extends ConsumerState<CommentBottomSheet> {
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 12),
             child: Text(
-              "${_comments.length} comments",
+              _comments.isEmpty
+                  ? "Comments"
+                  : "${_comments.length} comments", // TODO: Use total count from API if available
               style: const TextStyle(
                 color: Colors.white,
                 fontWeight: FontWeight.bold,
@@ -79,9 +144,48 @@ class _CommentBottomSheetState extends ConsumerState<CommentBottomSheet> {
           Expanded(
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator())
+                : _comments.isEmpty
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.chat_bubble_outline,
+                          color: Colors.grey[600],
+                          size: 48,
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          "No comments yet",
+                          style: TextStyle(
+                            color: Colors.grey[400],
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          "Be the first to comment!",
+                          style: TextStyle(
+                            color: Colors.grey[600],
+                            fontSize: 14,
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
                 : ListView.builder(
-                    itemCount: _comments.length,
+                    controller: _scrollController,
+                    itemCount: _comments.length + (_isLoadingMore ? 1 : 0),
                     itemBuilder: (context, index) {
+                      if (index == _comments.length) {
+                        return const Center(
+                          child: Padding(
+                            padding: EdgeInsets.all(8.0),
+                            child: CircularProgressIndicator(),
+                          ),
+                        );
+                      }
                       final comment = _comments[index];
                       return ListTile(
                         leading: CircleAvatar(
@@ -89,6 +193,7 @@ class _CommentBottomSheetState extends ConsumerState<CommentBottomSheet> {
                             comment.user.avatar ?? '',
                           ),
                           radius: 16,
+                          backgroundColor: Colors.grey[800],
                         ),
                         title: Text(
                           comment.user.name,
@@ -97,17 +202,50 @@ class _CommentBottomSheetState extends ConsumerState<CommentBottomSheet> {
                             fontSize: 12,
                           ),
                         ),
-                        subtitle: Text(
-                          comment.text,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 14,
-                          ),
+                        subtitle: Row(
+                          children: [
+                            Text(
+                              comment.formattedCreatedAt,
+                              style: TextStyle(
+                                color: Colors.grey[600],
+                                fontSize: 12,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                comment.text,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                        trailing: Icon(
-                          Icons.favorite_border,
-                          color: Colors.grey[600],
-                          size: 16,
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              comment.isReactedByUser
+                                  ? Icons.favorite
+                                  : Icons.favorite_border,
+                              color: comment.isReactedByUser
+                                  ? AppColors.neonPink
+                                  : Colors.grey[600],
+                              size: 16,
+                            ),
+                            if (comment.reactionsCount > 0) ...[
+                              const SizedBox(width: 4),
+                              Text(
+                                comment.reactionsCount.toString(),
+                                style: TextStyle(
+                                  color: Colors.grey[600],
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ],
                         ),
                       );
                     },

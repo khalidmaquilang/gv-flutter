@@ -43,23 +43,26 @@ class VideoService {
     }
   }
 
-  Future<List<Comment>> getComments(String videoId) async {
-    // Mock comments
-    await Future.delayed(const Duration(milliseconds: 500));
-    return List.generate(
-      10,
-      (index) => Comment(
-        id: index.toString(),
-        user: User(
-          id: index.toString(),
-          name: "User $index",
-          email: "test@test.com",
-          avatar: "https://dummyimage.com/50",
-        ),
-        text: "This is comment #$index",
-        createdAt: DateTime.now().subtract(Duration(minutes: index)),
-      ),
-    );
+  Future<CommentResponse> getComments(String videoId, {String? cursor}) async {
+    try {
+      final endpoint = cursor != null
+          ? "/feeds/$videoId/comments?cursor=$cursor"
+          : "/feeds/$videoId/comments";
+
+      final response = await _apiClient.get(endpoint);
+
+      if (response.statusCode == 200 && response.data != null) {
+        final data = response.data['data'] as List;
+        final comments = data.map((e) => Comment.fromJson(e)).toList();
+        final nextCursor = response.data['next_cursor'] as String?;
+
+        return CommentResponse(comments: comments, nextCursor: nextCursor);
+      }
+      return CommentResponse(comments: [], nextCursor: null);
+    } catch (e) {
+      print("Get Comments Error: $e");
+      return CommentResponse(comments: [], nextCursor: null);
+    }
   }
 
   Future<Comment> postComment(String videoId, String text) async {
@@ -148,4 +151,11 @@ class FeedResponse {
   final String? nextCursor;
 
   FeedResponse({required this.videos, this.nextCursor});
+}
+
+class CommentResponse {
+  final List<Comment> comments;
+  final String? nextCursor;
+
+  CommentResponse({required this.comments, this.nextCursor});
 }
