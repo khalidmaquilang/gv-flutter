@@ -10,22 +10,61 @@ final videoServiceProvider = Provider((ref) {
   return VideoService(apiClient: apiClient);
 });
 
-final feedProvider = FutureProvider<List<Video>>((ref) async {
-  final service = ref.read(videoServiceProvider);
-  final videos = await service.getFeed();
+final feedProvider = AsyncNotifierProvider<FeedNotifier, List<Video>>(
+  FeedNotifier.new,
+);
 
-  // Dummy Video for Zoom Testing
-  final dummyVideo = Video(
-    id: "99999", // String
-    user: User(id: "1", name: 'TestUser', email: 'test@test.com'),
-    videoUrl:
-        'https://flutter.github.io/assets-for-api-docs/assets/videos/butterfly.mp4',
-    thumbnailUrl: '',
-    caption: 'Zoom Test Video (Dummy)',
-    likesCount: 999,
+class FeedNotifier extends AsyncNotifier<List<Video>> {
+  String? _nextCursor;
+  bool _hasMore = true;
+  bool _isLoadingMore = false;
 
-    isLiked: false,
-  );
+  @override
+  Future<List<Video>> build() async {
+    return _fetchFirstPage();
+  }
 
-  return [dummyVideo, ...videos];
-});
+  Future<List<Video>> _fetchFirstPage() async {
+    final service = ref.read(videoServiceProvider);
+    final response = await service.getFeed();
+    _nextCursor = response.nextCursor;
+    _hasMore = _nextCursor != null;
+
+    // Dummy Video for Zoom Testing
+    final dummyVideo = Video(
+      id: "99999", // String
+      user: User(id: "1", name: 'TestUser', email: 'test@test.com'),
+      videoUrl:
+          'https://flutter.github.io/assets-for-api-docs/assets/videos/butterfly.mp4',
+      thumbnailUrl: '',
+      caption: 'Zoom Test Video (Dummy)',
+      likesCount: 999,
+
+      isLiked: false,
+    );
+
+    return [dummyVideo, ...response.videos];
+  }
+
+  Future<void> loadNextPage() async {
+    if (!_hasMore || _isLoadingMore) return;
+
+    _isLoadingMore = true;
+    try {
+      final service = ref.read(videoServiceProvider);
+      final response = await service.getFeed(cursor: _nextCursor);
+
+      _nextCursor = response.nextCursor;
+      _hasMore = _nextCursor != null;
+
+      final currentVideos = state.value ?? [];
+      state = AsyncData([...currentVideos, ...response.videos]);
+    } catch (e) {
+      // Keep old state but maybe show error?
+      // For now silent failure on pagination
+      print("Pagination error: $e");
+    } finally {
+      _isLoadingMore = false;
+    }
+  }
+}

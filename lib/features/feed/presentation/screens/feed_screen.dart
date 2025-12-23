@@ -37,6 +37,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
     ref.listen(feedTabResetProvider, (previous, next) {
       if (next > 0) {
         _tabController.animateTo(2); // Reset to "For You"
+        ref.refresh(feedProvider.future);
       }
     });
 
@@ -59,6 +60,8 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
                 isLoading: feedAsync.isLoading,
                 error: feedAsync.error?.toString(),
                 onRefresh: () async => ref.refresh(feedProvider.future),
+                onLoadMore: () =>
+                    ref.read(feedProvider.notifier).loadNextPage(),
               ),
 
               // For You Tab (Reuse VideoFeedList)
@@ -67,6 +70,8 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
                 isLoading: feedAsync.isLoading,
                 error: feedAsync.error?.toString(),
                 onRefresh: () async => ref.refresh(feedProvider.future),
+                onLoadMore: () =>
+                    ref.read(feedProvider.notifier).loadNextPage(),
               ),
             ],
           ),

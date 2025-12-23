@@ -10,20 +10,27 @@ class VideoService {
 
   VideoService({ApiClient? apiClient}) : _apiClient = apiClient ?? ApiClient();
 
-  Future<List<Video>> getFeed() async {
+  Future<FeedResponse> getFeed({String? cursor}) async {
     try {
-      final response = await _apiClient.get(ApiConstants.feed);
+      final endpoint = cursor != null
+          ? "${ApiConstants.feed}?cursor=$cursor"
+          : ApiConstants.feed;
+
+      final response = await _apiClient.get(endpoint);
       print(response);
 
       if (response.statusCode == 200 && response.data != null) {
         final data = response.data['data'] as List;
-        return data.map((e) => Video.fromJson(e)).toList();
+        final videos = data.map((e) => Video.fromJson(e)).toList();
+        final nextCursor = response.data['next_cursor'] as String?;
+
+        return FeedResponse(videos: videos, nextCursor: nextCursor);
       }
 
-      return _getMockVideos();
+      return FeedResponse(videos: _getMockVideos(), nextCursor: null);
     } catch (e) {
       // Fallback to mock data
-      return _getMockVideos();
+      return FeedResponse(videos: _getMockVideos(), nextCursor: null);
     }
   }
 
@@ -143,4 +150,11 @@ class VideoService {
     // Combine uploaded videos with mock videos
     return [..._uploadedVideos, ...mock];
   }
+}
+
+class FeedResponse {
+  final List<Video> videos;
+  final String? nextCursor;
+
+  FeedResponse({required this.videos, this.nextCursor});
 }

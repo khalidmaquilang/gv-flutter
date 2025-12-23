@@ -103,9 +103,9 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
             _isLoading = false;
             _hasError = false;
           });
-          if (widget.autoplay ||
-              (ref.read(bottomNavIndexProvider) == 0 &&
-                  ref.read(isFeedAudioEnabledProvider))) {
+          if (widget.autoplay &&
+              ref.read(bottomNavIndexProvider) == 0 &&
+              ref.read(isFeedAudioEnabledProvider)) {
             _controller?.play();
           }
           _controller?.setLooping(true);

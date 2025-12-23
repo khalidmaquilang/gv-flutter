@@ -13,8 +13,12 @@ class VideoFeedList extends StatefulWidget {
     required this.videos,
     this.isLoading = false,
     this.error,
+
     this.onRefresh,
+    this.onLoadMore,
   });
+
+  final VoidCallback? onLoadMore;
 
   @override
   State<VideoFeedList> createState() => _VideoFeedListState();
@@ -22,6 +26,7 @@ class VideoFeedList extends StatefulWidget {
 
 class _VideoFeedListState extends State<VideoFeedList> {
   bool _isScrollEnabled = true;
+  int _currentIndex = 0;
 
   void _onInteractionStart() {
     setState(() {
@@ -59,16 +64,28 @@ class _VideoFeedListState extends State<VideoFeedList> {
     return RefreshIndicator(
       onRefresh: widget.onRefresh ?? () async {},
       child: PageView.builder(
+        allowImplicitScrolling: true,
         scrollDirection: Axis.vertical,
         physics: _isScrollEnabled
             ? const AlwaysScrollableScrollPhysics()
             : const NeverScrollableScrollPhysics(),
         itemCount: widget.videos.length,
+        onPageChanged: (index) {
+          setState(() {
+            _currentIndex = index;
+          });
+          // Trigger load more when within 2 items of end
+          if (widget.onLoadMore != null && index >= widget.videos.length - 2) {
+            widget.onLoadMore!();
+          }
+        },
         itemBuilder: (context, index) {
           return VideoPlayerItem(
             video: widget.videos[index],
             onInteractionStart: _onInteractionStart,
             onInteractionEnd: _onInteractionEnd,
+            autoplay: index == _currentIndex,
+            shouldPrepare: (index - _currentIndex).abs() <= 1,
           );
         },
       ),
