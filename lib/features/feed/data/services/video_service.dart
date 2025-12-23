@@ -34,18 +34,9 @@ class VideoService {
     }
   }
 
-  Future<bool> likeVideo(String videoId) async {
+  Future<bool> toggleReaction(String videoId) async {
     try {
-      await _apiClient.post('/videos/$videoId/like');
-      return true;
-    } catch (e) {
-      return false;
-    }
-  }
-
-  Future<bool> unlikeVideo(String videoId) async {
-    try {
-      await _apiClient.post('/videos/$videoId/unlike');
+      await _apiClient.post('/feeds/$videoId/react');
       return true;
     } catch (e) {
       return false;

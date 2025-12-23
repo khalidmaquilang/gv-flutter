@@ -34,6 +34,24 @@ class _VideoFeedListState extends State<VideoFeedList> {
     });
   }
 
+  @override
+  void didUpdateWidget(VideoFeedList oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // If the list was replaced and is short (suggests reload), or completely different logic
+    // But simplest for now: If first video ID changes, we assume it's a new feed?
+    // Or if previous list length > current list length?
+    // Let's reset if the list completely changes.
+    // Actually, if we are loading, we are unmounted.
+    // But if we come back, we are new state?
+    // If we are NOT unmounted, we need to reset.
+    if (widget.videos.isNotEmpty &&
+        oldWidget.videos.isNotEmpty &&
+        widget.videos[0].id != oldWidget.videos[0].id) {
+      // Feed changed (probably refreshed)
+      _currentIndex = 0;
+    }
+  }
+
   void _onInteractionEnd() {
     setState(() {
       _isScrollEnabled = true;

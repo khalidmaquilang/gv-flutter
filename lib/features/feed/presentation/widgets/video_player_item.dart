@@ -124,6 +124,8 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
   void _disposeController() {
     if (_controller == null) return;
     // print("VideoPlayerItem: Disposing controller ${widget.video.id}");
+    _controller?.setVolume(0);
+    _controller?.pause();
     _controller?.dispose();
     _controller = null;
     if (mounted) {
@@ -137,6 +139,8 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
   void dispose() {
     // print("VideoPlayerItem: Dispose Object ${widget.video.id}");
     routeObserver.unsubscribe(this);
+    _controller?.setVolume(0);
+    _controller?.pause();
     _controller?.dispose();
     super.dispose();
   }
@@ -147,10 +151,11 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
   }
 
   @override
+  @override
   void didPopNext() {
-    if (widget.autoplay ||
-        (ref.read(bottomNavIndexProvider) == 0 &&
-            ref.read(isFeedAudioEnabledProvider))) {
+    if (widget.autoplay &&
+        ref.read(bottomNavIndexProvider) == 0 &&
+        ref.read(isFeedAudioEnabledProvider)) {
       _controller?.play();
     }
   }
@@ -159,7 +164,8 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
   Widget build(BuildContext context) {
     ref.listen(isFeedAudioEnabledProvider, (previous, next) {
       if (next) {
-        if (ref.read(bottomNavIndexProvider) == 0 &&
+        if (widget.autoplay &&
+            ref.read(bottomNavIndexProvider) == 0 &&
             _controller != null &&
             !_controller!.value.isPlaying) {
           _controller?.play();
@@ -173,9 +179,15 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
       if (next != 0) {
         _controller?.pause();
       } else {
-        if (ref.read(isFeedAudioEnabledProvider)) {
+        if (widget.autoplay && ref.read(isFeedAudioEnabledProvider)) {
           _controller?.play();
         }
+      }
+    });
+
+    ref.listen(feedTabResetProvider, (previous, next) {
+      if (next > 0) {
+        _controller?.pause();
       }
     });
 
@@ -355,11 +367,7 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
       _likesCount += _isLiked ? 1 : -1;
     });
 
-    if (_isLiked) {
-      await _videoService.likeVideo(widget.video.id);
-    } else {
-      await _videoService.unlikeVideo(widget.video.id);
-    }
+    await _videoService.toggleReaction(widget.video.id);
   }
 
   Future<void> _shareVideo() async {

@@ -15,6 +15,7 @@ class FeedScreen extends ConsumerStatefulWidget {
 class _FeedScreenState extends ConsumerState<FeedScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  int _feedKey = 0;
 
   @override
   void initState() {
@@ -37,6 +38,9 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
     ref.listen(feedTabResetProvider, (previous, next) {
       if (next > 0) {
         _tabController.animateTo(2); // Reset to "For You"
+        setState(() {
+          _feedKey++;
+        });
         ref.refresh(feedProvider.future);
       }
     });
@@ -65,7 +69,9 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
               ),
 
               // For You Tab (Reuse VideoFeedList)
+              // For You Tab (Reuse VideoFeedList)
               VideoFeedList(
+                key: ValueKey("feed_fy_$_feedKey"),
                 videos: feedAsync.value ?? [],
                 isLoading: feedAsync.isLoading,
                 error: feedAsync.error?.toString(),
