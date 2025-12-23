@@ -67,4 +67,27 @@ class FeedNotifier extends AsyncNotifier<List<Video>> {
       _isLoadingMore = false;
     }
   }
+
+  void toggleLike(String videoId) {
+    if (state.value == null) return;
+
+    final currentVideos = state.value!;
+    final index = currentVideos.indexWhere((v) => v.id == videoId);
+
+    if (index != -1) {
+      final originalVideo = currentVideos[index];
+      final newIsLiked = !originalVideo.isLiked;
+      final newLikesCount = originalVideo.likesCount + (newIsLiked ? 1 : -1);
+
+      final updatedVideo = originalVideo.copyWith(
+        isLiked: newIsLiked,
+        likesCount: newLikesCount,
+      );
+
+      final List<Video> updatedList = List.from(currentVideos);
+      updatedList[index] = updatedVideo;
+
+      state = AsyncData(updatedList);
+    }
+  }
 }

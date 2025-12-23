@@ -5,11 +5,11 @@ import 'package:video_player/video_player.dart';
 import '../../../../core/providers/navigation_provider.dart';
 import '../../data/models/video_model.dart';
 import 'package:test_flutter/core/theme/app_theme.dart';
-import '../../data/services/video_service.dart';
 import 'comment_bottom_sheet.dart';
 
 import 'package:test_flutter/core/utils/route_observer.dart';
 import '../providers/feed_audio_provider.dart';
+import '../providers/feed_provider.dart';
 
 import 'dart:async';
 
@@ -41,7 +41,6 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
   bool _isLoading = true;
   bool _isLiked = false;
   int _likesCount = 0;
-  final VideoService _videoService = VideoService();
 
   bool _isUiVisible = true;
   bool _hasError = false;
@@ -367,7 +366,8 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
       _likesCount += _isLiked ? 1 : -1;
     });
 
-    await _videoService.toggleReaction(widget.video.id);
+    ref.read(feedProvider.notifier).toggleLike(widget.video.id);
+    await ref.read(videoServiceProvider).toggleReaction(widget.video.id);
   }
 
   Future<void> _shareVideo() async {

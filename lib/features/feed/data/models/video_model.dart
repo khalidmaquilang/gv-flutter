@@ -48,4 +48,33 @@ class Video {
       views: json['views'] ?? 0,
     );
   }
+  Video copyWith({
+    String? id,
+    String? videoUrl,
+    String? thumbnailUrl,
+    String? caption,
+    int? likesCount,
+    bool? isLiked,
+    User? user,
+    Sound? sound,
+    String? privacy,
+    bool? allowComments,
+    String? status,
+    int? views,
+  }) {
+    return Video(
+      id: id ?? this.id,
+      videoUrl: videoUrl ?? this.videoUrl,
+      thumbnailUrl: thumbnailUrl ?? this.thumbnailUrl,
+      caption: caption ?? this.caption,
+      likesCount: likesCount ?? this.likesCount,
+      isLiked: isLiked ?? this.isLiked,
+      user: user ?? this.user,
+      sound: sound ?? this.sound,
+      privacy: privacy ?? this.privacy,
+      allowComments: allowComments ?? this.allowComments,
+      status: status ?? this.status,
+      views: views ?? this.views,
+    );
+  }
 }
