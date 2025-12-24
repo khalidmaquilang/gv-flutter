@@ -14,6 +14,8 @@ class Video {
   final bool allowComments;
   final String status;
   final int views;
+  final String formattedReactionsCount;
+  final String formattedViews;
 
   Video({
     required this.id,
@@ -28,6 +30,8 @@ class Video {
     this.allowComments = true,
     this.status = 'processed',
     this.views = 0,
+    this.formattedReactionsCount = '0',
+    this.formattedViews = '0',
   });
 
   factory Video.fromJson(Map<String, dynamic> json) {
@@ -46,6 +50,9 @@ class Video {
       allowComments: json['allow_comments'] ?? true,
       status: json['status'] ?? 'processed',
       views: json['views'] ?? 0,
+      formattedReactionsCount:
+          json['formatted_reactions_count']?.toString() ?? '0',
+      formattedViews: json['formatted_views']?.toString() ?? '0',
     );
   }
   Video copyWith({
@@ -61,6 +68,8 @@ class Video {
     bool? allowComments,
     String? status,
     int? views,
+    String? formattedReactionsCount,
+    String? formattedViews,
   }) {
     return Video(
       id: id ?? this.id,
@@ -75,6 +84,9 @@ class Video {
       allowComments: allowComments ?? this.allowComments,
       status: status ?? this.status,
       views: views ?? this.views,
+      formattedReactionsCount:
+          formattedReactionsCount ?? this.formattedReactionsCount,
+      formattedViews: formattedViews ?? this.formattedViews,
     );
   }
 }

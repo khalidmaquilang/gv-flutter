@@ -43,6 +43,10 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
   bool _isLiked = false;
   int _likesCount = 0;
 
+  // Track initial state
+  late int _initialLikesCount;
+  late String _initialFormattedReactionsCount;
+
   bool _isUiVisible = true;
 
   // _hasError is now somewhat implicitly handled by controller.value.hasError if we checked it
@@ -53,6 +57,8 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
     super.initState();
     _isLiked = widget.video.isLiked;
     _likesCount = widget.video.likesCount;
+    _initialLikesCount = widget.video.likesCount;
+    _initialFormattedReactionsCount = widget.video.formattedReactionsCount;
   }
 
   @override
@@ -244,7 +250,9 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
                   children: [
                     _buildAction(
                       _isLiked ? Icons.favorite : Icons.favorite_border,
-                      "$_likesCount",
+                      (_likesCount == _initialLikesCount)
+                          ? _initialFormattedReactionsCount
+                          : "$_likesCount",
                       color: _isLiked ? AppColors.neonPink : Colors.white,
                       onTap: _toggleLike,
                     ),
@@ -342,7 +350,11 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
   Future<void> _toggleLike() async {
     setState(() {
       _isLiked = !_isLiked;
-      _likesCount += _isLiked ? 1 : -1;
+      if (_isLiked) {
+        _likesCount++;
+      } else {
+        _likesCount--;
+      }
     });
 
     ref.read(feedProvider.notifier).toggleLike(widget.video.id);
@@ -388,35 +400,40 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
   }) {
     return GestureDetector(
       onTap: onTap,
-      child: Column(
-        children: [
-          Container(
-            decoration: BoxDecoration(
-              boxShadow: [
-                BoxShadow(
-                  color: color.withValues(alpha: 0.8),
-                  blurRadius: 15,
-                  spreadRadius: 2,
-                ),
-              ],
+      behavior: HitTestBehavior.opaque, // Fix hit test issue
+      child: Container(
+        color: Colors.transparent, // Ensure area is tappable
+        padding: const EdgeInsets.all(8.0), // Increase touch target
+        child: Column(
+          children: [
+            Container(
+              decoration: BoxDecoration(
+                boxShadow: [
+                  BoxShadow(
+                    color: color.withValues(alpha: 0.8),
+                    blurRadius: 15,
+                    spreadRadius: 2,
+                  ),
+                ],
+              ),
+              child: Icon(
+                icon,
+                size: 36,
+                color: color,
+                shadows: [Shadow(color: color, blurRadius: 10)],
+              ),
             ),
-            child: Icon(
-              icon,
-              size: 36,
-              color: color,
-              shadows: [Shadow(color: color, blurRadius: 10)],
+            const SizedBox(height: 4),
+            Text(
+              text,
+              style: const TextStyle(
+                fontSize: 12,
+                color: Colors.white,
+                shadows: [Shadow(color: Colors.black, blurRadius: 4)],
+              ),
             ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            text,
-            style: const TextStyle(
-              fontSize: 12,
-              color: Colors.white,
-              shadows: [Shadow(color: Colors.black, blurRadius: 4)],
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -643,7 +660,11 @@ class _ZoomableContentState extends State<_ZoomableContent>
         maxScale: 4.0,
         panEnabled: _canPan,
         onInteractionStart: (details) {
-          widget.onInteractionStart?.call();
+          // Only trigger UI hide if we are actually zooming or panning significantly?
+          // Or reliance on pointers check?
+          if (_pointers >= 2 || !_transformationController.value.isIdentity()) {
+            widget.onInteractionStart?.call();
+          }
         },
         onInteractionEnd: (details) {
           // No Snap back on simple end?
