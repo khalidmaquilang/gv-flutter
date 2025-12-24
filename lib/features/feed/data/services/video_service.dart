@@ -91,6 +91,16 @@ class VideoService {
     }
   }
 
+  Future<bool> recordView(String videoId) async {
+    try {
+      await _apiClient.post('/feeds/$videoId/view');
+      return true;
+    } catch (e) {
+      // Fail silently, views are best-effort
+      return false;
+    }
+  }
+
   // In-memory storage for uploaded videos
   static final List<Video> _uploadedVideos = [];
 

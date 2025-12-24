@@ -48,6 +48,9 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
   late String _initialFormattedReactionsCount;
 
   bool _isUiVisible = true;
+  bool _hasRecordedView = false;
+  Timer? _viewTimer;
+  VideoPlayerController? _currentController;
 
   // _hasError is now somewhat implicitly handled by controller.value.hasError if we checked it
   bool get _hasError => _controller?.value.hasError ?? false;
@@ -61,9 +64,43 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
     _initialFormattedReactionsCount = widget.video.formattedReactionsCount;
   }
 
+  void _startViewTimer() {
+    if (_hasRecordedView || _viewTimer != null) return;
+
+    _viewTimer = Timer(const Duration(seconds: 3), () {
+      _recordView();
+    });
+  }
+
+  void _cancelViewTimer() {
+    _viewTimer?.cancel();
+    _viewTimer = null;
+  }
+
+  Future<void> _recordView() async {
+    if (_hasRecordedView) return;
+    _hasRecordedView = true;
+    _viewTimer = null; // Clear timer reference
+    // print("Recording view for ${widget.video.id}");
+    await ref.read(videoServiceProvider).recordView(widget.video.id);
+  }
+
+  void _onControllerUpdate() {
+    final controller = _currentController;
+    if (controller == null) return;
+
+    if (controller.value.isPlaying) {
+      _startViewTimer();
+    } else {
+      _cancelViewTimer();
+    }
+  }
+
   @override
   void dispose() {
     routeObserver.unsubscribe(this);
+    _cancelViewTimer();
+    _currentController?.removeListener(_onControllerUpdate);
     // Don't dispose controller here, provider does it!
     super.dispose();
   }
@@ -71,6 +108,11 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
   @override
   void didUpdateWidget(VideoPlayerItem oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (widget.video.id != oldWidget.video.id) {
+      _hasRecordedView = false;
+      _cancelViewTimer();
+    }
+
     if (widget.autoplay && !oldWidget.autoplay) {
       final controller = _controller;
       if (controller != null &&
@@ -166,6 +208,19 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
         _controller?.pause();
       }
     });
+
+    // Listen to play/pause state changes directly on the controller
+    final controller = _controller;
+    if (controller != _currentController) {
+      _currentController?.removeListener(_onControllerUpdate);
+      _currentController = controller;
+      _currentController?.addListener(_onControllerUpdate);
+
+      // Initial check for the new controller
+      if (_currentController != null && _currentController!.value.isPlaying) {
+        _startViewTimer();
+      }
+    }
 
     final isControllerInitialized = _controller?.value.isInitialized ?? false;
 
@@ -376,8 +431,10 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
         // Normal toggle play behavior
         if (_controller != null && _controller!.value.isPlaying) {
           _controller?.pause();
+          _cancelViewTimer();
         } else {
           _controller?.play();
+          _startViewTimer();
         }
       }
     });
