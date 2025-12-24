@@ -82,6 +82,15 @@ class VideoService {
     }
   }
 
+  Future<bool> toggleCommentReaction(String commentId) async {
+    try {
+      await _apiClient.post('/comments/$commentId/react');
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
   // In-memory storage for uploaded videos
   static final List<Video> _uploadedVideos = [];
 

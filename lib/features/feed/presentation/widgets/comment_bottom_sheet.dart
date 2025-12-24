@@ -153,6 +153,40 @@ class _CommentBottomSheetState extends ConsumerState<CommentBottomSheet> {
     }
   }
 
+  Future<void> _toggleCommentReaction(int index) async {
+    final comment = _comments[index];
+    final originalIsReacted = comment.isReactedByUser;
+    final originalCount = comment.reactionsCount;
+
+    final newCount = originalCount + (originalIsReacted ? -1 : 1);
+
+    // Optimistics update
+    setState(() {
+      _comments[index] = comment.copyWith(
+        isReactedByUser: !originalIsReacted,
+        reactionsCount: newCount,
+        formattedReactionsCount: newCount.toString(),
+      );
+    });
+
+    final success = await ref
+        .read(videoServiceProvider)
+        .toggleCommentReaction(comment.id);
+
+    if (!success && mounted) {
+      // Revert if failed
+      setState(() {
+        _comments[index] = comment.copyWith(
+          isReactedByUser: originalIsReacted,
+          reactionsCount: originalCount,
+        );
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to update reaction')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -265,19 +299,22 @@ class _CommentBottomSheetState extends ConsumerState<CommentBottomSheet> {
                         trailing: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(
-                              comment.isReactedByUser
-                                  ? Icons.favorite
-                                  : Icons.favorite_border,
-                              color: comment.isReactedByUser
-                                  ? AppColors.neonPink
-                                  : Colors.grey[600],
-                              size: 16,
+                            GestureDetector(
+                              onTap: () => _toggleCommentReaction(index),
+                              child: Icon(
+                                comment.isReactedByUser
+                                    ? Icons.favorite
+                                    : Icons.favorite_border,
+                                color: comment.isReactedByUser
+                                    ? AppColors.neonPink
+                                    : Colors.grey[600],
+                                size: 16,
+                              ),
                             ),
                             if (comment.reactionsCount > 0) ...[
                               const SizedBox(width: 4),
                               Text(
-                                comment.reactionsCount.toString(),
+                                comment.formattedReactionsCount,
                                 style: TextStyle(
                                   color: Colors.grey[600],
                                   fontSize: 12,
