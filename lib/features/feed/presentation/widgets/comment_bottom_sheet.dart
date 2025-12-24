@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:test_flutter/core/theme/app_theme.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../../../core/errors/exceptions.dart';
 import '../../data/models/comment_model.dart';
 import '../providers/feed_provider.dart';
 
@@ -22,6 +24,7 @@ class _CommentBottomSheetState extends ConsumerState<CommentBottomSheet> {
   bool _isLoading = true;
   bool _isLoadingMore = false;
   bool _hasMore = true;
+  bool _isPosting = false;
 
   @override
   void initState() {
@@ -97,20 +100,56 @@ class _CommentBottomSheetState extends ConsumerState<CommentBottomSheet> {
 
   Future<void> _postComment() async {
     if (_commentController.text.isEmpty) return;
+    if (_isPosting) return;
+
+    setState(() {
+      _isPosting = true;
+    });
+
+    // Unfocus keyboard
+    FocusScope.of(context).unfocus();
 
     try {
-      final newComment = await ref
+      await ref
           .read(videoServiceProvider)
           .postComment(widget.videoId, _commentController.text);
 
       if (mounted) {
-        setState(() {
-          _comments.insert(0, newComment);
-          _commentController.clear();
-        });
+        _commentController.clear();
+        // Reload comments from server to ensure fresh data
+        await _loadComments();
+
+        // Scroll to top
+        if (_scrollController.hasClients) {
+          _scrollController.animateTo(
+            0,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOut,
+          );
+        }
       }
     } catch (e) {
-      // Handle error
+      if (mounted) {
+        String errorMessage = "Failed to post comment";
+
+        if (e is ValidationException) {
+          errorMessage = e.message;
+        } else if (e is UnauthorizedException) {
+          errorMessage = "Session expired. Please login again.";
+        } else {
+          errorMessage = "Error: $e";
+        }
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(errorMessage), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isPosting = false;
+        });
+      }
     }
   }
 
@@ -255,7 +294,10 @@ class _CommentBottomSheetState extends ConsumerState<CommentBottomSheet> {
           // Input
           Padding(
             padding: EdgeInsets.only(
-              bottom: MediaQuery.of(context).viewInsets.bottom + 10,
+              bottom:
+                  MediaQuery.of(context).viewInsets.bottom +
+                  MediaQuery.of(context).padding.bottom +
+                  10,
               left: 16,
               right: 16,
               top: 10,
@@ -283,8 +325,19 @@ class _CommentBottomSheetState extends ConsumerState<CommentBottomSheet> {
                   ),
                 ),
                 IconButton(
-                  icon: const Icon(Icons.send, color: AppColors.neonPink),
-                  onPressed: _postComment,
+                  icon: _isPosting
+                      ? const SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              AppColors.neonPink,
+                            ),
+                          ),
+                        )
+                      : const Icon(Icons.send, color: AppColors.neonPink),
+                  onPressed: _isPosting ? null : _postComment,
                 ),
               ],
             ),

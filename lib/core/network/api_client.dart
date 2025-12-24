@@ -111,6 +111,9 @@ class ApiClient {
         );
       }
     }
+    if (e.response?.statusCode == 401) {
+      return UnauthorizedException();
+    }
     return Exception(e.message ?? 'Unknown Error Occurred');
   }
 }

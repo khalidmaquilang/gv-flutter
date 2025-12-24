@@ -65,20 +65,21 @@ class VideoService {
     }
   }
 
-  Future<Comment> postComment(String videoId, String text) async {
-    // Mock response
-    await Future.delayed(const Duration(milliseconds: 500));
-    return Comment(
-      id: "999",
-      user: User(
-        id: "1",
-        name: "Me",
-        email: "me@test.com",
-        avatar: "https://dummyimage.com/50",
-      ),
-      text: text,
-      createdAt: DateTime.now(),
-    );
+  Future<String> postComment(String videoId, String text) async {
+    try {
+      final response = await _apiClient.post(
+        "/feeds/$videoId/comments",
+        data: {"message": text},
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        // Return the ID for future reference
+        return response.data['id'].toString();
+      }
+      throw Exception('Failed to post comment');
+    } catch (e) {
+      rethrow;
+    }
   }
 
   // In-memory storage for uploaded videos
