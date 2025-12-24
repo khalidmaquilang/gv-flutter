@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/models/video_model.dart';
+import '../providers/video_preload_provider.dart';
 import 'video_player_item.dart';
 
-class VideoFeedList extends StatefulWidget {
+class VideoFeedList extends ConsumerStatefulWidget {
   final List<Video> videos;
   final bool isLoading;
   final String? error;
@@ -21,12 +23,23 @@ class VideoFeedList extends StatefulWidget {
   final VoidCallback? onLoadMore;
 
   @override
-  State<VideoFeedList> createState() => _VideoFeedListState();
+  ConsumerState<VideoFeedList> createState() => _VideoFeedListState();
 }
 
-class _VideoFeedListState extends State<VideoFeedList> {
+class _VideoFeedListState extends ConsumerState<VideoFeedList> {
   bool _isScrollEnabled = true;
   int _currentIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    // Initialize first video immediately
+    if (widget.videos.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        ref.read(videoPreloadProvider.notifier).onPageChanged(0, widget.videos);
+      });
+    }
+  }
 
   void _onInteractionStart() {
     setState(() {
@@ -92,6 +105,10 @@ class _VideoFeedListState extends State<VideoFeedList> {
           setState(() {
             _currentIndex = index;
           });
+          ref
+              .read(videoPreloadProvider.notifier)
+              .onPageChanged(index, widget.videos);
+
           // Trigger load more when within 2 items of end
           if (widget.onLoadMore != null && index >= widget.videos.length - 2) {
             widget.onLoadMore!();
@@ -103,7 +120,6 @@ class _VideoFeedListState extends State<VideoFeedList> {
             onInteractionStart: _onInteractionStart,
             onInteractionEnd: _onInteractionEnd,
             autoplay: index == _currentIndex,
-            shouldPrepare: (index - _currentIndex).abs() <= 1,
           );
         },
       ),

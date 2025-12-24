@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:test_flutter/features/auth/data/models/user_model.dart';
 import 'package:test_flutter/features/feed/presentation/widgets/video_player_item.dart';
+import 'package:test_flutter/features/feed/presentation/providers/video_preload_provider.dart';
+import 'package:test_flutter/features/feed/data/models/video_model.dart';
 import '../../data/models/profile_video_model.dart';
 
 class ProfileFeedScreen extends ConsumerStatefulWidget {
@@ -24,12 +26,23 @@ class _ProfileFeedScreenState extends ConsumerState<ProfileFeedScreen> {
   late PageController _pageController;
 
   int _currentIndex = 0;
+  List<Video> _mappedVideos = [];
 
   @override
   void initState() {
     super.initState();
     _currentIndex = widget.initialIndex;
     _pageController = PageController(initialPage: widget.initialIndex);
+
+    // Convert ProfileVideos to standard Videos for the provider
+    _mappedVideos = widget.videos.map((v) => v.toVideo(widget.user)).toList();
+
+    // Init provider with current page
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref
+          .read(videoPreloadProvider.notifier)
+          .onPageChanged(_currentIndex, _mappedVideos);
+    });
   }
 
   @override
@@ -52,16 +65,17 @@ class _ProfileFeedScreenState extends ConsumerState<ProfileFeedScreen> {
               setState(() {
                 _currentIndex = index;
               });
+              ref
+                  .read(videoPreloadProvider.notifier)
+                  .onPageChanged(index, _mappedVideos);
             },
             itemBuilder: (context, index) {
-              final video = widget.videos[index].toVideo(widget.user);
+              final video = _mappedVideos[index];
               return VideoPlayerItem(
                 key: ValueKey(video.id),
                 video: video,
                 autoplay: index == _currentIndex,
-                shouldPrepare:
-                    (index - _currentIndex).abs() <=
-                    1, // Relaxed: Keep current, prev, and next prepared.
+                ignoreBottomNav: true,
               );
             },
           ),

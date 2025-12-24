@@ -10,6 +10,7 @@ import 'comment_bottom_sheet.dart';
 import 'package:test_flutter/core/utils/route_observer.dart';
 import '../providers/feed_audio_provider.dart';
 import '../providers/feed_provider.dart';
+import '../providers/video_preload_provider.dart';
 
 import 'dart:async';
 
@@ -17,6 +18,8 @@ class VideoPlayerItem extends ConsumerStatefulWidget {
   final Video video;
   final VoidCallback? onInteractionStart;
   final VoidCallback? onInteractionEnd;
+  final bool autoplay;
+  final bool ignoreBottomNav;
 
   const VideoPlayerItem({
     super.key,
@@ -24,11 +27,8 @@ class VideoPlayerItem extends ConsumerStatefulWidget {
     this.onInteractionStart,
     this.onInteractionEnd,
     this.autoplay = false,
-    this.shouldPrepare = false,
+    this.ignoreBottomNav = false,
   });
-
-  final bool autoplay;
-  final bool shouldPrepare;
 
   @override
   ConsumerState<VideoPlayerItem> createState() => _VideoPlayerItemState();
@@ -36,112 +36,51 @@ class VideoPlayerItem extends ConsumerStatefulWidget {
 
 class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
     with RouteAware {
-  VideoPlayerController? _controller;
+  // Controller is now managed by provider
+  VideoPlayerController? get _controller =>
+      ref.watch(videoPreloadProvider).controllers[widget.video.id];
 
-  bool _isLoading = true;
   bool _isLiked = false;
   int _likesCount = 0;
 
   bool _isUiVisible = true;
-  bool _hasError = false;
 
-  @override
-  void didUpdateWidget(VideoPlayerItem oldWidget) {
-    super.didUpdateWidget(oldWidget);
-
-    // Autoplay handling
-    if (widget.autoplay != oldWidget.autoplay) {
-      if (widget.autoplay) {
-        _controller?.play();
-      } else {
-        _controller?.pause();
-      }
-    }
-
-    // Lazy Loading Handling
-    if (widget.shouldPrepare != oldWidget.shouldPrepare) {
-      if (widget.shouldPrepare) {
-        _initializeController();
-      } else {
-        _disposeController();
-      }
-    }
-  }
+  // _hasError is now somewhat implicitly handled by controller.value.hasError if we checked it
+  bool get _hasError => _controller?.value.hasError ?? false;
 
   @override
   void initState() {
     super.initState();
     _isLiked = widget.video.isLiked;
     _likesCount = widget.video.likesCount;
-
-    if (widget.shouldPrepare) {
-      _initializeController();
-    }
-  }
-
-  void _initializeController() {
-    if (_controller != null) return;
-
-    print(
-      "VideoPlayerItem: Init ${widget.video.id}, URL: ${widget.video.videoUrl}",
-    );
-
-    _controller = VideoPlayerController.networkUrl(
-      Uri.parse(widget.video.videoUrl),
-    );
-
-    _controller!
-        .initialize()
-        .then((_) {
-          if (!mounted) {
-            // print("VideoPlayerItem: Init success but unmounted ${widget.video.id}");
-            return;
-          }
-          // print("VideoPlayerItem: Init success ${widget.video.id}");
-          setState(() {
-            _isLoading = false;
-            _hasError = false;
-          });
-          if (widget.autoplay &&
-              ref.read(bottomNavIndexProvider) == 0 &&
-              ref.read(isFeedAudioEnabledProvider)) {
-            _controller?.play();
-          }
-          _controller?.setLooping(true);
-        })
-        .catchError((error) {
-          // print("VideoPlayerItem: Init Failed ${widget.video.id}, Error: $error");
-          if (!mounted) return;
-          setState(() {
-            _isLoading = false;
-            _hasError = true;
-          });
-          debugPrint("Video Error: $error");
-        });
-  }
-
-  void _disposeController() {
-    if (_controller == null) return;
-    // print("VideoPlayerItem: Disposing controller ${widget.video.id}");
-    _controller?.setVolume(0);
-    _controller?.pause();
-    _controller?.dispose();
-    _controller = null;
-    if (mounted) {
-      setState(() {
-        _isLoading = true; // Show loading when re-initializing
-      });
-    }
   }
 
   @override
   void dispose() {
-    // print("VideoPlayerItem: Dispose Object ${widget.video.id}");
     routeObserver.unsubscribe(this);
-    _controller?.setVolume(0);
-    _controller?.pause();
-    _controller?.dispose();
+    // Don't dispose controller here, provider does it!
     super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(VideoPlayerItem oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.autoplay && !oldWidget.autoplay) {
+      final controller = _controller;
+      if (controller != null &&
+          controller.value.isInitialized &&
+          !controller.value.isPlaying) {
+        final shouldPlay =
+            (widget.ignoreBottomNav || ref.read(bottomNavIndexProvider) == 0) &&
+            ref.read(isFeedAudioEnabledProvider);
+
+        if (shouldPlay) {
+          controller.play();
+        }
+      }
+    } else if (!widget.autoplay && oldWidget.autoplay) {
+      _controller?.pause();
+    }
   }
 
   @override
@@ -151,10 +90,14 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
 
   @override
   @override
+  @override
   void didPopNext() {
-    if (widget.autoplay &&
-        ref.read(bottomNavIndexProvider) == 0 &&
-        ref.read(isFeedAudioEnabledProvider)) {
+    final shouldPlay =
+        widget.autoplay &&
+        (widget.ignoreBottomNav || ref.read(bottomNavIndexProvider) == 0) &&
+        ref.read(isFeedAudioEnabledProvider);
+
+    if (shouldPlay) {
       _controller?.play();
     }
   }
@@ -163,10 +106,13 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
   Widget build(BuildContext context) {
     ref.listen(isFeedAudioEnabledProvider, (previous, next) {
       if (next) {
-        if (widget.autoplay &&
-            ref.read(bottomNavIndexProvider) == 0 &&
+        final shouldPlay =
+            widget.autoplay &&
+            (widget.ignoreBottomNav || ref.read(bottomNavIndexProvider) == 0) &&
             _controller != null &&
-            !_controller!.value.isPlaying) {
+            !_controller!.value.isPlaying;
+
+        if (shouldPlay) {
           _controller?.play();
         }
       } else {
@@ -174,21 +120,48 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
       }
     });
 
+    ref.listen(videoPreloadProvider, (previous, next) {
+      final controller = next.controllers[widget.video.id];
+      // print("VideoPlayerItem check autoplay: ${widget.video.id}, present: ${controller != null}, initialized: ${controller?.value.isInitialized}, autoplay: ${widget.autoplay}");
+
+      if (controller != null &&
+          controller.value.isInitialized &&
+          !controller.value.isPlaying) {
+        final shouldPlay =
+            widget.autoplay &&
+            (widget.ignoreBottomNav || ref.read(bottomNavIndexProvider) == 0) &&
+            ref.read(isFeedAudioEnabledProvider);
+
+        if (shouldPlay) {
+          // print("VideoPlayerItem: TRIGGERING PLAY for ${widget.video.id}");
+          controller.play();
+        } else {
+          // print("VideoPlayerItem: Autoplay conditions failed.");
+        }
+      }
+    });
+
     ref.listen(bottomNavIndexProvider, (previous, next) {
-      if (next != 0) {
+      if (!widget.ignoreBottomNav && next != 0) {
         _controller?.pause();
       } else {
-        if (widget.autoplay && ref.read(isFeedAudioEnabledProvider)) {
+        final shouldPlay =
+            widget.autoplay &&
+            (widget.ignoreBottomNav || next == 0) &&
+            ref.read(isFeedAudioEnabledProvider);
+        if (shouldPlay) {
           _controller?.play();
         }
       }
     });
 
     ref.listen(feedTabResetProvider, (previous, next) {
-      if (next > 0) {
+      if (!widget.ignoreBottomNav && next > 0) {
         _controller?.pause();
       }
     });
+
+    final isControllerInitialized = _controller?.value.isInitialized ?? false;
 
     return Stack(
       children: [
@@ -226,7 +199,7 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
                         ),
                       ],
                     )
-                  : (_isLoading || _controller == null)
+                  : (!isControllerInitialized)
                   ? Stack(
                       children: [
                         // Thumbnail Placeholder
@@ -251,6 +224,12 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
           ),
         ),
 
+        // Error Retry Overlay (Simplified - Removed manual retry for now as provider handles init)
+        if (_hasError)
+          const Center(
+            child: Text(""), // Just show the error icon from above
+          ),
+
         // UI Overlay (Fades out when zooming)
         AnimatedOpacity(
           duration: const Duration(milliseconds: 200),
@@ -259,7 +238,7 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
             children: [
               // Right Side Actions (Avatar, Like, Comment, Share)
               Positioned(
-                bottom: 160, // Moved up further as requested
+                bottom: 160,
                 right: 10,
                 child: Column(
                   children: [
@@ -273,14 +252,14 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
                     _buildAction(
                       Icons.comment,
                       "Comment",
-                      color: AppColors.neonCyan, // Cyan for comments
+                      color: AppColors.neonCyan,
                       onTap: _showComments,
                     ),
                     const SizedBox(height: 16),
                     _buildAction(
                       Icons.share,
                       "Share",
-                      color: AppColors.neonPurple, // Purple for share
+                      color: AppColors.neonPurple,
                       onTap: _shareVideo,
                     ),
                   ],
@@ -289,9 +268,9 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
 
               // Bottom Info (Name, Caption)
               Positioned(
-                bottom: 130, // Kept at 130
-                left: 16, // Standard left padding
-                right: 80, // Reduced right padding
+                bottom: 130,
+                left: 16,
+                right: 80,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -740,7 +719,7 @@ class _SpinningDiscState extends State<_SpinningDisc>
               : null,
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.5),
+              color: Colors.black.withValues(alpha: 0.5),
               blurRadius: 4,
               offset: const Offset(0, 2),
             ),
