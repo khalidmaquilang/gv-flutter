@@ -269,7 +269,7 @@ class _CommentBottomSheetState extends ConsumerState<CommentBottomSheet> {
                           backgroundColor: Colors.grey[800],
                         ),
                         title: Text(
-                          comment.user.name,
+                          comment.user.username ?? comment.user.name,
                           style: const TextStyle(
                             color: Colors.grey,
                             fontSize: 12,

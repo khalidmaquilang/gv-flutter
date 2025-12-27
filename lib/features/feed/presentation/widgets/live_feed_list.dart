@@ -200,7 +200,7 @@ class _LiveFeedListState extends State<LiveFeedList> {
                             const SizedBox(width: 4),
                             Expanded(
                               child: Text(
-                                stream.user.name,
+                                stream.user.username ?? stream.user.name,
                                 style: const TextStyle(
                                   color: Colors.white70,
                                   fontSize: 10,

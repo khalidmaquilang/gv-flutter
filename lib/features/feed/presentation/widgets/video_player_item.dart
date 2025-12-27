@@ -338,7 +338,7 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      "@${widget.video.user.name}",
+                      "@${widget.video.user.username}",
                       style: const TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 16,
@@ -378,7 +378,7 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
                           child: Text(
                             widget.video.sound != null
                                 ? "${widget.video.sound!.title} • ${widget.video.sound!.author}"
-                                : "Original Sound - ${widget.video.user.name}",
+                                : "Original Sound - ${widget.video.user.username}",
                             style: const TextStyle(
                               color: Colors.white,
                               fontSize: 13,
@@ -418,7 +418,7 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
 
   Future<void> _shareVideo() async {
     await Share.share(
-      'Check out this video by @${widget.video.user.name}: ${widget.video.videoUrl}',
+      'Check out this video by @${widget.video.user.username}: ${widget.video.videoUrl}',
     );
   }
 

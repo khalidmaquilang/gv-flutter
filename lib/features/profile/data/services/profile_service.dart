@@ -3,6 +3,7 @@ import '../../../../core/constants/api_constants.dart';
 import '../../../auth/data/models/user_model.dart';
 import '../models/profile_video_model.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:dio/dio.dart';
 
 class ProfileService {
   final ApiClient _apiClient;
@@ -30,6 +31,21 @@ class ProfileService {
         avatar: "https://dummyimage.com/150",
         bio: "TikTok Clone User\nFollow me!",
       );
+    }
+  }
+
+  Future<User> getCurrentUser() async {
+    try {
+      final token = await _storage.read(key: 'auth_token');
+      if (token != null) {
+        _apiClient.setToken(token);
+      }
+
+      final response = await _apiClient.get(ApiConstants.user);
+      print(response.data);
+      return User.fromJson(response.data);
+    } catch (e) {
+      rethrow;
     }
   }
 
@@ -61,6 +77,55 @@ class ProfileService {
     } catch (e) {
       // Return empty list on error for now
       return [];
+    }
+  }
+
+  Future<User> updateProfile({
+    String? name,
+    String? username,
+    String? bio,
+  }) async {
+    try {
+      final token = await _storage.read(key: 'auth_token');
+      if (token != null) {
+        _apiClient.setToken(token);
+      }
+
+      final data = <String, dynamic>{};
+      if (name != null && name.isNotEmpty) data['name'] = name;
+      if (username != null && username.isNotEmpty) data['username'] = username;
+      if (bio != null && bio.isNotEmpty) data['bio'] = bio;
+
+      final response = await _apiClient.put(
+        ApiConstants.updateProfile,
+        data: data,
+      );
+
+      return User.fromJson(response.data);
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  Future<User> uploadProfileImage(String imagePath) async {
+    try {
+      final token = await _storage.read(key: 'auth_token');
+      if (token != null) {
+        _apiClient.setToken(token);
+      }
+
+      final formData = FormData.fromMap({
+        'image': await MultipartFile.fromFile(imagePath),
+      });
+
+      final response = await _apiClient.post(
+        ApiConstants.uploadProfileAvatar,
+        data: formData,
+      );
+
+      return User.fromJson(response.data);
+    } catch (e) {
+      rethrow;
     }
   }
 }

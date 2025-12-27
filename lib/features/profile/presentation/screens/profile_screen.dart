@@ -311,7 +311,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     // Username
                     userAsync.when(
                       data: (user) => Text(
-                        "@${user.name.replaceAll(' ', '').toLowerCase()}",
+                        "@${user.username}",
                         style: TextStyle(
                           color: Colors.white.withValues(alpha: 0.7),
                           fontWeight: FontWeight.bold,
@@ -368,6 +368,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                                       builder: (context) => EditProfileScreen(
                                         user: {
                                           'name': user.name,
+                                          'username': user.username,
                                           'avatar': user.avatar,
                                           'bio': user.bio,
                                         },
@@ -417,22 +418,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                             ),
                           ),
                         const SizedBox(width: 12),
-                        Container(
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(30),
-                            border: Border.all(
-                              color: Colors.white.withValues(alpha: 0.2),
-                            ),
-                          ),
-                          child: IconButton(
-                            icon: const Icon(
-                              Icons.camera_alt,
-                              color: Colors.white,
-                            ),
-                            onPressed: () {},
-                          ),
-                        ),
                       ],
                     ),
                     const SizedBox(height: 30),
