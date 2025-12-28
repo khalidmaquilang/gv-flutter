@@ -12,6 +12,11 @@ class ApiConstants {
   static const String updateProfile = '/profile';
   static const String uploadProfileAvatar = '/profile/avatar';
 
+  // Follow
+  static String followUser(String userId) => '/users/$userId/follow';
+  static String unfollowUser(String userId) => '/users/$userId/follow';
+  static String userVideos(String userId) => '/users/$userId/videos';
+
   // Feed
   static const String feed = '/feeds';
   static const String videos = '/videos';

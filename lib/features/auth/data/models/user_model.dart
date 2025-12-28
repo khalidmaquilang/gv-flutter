@@ -5,6 +5,10 @@ class User {
   final String? email;
   final String? avatar;
   final String? bio;
+  final bool isFollowing;
+  final int followersCount;
+  final int followingCount;
+  final int likesCount;
 
   User({
     required this.id,
@@ -13,6 +17,10 @@ class User {
     this.email,
     this.avatar,
     this.bio,
+    this.isFollowing = false,
+    this.followersCount = 0,
+    this.followingCount = 0,
+    this.likesCount = 0,
   });
 
   factory User.fromJson(Map<String, dynamic> json) {
@@ -23,6 +31,10 @@ class User {
       email: json['email'],
       avatar: json['avatar'],
       bio: json['bio'],
+      isFollowing: json['is_following'] ?? false,
+      followersCount: json['followers_count'] ?? 0,
+      followingCount: json['following_count'] ?? 0,
+      likesCount: json['likes_count'] ?? 0,
     );
   }
 
@@ -34,6 +46,10 @@ class User {
       'email': email,
       'avatar': avatar,
       'bio': bio,
+      'is_following': isFollowing,
+      'followers_count': followersCount,
+      'following_count': followingCount,
+      'likes_count': likesCount,
     };
   }
 }

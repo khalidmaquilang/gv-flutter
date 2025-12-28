@@ -14,6 +14,7 @@ import '../providers/upload_provider.dart';
 import '../providers/drafts_provider.dart';
 import '../../data/models/draft_model.dart';
 import '../../../profile/presentation/screens/profile_screen.dart';
+import '../../../auth/presentation/providers/auth_provider.dart';
 
 class CreatePostScreen extends ConsumerStatefulWidget {
   final List<XFile> files;
@@ -257,8 +258,18 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
     if (mounted) {
       // Close CreatePostScreen immediately
       Navigator.of(context).popUntil((route) => route.isFirst);
-      // Trigger feed refresh in background
-      ref.read(profileVideosProvider.notifier).refresh();
+      // Trigger feed refresh in background - Get current user ID from auth
+      final currentUser = ref.read(authControllerProvider).value;
+      if (currentUser != null) {
+        ref
+            .read(
+              profileVideosProvider((
+                userId: currentUser.id,
+                isCurrentUser: true,
+              )).notifier,
+            )
+            .refresh();
+      }
     }
   }
 

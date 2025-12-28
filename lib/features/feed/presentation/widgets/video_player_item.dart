@@ -11,6 +11,7 @@ import 'package:test_flutter/core/utils/route_observer.dart';
 import '../providers/feed_audio_provider.dart';
 import '../providers/feed_provider.dart';
 import '../providers/video_preload_provider.dart';
+import '../../../profile/presentation/screens/profile_screen.dart';
 
 import 'dart:async';
 
@@ -337,16 +338,38 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      "@${widget.video.user.username}",
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                        color: Colors.white,
-                        shadows: [
-                          Shadow(color: AppColors.neonCyan, blurRadius: 4),
-                          Shadow(color: Colors.black, blurRadius: 2),
-                        ],
+                    GestureDetector(
+                      onTap: () {
+                        // Pause video before navigating
+                        _controller?.pause();
+
+                        print(
+                          'Navigating to profile - video.user.id: ${widget.video.user.id}, username: ${widget.video.user.username}',
+                        );
+
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => ProfileScreen(
+                              userId: widget.video.user.id,
+                              isCurrentUser: false,
+                            ),
+                          ),
+                        ).then((_) {
+                          // Auto-resume will be handled by feed visibility logic
+                        });
+                      },
+                      child: Text(
+                        "@${widget.video.user.username}",
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                          color: Colors.white,
+                          shadows: [
+                            Shadow(color: AppColors.neonCyan, blurRadius: 4),
+                            Shadow(color: Colors.black, blurRadius: 2),
+                          ],
+                        ),
                       ),
                     ),
                     const SizedBox(height: 8),
