@@ -4,6 +4,7 @@ import '../providers/feed_provider.dart';
 import '../widgets/video_feed_list.dart';
 import '../widgets/live_feed_list.dart';
 import '../../../../core/providers/navigation_provider.dart';
+import '../../../search/presentation/screens/search_screen.dart';
 
 class FeedScreen extends ConsumerStatefulWidget {
   const FeedScreen({super.key});
@@ -142,6 +143,31 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
                   Tab(text: "For You"),
                 ],
               ),
+            ),
+          ),
+
+          // Search Icon (Top Right)
+          Positioned(
+            top: 50, // Matches SafeArea top padding approx
+            right: 16,
+            child: IconButton(
+              icon: const Icon(
+                Icons.search,
+                color: Colors.white,
+                size: 28,
+                shadows: [
+                  Shadow(
+                    color: Colors.black,
+                    blurRadius: 4,
+                    offset: Offset(0, 1),
+                  ),
+                ],
+              ),
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (context) => const SearchScreen()),
+                );
+              },
             ),
           ),
         ],
