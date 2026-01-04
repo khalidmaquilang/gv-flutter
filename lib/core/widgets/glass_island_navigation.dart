@@ -37,7 +37,7 @@ class GlassIslandNavigation extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
                 _buildNavItem(Icons.home, "Home", 0),
-                _buildNavItem(Icons.search, "Discover", 1),
+                _buildNavItem(FontAwesomeIcons.dharmachakra, "Roulette", 1),
                 _buildPlusButton(2),
                 _buildNavItem(Icons.message, "Inbox", 3),
                 _buildNavItem(Icons.person, "Profile", 4),

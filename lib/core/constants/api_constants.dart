@@ -1,6 +1,6 @@
 class ApiConstants {
   static const String baseUrl =
-      'https://30c3744d3432.ngrok-free.app/api/v1'; // Android Emulator localhost
+      'https://bbdb3665fafa.ngrok-free.app/api/v1'; // Android Emulator localhost
 
   // Auth
   static const String login = '/login';
@@ -40,7 +40,7 @@ class ApiConstants {
 
   // Zego Cloud
   // TODO: Get these from ZEGOCLOUD Admin Console
-  static const int zegoAppId = 525017043; // Replace with your AppID (int)
+  static const int zegoAppId = 33314593; // Replace with your AppID (int)
   static const String zegoAppSign =
-      "a446793304316b50287aaf6be77e77758b3cda1be376b289af8c9db899c15f92"; // Replace with your AppSign (String)
+      "4ce1de23510d38c70b26458a350f38947851faddc39baa6506777b8f26b58cd3"; // Replace with your AppSign (String)
 }

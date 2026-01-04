@@ -1,183 +1,107 @@
 import 'package:flutter/material.dart';
+import '../../presentation/widgets/roulette_wheel.dart';
 
-class DiscoverScreen extends StatelessWidget {
+class DiscoverScreen extends StatefulWidget {
   const DiscoverScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      appBar: AppBar(
-        backgroundColor: Colors.black,
-        elevation: 0,
-        title: Container(
-          height: 40,
-          decoration: BoxDecoration(
-            color: Colors.grey[900],
-            borderRadius: BorderRadius.circular(5),
-          ),
-          child: const TextField(
-            style: TextStyle(color: Colors.white),
-            decoration: InputDecoration(
-              hintText: "Search",
-              hintStyle: TextStyle(color: Colors.grey),
-              prefixIcon: Icon(Icons.search, color: Colors.grey),
-              border: InputBorder.none,
-              contentPadding: EdgeInsets.symmetric(vertical: 0, horizontal: 15),
+  State<DiscoverScreen> createState() => _DiscoverScreenState();
+}
+
+class _DiscoverScreenState extends State<DiscoverScreen> {
+  final List<RouletteItem> _items = [
+    RouletteItem(text: "500 Coins", color: Colors.purpleAccent),
+    RouletteItem(text: "Try Again", color: Colors.grey),
+    RouletteItem(text: "Free VIP", color: Colors.blueAccent),
+    RouletteItem(text: "Mystery Box", color: Colors.orangeAccent),
+    RouletteItem(text: "1000 Coins", color: Colors.greenAccent),
+    RouletteItem(text: "Jackpot", color: Colors.redAccent),
+    RouletteItem(text: "No Luck", color: Colors.grey[800]!),
+    RouletteItem(text: "20 Coins", color: Colors.tealAccent),
+  ];
+
+  void _onSpinEnd(int winnerIndex) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.grey[900],
+        title: const Text("Result", style: TextStyle(color: Colors.white)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.star, color: _items[winnerIndex].color, size: 50),
+            const SizedBox(height: 20),
+            Text(
+              "You got: ${_items[winnerIndex].text}",
+              style: const TextStyle(color: Colors.white, fontSize: 20),
             ),
-          ),
+          ],
         ),
-      ),
-      body: ListView(
-        children: [
-          // Banner Carousel
-          _buildBannerCarousel(),
-
-          const SizedBox(height: 20),
-
-          // Trending Hashtags
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0),
-            child: const Text(
-              "Trending",
-              style: TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-                fontSize: 18,
-              ),
-            ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("OK"),
           ),
-          const SizedBox(height: 10),
-          _buildTrendingTags(),
-
-          const SizedBox(height: 20),
-
-          // Explore Grid
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0),
-            child: const Text(
-              "Explore",
-              style: TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-                fontSize: 18,
-              ),
-            ),
-          ),
-          const SizedBox(height: 10),
-          _buildExploreGrid(),
         ],
       ),
     );
   }
 
-  Widget _buildBannerCarousel() {
-    return SizedBox(
-      height: 150,
-      child: PageView.builder(
-        itemCount: 3,
-        itemBuilder: (context, index) {
-          return Container(
-            margin: const EdgeInsets.symmetric(horizontal: 10),
-            decoration: BoxDecoration(
-              color: [Colors.purple, Colors.blue, Colors.orange][index],
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Center(
-              child: Text(
-                "Banner ${index + 1}",
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Stack(
+        children: [
+          // Background - Cyberpunk Grid
+          Positioned.fill(child: CustomPaint(painter: GridPainter())),
 
-  Widget _buildTrendingTags() {
-    final tags = ["#Dance", "#Comedy", "#Flutter", "#Coding", "#Viral"];
-    return SizedBox(
-      height: 40,
-      child: ListView.separated(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        scrollDirection: Axis.horizontal,
-        itemCount: tags.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 10),
-        itemBuilder: (context, index) {
-          return Container(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-            decoration: BoxDecoration(
-              border: Border.all(color: Colors.grey[800]!),
-              borderRadius: BorderRadius.circular(20),
-              color: Colors.grey[900],
-            ),
-            child: Center(
-              child: Text(
-                tags[index],
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _buildExploreGrid() {
-    return GridView.builder(
-      physics: const NeverScrollableScrollPhysics(),
-      shrinkWrap: true,
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        childAspectRatio: 0.7, // Portrait Aspect Ratio
-        crossAxisSpacing: 5,
-        mainAxisSpacing: 5,
-      ),
-      itemCount: 10,
-      itemBuilder: (context, index) {
-        return Container(
-          color: Colors.grey[800],
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              // Placeholder Image
-              Image.network(
-                "https://picsum.photos/seed/$index/200/300",
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) =>
-                    const Icon(Icons.error, color: Colors.white),
-              ),
-              // Likes Overlay
-              const Positioned(
-                bottom: 5,
-                left: 5,
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.play_arrow_outlined,
+          Center(
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Text(
+                    "LUCKY WHEEL",
+                    style: TextStyle(
                       color: Colors.white,
-                      size: 16,
+                      fontSize: 32,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 4,
+                      shadows: [
+                        Shadow(color: Colors.purpleAccent, blurRadius: 20),
+                      ],
                     ),
-                    SizedBox(width: 2),
-                    Text(
-                      "5.2k",
-                      style: TextStyle(color: Colors.white, fontSize: 12),
-                    ),
-                  ],
-                ),
+                  ),
+                  const SizedBox(height: 50),
+
+                  // Wheel Container with Pointer (Now Internalized)
+                  RouletteWheel(items: _items, onSpinEnd: _onSpinEnd),
+                ],
               ),
-            ],
+            ),
           ),
-        );
-      },
+        ],
+      ),
     );
   }
+}
+
+class GridPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = Colors.purpleAccent.withOpacity(0.1)
+      ..strokeWidth = 1;
+
+    for (double i = 0; i < size.width; i += 40) {
+      canvas.drawLine(Offset(i, 0), Offset(i, size.height), paint);
+    }
+    for (double i = 0; i < size.height; i += 40) {
+      canvas.drawLine(Offset(0, i), Offset(size.width, i), paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
