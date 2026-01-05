@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:math' as math;
+import 'dart:async';
+import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:test_flutter/core/constants/api_constants.dart';
@@ -12,6 +14,11 @@ import 'package:zego_zim/zego_zim.dart';
 import 'package:video_player/video_player.dart';
 import 'package:zego_uikit_prebuilt_live_streaming/zego_uikit_prebuilt_live_streaming.dart';
 import 'package:zego_uikit_signaling_plugin/zego_uikit_signaling_plugin.dart';
+import 'package:zego_uikit/zego_uikit.dart';
+import 'package:test_flutter/features/live/domain/models/gift_item.dart';
+import 'package:test_flutter/features/live/presentation/managers/gift_manager.dart';
+import 'package:test_flutter/features/live/presentation/widgets/gift_bottom_sheet.dart';
+import 'package:test_flutter/features/live/presentation/widgets/gift_animation_overlay.dart';
 
 class LiveStreamScreen extends ConsumerStatefulWidget {
   final bool isBroadcaster;
@@ -38,14 +45,46 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
   String? _localUserID;
   String? _localUserName;
 
+  // Gift system
+  StreamSubscription? _giftStreamSubscription;
+  final int _mockCoinBalance = 5000; // Mock coin balance
+
   @override
   void initState() {
     super.initState();
     _handleAudio();
     _initializeEngine();
+    _setupGiftListener(); // Initialize gift system
     if (widget.isBroadcaster) {
       _startMonitoringHostStats();
     }
+  }
+
+  void _setupGiftListener() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _giftStreamSubscription = ZegoUIKit()
+          .getSignalingPlugin()
+          .getInRoomCommandMessageReceivedEventStream()
+          .listen((event) {
+            final messages = event.messages;
+            for (final commandMessage in messages) {
+              final senderUserID = commandMessage.senderUserID;
+              final message = utf8.decode(commandMessage.message);
+              debugPrint('Gift message received: $message');
+
+              // Don't play animation for own gifts (already played locally)
+              if (senderUserID != _localUserID) {
+                try {
+                  final giftData = jsonDecode(message);
+                  final giftMessage = GiftMessage.fromJson(giftData);
+                  GiftManager().playGiftAnimation(giftMessage);
+                } catch (e) {
+                  debugPrint('Error parsing gift message: $e');
+                }
+              }
+            }
+          });
+    });
   }
 
   void _startMonitoringHostStats() {
@@ -294,7 +333,13 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
 
   @override
   void dispose() {
+    // Re-enable feed audio before disposing (check mounted to avoid ref access after disposal)
+    if (mounted) {
+      ref.read(isFeedAudioEnabledProvider.notifier).state = true;
+    }
+
     _videoController?.dispose();
+    _giftStreamSubscription?.cancel(); // Clean up gift listener
 
     // Only destroy engine for audience (hosts use UIKit which manages its own lifecycle)
     if (!widget.isBroadcaster) {
@@ -302,7 +347,6 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
     }
 
     WakelockPlus.disable();
-    ref.read(isFeedAudioEnabledProvider.notifier).state = true;
     super.dispose();
   }
 
@@ -343,68 +387,101 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
         activeController != null &&
         activeController.value.isInitialized;
 
-    return ZegoUIKitPrebuiltLiveStreaming(
-      appID: ApiConstants.zegoAppId,
-      appSign: ApiConstants.zegoAppSign,
-      userID: _localUserID ?? 'guest',
-      userName: _localUserName ?? 'Guest',
-      liveID: widget.channelId,
-      config:
-          ZegoUIKitPrebuiltLiveStreamingConfig.audience(
-              plugins: [ZegoUIKitSignalingPlugin()],
-            )
-            // Neon theme customization matching Host
-            ..topMenuBar.backgroundColor = Colors.transparent
-            ..bottomMenuBar.backgroundColor = Colors.transparent
-            // Remove co-host button by restricting visible buttons
-            // Correct property name is 'audienceButtons' (or hostButtons)
-            ..bottomMenuBar.audienceButtons = [
-              ZegoLiveStreamingMenuBarButtonName.chatButton,
-            ]
-            ..inRoomMessage.backgroundColor = AppColors.deepVoid.withValues(
-              alpha: 0.7,
-            )
-            ..innerText.startLiveStreamingButton = 'Start Live'
-            ..innerText.noHostOnline = 'No host online'
-            ..inRoomMessage.nameTextStyle = TextStyle(
-              color: AppColors.neonCyan,
-              fontWeight: FontWeight.bold,
-              fontSize: 12,
-            )
-            ..inRoomMessage.messageTextStyle = TextStyle(
-              color: Colors.white,
-              fontSize: 14,
-            )
-            // User join notifications
-            ..inRoomMessage.notifyUserJoin = true
-            ..inRoomMessage.notifyUserLeave = false
-            ..innerText.userEnter = 'joined'
-            // INJECT HLS PLAYER DIRECTLY INTO ZEGO VIEW
-            // This replaces the RTC Video View with our Custom HLS VideoPlayer
-            ..audioVideoView
-                .containerBuilder = (context, size, user, extraInfo) {
-              // Only replace for the host/broadcaster or main stream
-              // For now, replacing for ANY user in the view (typically just the host)
-              return isReady
-                  ? Center(
-                      child: AspectRatio(
-                        aspectRatio: activeController.value.aspectRatio,
-                        child: Transform(
-                          alignment: Alignment.center,
-                          transform: Matrix4.rotationY(math.pi), // Mirror fix
-                          child: VideoPlayer(activeController),
-                        ),
+    return Stack(
+      children: [
+        ZegoUIKitPrebuiltLiveStreaming(
+          appID: ApiConstants.zegoAppId,
+          appSign: ApiConstants.zegoAppSign,
+          userID: _localUserID ?? 'guest',
+          userName: _localUserName ?? 'Guest',
+          liveID: widget.channelId,
+          config:
+              ZegoUIKitPrebuiltLiveStreamingConfig.audience(
+                  plugins: [ZegoUIKitSignalingPlugin()],
+                )
+                // Neon theme customization matching Host
+                ..topMenuBar.backgroundColor = Colors.transparent
+                ..bottomMenuBar.backgroundColor = Colors.transparent
+                // Remove co-host button by restricting visible buttons
+                // Correct property name is 'audienceButtons' (or hostButtons)
+                ..bottomMenuBar.audienceButtons = [
+                  ZegoLiveStreamingMenuBarButtonName.chatButton,
+                ]
+                ..bottomMenuBar.audienceExtendButtons = [
+                  // Gift button
+                  ZegoMenuBarExtendButton(
+                    child: IconButton(
+                      icon: Icon(
+                        Icons.card_giftcard,
+                        color: AppColors.neonPink,
                       ),
-                    )
-                  : Container(
-                      color: AppColors.deepVoid,
-                      child: const Center(
-                        child: CircularProgressIndicator(
-                          color: AppColors.neonCyan,
-                        ),
-                      ),
-                    );
-            },
+                      onPressed: () {
+                        showModalBottomSheet(
+                          context: context,
+                          backgroundColor: Colors.transparent,
+                          isScrollControlled: true,
+                          builder: (context) => GiftBottomSheet(
+                            senderUserId: _localUserID ?? 'guest',
+                            senderUserName: _localUserName ?? 'Guest',
+                            currentCoinBalance: _mockCoinBalance,
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ]
+                ..inRoomMessage.backgroundColor = AppColors.deepVoid.withValues(
+                  alpha: 0.7,
+                )
+                ..innerText.startLiveStreamingButton = 'Start Live'
+                ..innerText.noHostOnline = 'No host online'
+                ..inRoomMessage.nameTextStyle = TextStyle(
+                  color: AppColors.neonCyan,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12,
+                )
+                ..inRoomMessage.messageTextStyle = TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                )
+                // User join notifications
+                ..inRoomMessage.notifyUserJoin = true
+                ..inRoomMessage.notifyUserLeave = false
+                ..innerText.userEnter = 'joined'
+                // INJECT HLS PLAYER DIRECTLY INTO ZEGO VIEW
+                // This replaces the RTC Video View with our Custom HLS VideoPlayer
+                ..audioVideoView
+                    .containerBuilder = (context, size, user, extraInfo) {
+                  // Only replace for the host/broadcaster or main stream
+                  // For now, replacing for ANY user in the view (typically just the host)
+                  return isReady
+                      ? Center(
+                          child: AspectRatio(
+                            aspectRatio: activeController.value.aspectRatio,
+                            child: Transform(
+                              alignment: Alignment.center,
+                              transform: Matrix4.rotationY(
+                                math.pi,
+                              ), // Mirror fix
+                              child: VideoPlayer(activeController),
+                            ),
+                          ),
+                        )
+                      : Container(
+                          color: AppColors.deepVoid,
+                          child: const Center(
+                            child: CircularProgressIndicator(
+                              color: AppColors.neonCyan,
+                            ),
+                          ),
+                        );
+                },
+        ),
+        // Gift animation overlay
+        const Positioned.fill(
+          child: IgnorePointer(child: GiftAnimationOverlay()),
+        ),
+      ],
     );
   }
 
@@ -563,6 +640,10 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
                 );
               },
             ),
+          ),
+          // Gift animation overlay
+          const Positioned.fill(
+            child: IgnorePointer(child: GiftAnimationOverlay()),
           ),
         ],
       ),
