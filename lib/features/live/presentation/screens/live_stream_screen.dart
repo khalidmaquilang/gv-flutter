@@ -14,7 +14,6 @@ import 'package:zego_zim/zego_zim.dart';
 import 'package:video_player/video_player.dart';
 import 'package:zego_uikit_prebuilt_live_streaming/zego_uikit_prebuilt_live_streaming.dart';
 import 'package:zego_uikit_signaling_plugin/zego_uikit_signaling_plugin.dart';
-import 'package:zego_uikit/zego_uikit.dart';
 import 'package:test_flutter/features/live/domain/models/gift_item.dart';
 import 'package:test_flutter/features/live/presentation/managers/gift_manager.dart';
 import 'package:test_flutter/features/live/presentation/widgets/gift_bottom_sheet.dart';
@@ -57,11 +56,43 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
     _setupGiftListener(); // Initialize gift system
     if (widget.isBroadcaster) {
       _startMonitoringHostStats();
+      _setupRtmpPushForHost(); // Set up RTMP push for host
     }
+  }
+
+  void _setupRtmpPushForHost() {
+    // Wait for the stream to start, then add RTMP push
+    Future.delayed(const Duration(seconds: 3), () async {
+      if (!mounted) return;
+
+      try {
+        final streamID = '${widget.channelId}_${_localUserID}_main';
+
+        final result = await ZegoExpressEngine.instance.addPublishCdnUrl(
+          streamID,
+          ApiConstants.rtmpUrl,
+        );
+
+        if (result.errorCode != 0) {
+          // Retry once more with a longer delay
+          Future.delayed(const Duration(seconds: 2), () async {
+            if (!mounted) return;
+            await ZegoExpressEngine.instance.addPublishCdnUrl(
+              streamID,
+              ApiConstants.rtmpUrl,
+            );
+          });
+        }
+      } catch (e) {
+        debugPrint('❌ RTMP Push Exception: $e');
+      }
+    });
   }
 
   void _setupGiftListener() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return; // Check if widget is still mounted
+
       _giftStreamSubscription = ZegoUIKit()
           .getSignalingPlugin()
           .getInRoomCommandMessageReceivedEventStream()
@@ -125,11 +156,15 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
 
   void _handleAudio() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(isFeedAudioEnabledProvider.notifier).state = false;
+      if (mounted) {
+        ref.read(isFeedAudioEnabledProvider.notifier).state = false;
+      }
     });
   }
 
   Future<void> _initializeEngine() async {
+    if (!mounted) return; // Check if widget is still mounted
+
     final user = ref.read(authControllerProvider).value;
     _localUserID =
         user?.id.toString() ?? 'guest_${DateTime.now().millisecondsSinceEpoch}';
@@ -334,8 +369,13 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
   @override
   void dispose() {
     // Re-enable feed audio before disposing (check mounted to avoid ref access after disposal)
-    if (mounted) {
-      ref.read(isFeedAudioEnabledProvider.notifier).state = true;
+    try {
+      if (mounted) {
+        ref.read(isFeedAudioEnabledProvider.notifier).state = true;
+      }
+    } catch (e) {
+      // Ignore errors if ref is no longer available
+      debugPrint('Note: Could not reset audio state on dispose: $e');
     }
 
     _videoController?.dispose();
@@ -409,7 +449,7 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
                 ]
                 ..bottomMenuBar.audienceExtendButtons = [
                   // Gift button
-                  ZegoMenuBarExtendButton(
+                  ZegoLiveStreamingMenuBarExtendButton(
                     child: IconButton(
                       icon: Icon(
                         Icons.card_giftcard,
@@ -496,6 +536,8 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
             userName: _localUserName ?? 'Unknown User',
             liveID: widget.channelId,
             events: ZegoUIKitPrebuiltLiveStreamingEvents(
+              // Note: RTMP push needs to be handled differently
+              // The onStateUpdate callback doesn't exist in this version
               onLeaveConfirmation:
                   (
                     ZegoLiveStreamingLeaveConfirmationEvent event,
