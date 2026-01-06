@@ -413,6 +413,29 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                       loading: () => const SizedBox(),
                       error: (_, __) => const SizedBox(),
                     ),
+                    const SizedBox(height: 8),
+                    // Bio
+                    userAsync.when(
+                      data: (user) => user.bio != null && user.bio!.isNotEmpty
+                          ? Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 32,
+                              ),
+                              child: Text(
+                                user.bio!,
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.6),
+                                  fontSize: 14,
+                                ),
+                                maxLines: 3,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            )
+                          : const SizedBox.shrink(),
+                      loading: () => const SizedBox(),
+                      error: (_, __) => const SizedBox(),
+                    ),
                     const SizedBox(height: 20),
                     // Stats
                     statsAsync.when(
