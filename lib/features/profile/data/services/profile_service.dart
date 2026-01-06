@@ -13,24 +13,21 @@ class ProfileService {
     : _apiClient = apiClient ?? ApiClient();
 
   Future<User> getProfile(String userId) async {
+    print("getProfile called with userId: $userId");
     try {
       final token = await _storage.read(key: 'auth_token');
       if (token != null) {
         _apiClient.setToken(token);
       }
 
-      final response = await _apiClient.get('${ApiConstants.user}/$userId');
+      final url = '/users/$userId';
+      print('Calling API: $url');
+      final response = await _apiClient.get(url);
+      print('Profile response for $userId: ${response.data}');
       return User.fromJson(response.data);
     } catch (e) {
-      // Mock data
-      return User(
-        id: "019b26fa-9bcd-73f8-9890-b85b6f8f7b64",
-        name: "Test User",
-        username: "test",
-        email: "aa@aa.com",
-        avatar: "https://dummyimage.com/150",
-        bio: "TikTok Clone User\nFollow me!",
-      );
+      print('Error loading profile for $userId: $e');
+      rethrow;
     }
   }
 
@@ -42,7 +39,6 @@ class ProfileService {
       }
 
       final response = await _apiClient.get(ApiConstants.user);
-      print(response.data);
       return User.fromJson(response.data);
     } catch (e) {
       rethrow;
@@ -50,14 +46,17 @@ class ProfileService {
   }
 
   Future<Map<String, int>> getStats(String userId) async {
-    // Mock API call for stats
-    await Future.delayed(const Duration(milliseconds: 500));
-    return {'following': 105, 'followers': 5600, 'likes': 12000};
-  }
-
-  Future<void> followUser(String userId) async {
-    await Future.delayed(const Duration(milliseconds: 500));
-    // API Call to follow
+    try {
+      final user = await getProfile(userId);
+      return {
+        'following': user.followingCount,
+        'followers': user.followersCount,
+        'likes': user.likesCount,
+      };
+    } catch (e) {
+      // Return zeros on error
+      return {'following': 0, 'followers': 0, 'likes': 0};
+    }
   }
 
   Future<List<ProfileVideo>> getMyVideos({int page = 1}) async {
@@ -75,6 +74,31 @@ class ProfileService {
       final data = response.data['data']['data'] as List;
       return data.map((json) => ProfileVideo.fromJson(json)).toList();
     } catch (e) {
+      // Return empty list on error for now
+      return [];
+    }
+  }
+
+  Future<List<ProfileVideo>> getUserVideos(
+    String userId, {
+    int page = 1,
+  }) async {
+    try {
+      final token = await _storage.read(key: 'auth_token');
+      if (token != null) {
+        _apiClient.setToken(token);
+      }
+
+      final response = await _apiClient.get(
+        ApiConstants.userVideos(userId),
+        queryParameters: {'page': page},
+      );
+
+      // FeedData::collect returns data at root level, not nested
+      final data = response.data['data']['data'] as List;
+      return data.map((json) => ProfileVideo.fromJson(json)).toList();
+    } catch (e) {
+      print('Error loading user videos: $e');
       // Return empty list on error for now
       return [];
     }
@@ -125,6 +149,38 @@ class ProfileService {
 
       return User.fromJson(response.data);
     } catch (e) {
+      rethrow;
+    }
+  }
+
+  Future<void> followUser(String userId) async {
+    try {
+      final token = await _storage.read(key: 'auth_token');
+      if (token != null) {
+        _apiClient.setToken(token);
+      }
+
+      print('Following user: $userId');
+      await _apiClient.post(ApiConstants.followUser(userId));
+      print('Successfully followed user: $userId');
+    } catch (e) {
+      print('Error following user $userId: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> unfollowUser(String userId) async {
+    try {
+      final token = await _storage.read(key: 'auth_token');
+      if (token != null) {
+        _apiClient.setToken(token);
+      }
+
+      print('Unfollowing user: $userId');
+      await _apiClient.delete(ApiConstants.unfollowUser(userId));
+      print('Successfully unfollowed user: $userId');
+    } catch (e) {
+      print('Error unfollowing user $userId: $e');
       rethrow;
     }
   }

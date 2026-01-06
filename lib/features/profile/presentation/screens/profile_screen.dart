@@ -62,18 +62,28 @@ class ProfileVideosState {
 
 class ProfileVideosNotifier extends StateNotifier<ProfileVideosState> {
   final ProfileService _service;
+  final String userId;
+  final bool isCurrentUser;
 
-  ProfileVideosNotifier(this._service) : super(ProfileVideosState.initial()) {
-    loadVideos();
+  ProfileVideosNotifier(this._service, this.userId, this.isCurrentUser)
+    : super(ProfileVideosState.initial()) {
+    // loadVideos();
   }
 
   Future<void> loadVideos() async {
+    print(
+      'loadVideos called - isLoading: ${state.isLoading}, hasMore: ${state.hasMore}, page: ${state.page}',
+    );
     if (state.isLoading || !state.hasMore) return;
 
     state = state.copyWith(isLoading: true);
 
     try {
-      final newVideos = await _service.getMyVideos(page: state.page);
+      final newVideos = isCurrentUser
+          ? await _service.getMyVideos(page: state.page)
+          : await _service.getUserVideos(userId, page: state.page);
+
+      print('Loaded ${newVideos.length} videos for page ${state.page}');
 
       if (newVideos.isEmpty) {
         state = state.copyWith(isLoading: false, hasMore: false);
@@ -85,6 +95,7 @@ class ProfileVideosNotifier extends StateNotifier<ProfileVideosState> {
         );
       }
     } catch (e) {
+      print('Error loading videos: $e');
       state = state.copyWith(isLoading: false);
     }
   }
@@ -97,7 +108,9 @@ class ProfileVideosNotifier extends StateNotifier<ProfileVideosState> {
     state = ProfileVideosState.initial().copyWith(isLoading: true);
 
     try {
-      final newVideos = await _service.getMyVideos(page: 1);
+      final newVideos = isCurrentUser
+          ? await _service.getMyVideos(page: 1)
+          : await _service.getUserVideos(userId, page: 1);
       state = state.copyWith(
         videos: newVideos,
         page: 2,
@@ -110,21 +123,27 @@ class ProfileVideosNotifier extends StateNotifier<ProfileVideosState> {
   }
 }
 
-final profileVideosProvider =
-    StateNotifierProvider.autoDispose<
+final profileVideosProvider = StateNotifierProvider.autoDispose
+    .family<
       ProfileVideosNotifier,
-      ProfileVideosState
-    >((ref) {
+      ProfileVideosState,
+      ({String userId, bool isCurrentUser})
+    >((ref, params) {
       final service = ref.watch(profileServiceProvider);
-      return ProfileVideosNotifier(service);
+      return ProfileVideosNotifier(
+        service,
+        params.userId,
+        params.isCurrentUser,
+      );
     });
 
 @override
-// ... existing providers ...
+// ... existing providers ...\
 final userProfileProvider = FutureProvider.family<User, String>((
   ref,
   userId,
 ) async {
+  print('userProfileProvider called for userId: $userId');
   return ref.read(profileServiceProvider).getProfile(userId);
 });
 
@@ -155,8 +174,25 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   @override
   void initState() {
     super.initState();
-    _scrollController.addListener(_onScroll);
-    Future.microtask(() => ref.read(profileVideosProvider.notifier).refresh());
+    _scrollController.addListener(_scrollListener);
+
+    // Invalidate profile provider to force fresh fetch for other users
+    if (!widget.isCurrentUser) {
+      Future.microtask(() {
+        ref.invalidate(userProfileProvider(widget.userId));
+      });
+    }
+
+    Future.microtask(
+      () => ref
+          .read(
+            profileVideosProvider((
+              userId: widget.userId,
+              isCurrentUser: widget.isCurrentUser,
+            )).notifier,
+          )
+          .refresh(),
+    );
   }
 
   @override
@@ -165,10 +201,38 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     super.dispose();
   }
 
-  void _onScroll() {
+  Future<void> _handleFollowToggle(User user) async {
+    final profileService = ref.read(profileServiceProvider);
+
+    try {
+      if (user.isFollowing) {
+        await profileService.unfollowUser(widget.userId);
+      } else {
+        await profileService.followUser(widget.userId);
+      }
+
+      // Refresh user data
+      ref.invalidate(userProfileProvider(widget.userId));
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error: $e')));
+      }
+    }
+  }
+
+  void _scrollListener() {
     if (_scrollController.position.pixels >=
         _scrollController.position.maxScrollExtent - 200) {
-      ref.read(profileVideosProvider.notifier).loadVideos();
+      ref
+          .read(
+            profileVideosProvider((
+              userId: widget.userId,
+              isCurrentUser: widget.isCurrentUser,
+            )).notifier,
+          )
+          .loadVideos();
     }
   }
 
@@ -177,13 +241,24 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     if (widget.isCurrentUser) {
       ref.listen(bottomNavIndexProvider, (previous, next) {
         if (next == 4) {
-          ref.read(profileVideosProvider.notifier).refresh();
+          ref
+              .read(
+                profileVideosProvider((
+                  userId: widget.userId,
+                  isCurrentUser: widget.isCurrentUser,
+                )).notifier,
+              )
+              .refresh();
         }
       });
     }
 
     final AsyncValue<User> userAsync;
+    print(
+      'ProfileScreen build - isCurrentUser: ${widget.isCurrentUser}, userId: ${widget.userId}',
+    );
     if (widget.isCurrentUser) {
+      print('Using authControllerProvider for current user');
       final authState = ref.watch(authControllerProvider);
       userAsync = authState.when(
         data: (user) =>
@@ -192,14 +267,25 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         error: (e, st) => AsyncValue.error(e, st),
       );
     } else {
+      print('Using userProfileProvider for userId: ${widget.userId}');
       userAsync = ref.watch(userProfileProvider(widget.userId));
+      userAsync.whenData((user) {
+        print(
+          'userProfileProvider has data - avatar: ${user.avatar}, isFollowing: ${user.isFollowing}',
+        );
+      });
     }
     final statsAsync = ref.watch(userStatsProvider(widget.userId));
     final draftsAsync = ref.watch(draftsProvider);
     final hasDrafts = draftsAsync.valueOrNull?.isNotEmpty ?? false;
     final draftsCount = draftsAsync.valueOrNull?.length ?? 0;
 
-    final videosState = ref.watch(profileVideosProvider);
+    final videosState = ref.watch(
+      profileVideosProvider((
+        userId: widget.userId,
+        isCurrentUser: widget.isCurrentUser,
+      )),
+    );
     final videos = videosState.allVideos;
 
     // Logic for grid items
@@ -295,7 +381,17 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                         padding: const EdgeInsets.all(4),
                         child: CircleAvatar(
                           radius: 50,
-                          backgroundImage: NetworkImage(user.avatar ?? ""),
+                          backgroundImage:
+                              user.avatar != null && user.avatar!.isNotEmpty
+                              ? NetworkImage(user.avatar!)
+                              : null,
+                          child: user.avatar == null || user.avatar!.isEmpty
+                              ? const Icon(
+                                  Icons.person,
+                                  size: 50,
+                                  color: Colors.white70,
+                                )
+                              : null,
                         ),
                       ),
                       loading: () => const CircleAvatar(
@@ -350,6 +446,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
+                        Builder(
+                          builder: (context) {
+                            print('isCurrentUser: ${widget.isCurrentUser}');
+                            userAsync.whenData((user) {
+                              print('User isFollowing: ${user.isFollowing}');
+                            });
+                            return const SizedBox.shrink();
+                          },
+                        ),
                         if (widget.isCurrentUser)
                           Container(
                             decoration: BoxDecoration(
@@ -388,34 +493,61 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                             ),
                           )
                         else
-                          Container(
-                            decoration: BoxDecoration(
-                              gradient: AppColors.primaryGradient,
-                              borderRadius: BorderRadius.circular(30),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: AppColors.neonPink.withValues(
-                                    alpha: 0.4,
+                          userAsync.when(
+                            data: (user) => Container(
+                              decoration: BoxDecoration(
+                                gradient: user.isFollowing
+                                    ? null
+                                    : AppColors.primaryGradient,
+                                color: user.isFollowing
+                                    ? Colors.grey[800]
+                                    : null,
+                                borderRadius: BorderRadius.circular(30),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: user.isFollowing
+                                        ? Colors.transparent
+                                        : AppColors.neonPink.withValues(
+                                            alpha: 0.4,
+                                          ),
+                                    blurRadius: 10,
+                                    offset: const Offset(0, 4),
                                   ),
-                                  blurRadius: 10,
-                                  offset: const Offset(0, 4),
-                                ),
-                              ],
-                            ),
-                            child: MaterialButton(
-                              onPressed: () {}, // Todo: Follow
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 32,
-                                vertical: 12,
+                                ],
                               ),
-                              child: const Text(
-                                "Follow",
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
+                              child: MaterialButton(
+                                onPressed: () => _handleFollowToggle(user),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 32,
+                                  vertical: 12,
+                                ),
+                                child: Text(
+                                  user.isFollowing ? "Following" : "Follow",
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                  ),
                                 ),
                               ),
                             ),
+                            loading: () => Container(
+                              decoration: BoxDecoration(
+                                color: Colors.grey[800],
+                                borderRadius: BorderRadius.circular(30),
+                              ),
+                              child: const MaterialButton(
+                                onPressed: null,
+                                padding: EdgeInsets.symmetric(
+                                  horizontal: 32,
+                                  vertical: 12,
+                                ),
+                                child: Text(
+                                  "Loading...",
+                                  style: TextStyle(color: Colors.white),
+                                ),
+                              ),
+                            ),
+                            error: (_, __) => const SizedBox.shrink(),
                           ),
                         const SizedBox(width: 12),
                       ],
