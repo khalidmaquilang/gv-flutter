@@ -85,7 +85,10 @@ class _GiftAnimationOverlayState extends State<GiftAnimationOverlay> {
                       angle: value * 6.28 * 2, // 2 full rotations
                       child: Text(
                         _currentGift!.gift.emoji,
-                        style: const TextStyle(fontSize: 80),
+                        style: const TextStyle(
+                          fontSize: 80,
+                          decoration: TextDecoration.none, // Remove underline
+                        ),
                       ),
                     );
                   },
@@ -95,10 +98,11 @@ class _GiftAnimationOverlayState extends State<GiftAnimationOverlay> {
                 // Sender name
                 Text(
                   _currentGift!.senderUserName,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
+                  style: TextStyle(
+                    color: Colors.yellow,
+                    fontSize: 14,
                     fontWeight: FontWeight.bold,
+                    decoration: TextDecoration.none, // Remove underline
                   ),
                 ),
                 const SizedBox(height: 4),
@@ -106,7 +110,11 @@ class _GiftAnimationOverlayState extends State<GiftAnimationOverlay> {
                 // Gift info
                 Text(
                   'sent ${_currentGift!.count > 1 ? '${_currentGift!.count}x ' : ''}${_currentGift!.gift.name}${_currentGift!.count > 1 ? 's' : ''}!',
-                  style: const TextStyle(color: Colors.white, fontSize: 16),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    decoration: TextDecoration.none, // Remove underline
+                  ),
                 ),
               ],
             ),

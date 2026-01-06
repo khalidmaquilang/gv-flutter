@@ -252,24 +252,22 @@ class _GiftBottomSheetState extends State<GiftBottomSheet> {
     GiftManager().playGiftAnimation(message);
 
     // Send to remote users
-    final success = await GiftManager().sendGift(
-      senderUserId: widget.senderUserId,
-      senderUserName: widget.senderUserName,
-      gift: _selectedGift!,
-      count: _quantity,
-    );
+    try {
+      await GiftManager().sendGift(
+        senderUserId: widget.senderUserId,
+        senderUserName: widget.senderUserName,
+        gift: _selectedGift!,
+        count: _quantity,
+      );
 
-    if (mounted) {
-      Navigator.pop(context);
-      if (success) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Sent ${_selectedGift!.name} x$_quantity!'),
-            backgroundColor: AppColors.neonCyan,
-            duration: const Duration(seconds: 2),
-          ),
-        );
-      } else {
+      // Close bottom sheet without success snackbar
+      if (mounted) {
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      // Only show snackbar on error
+      if (mounted) {
+        Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Failed to send gift'),

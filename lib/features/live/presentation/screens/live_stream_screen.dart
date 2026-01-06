@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'dart:math' as math;
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -18,8 +17,10 @@ import 'package:test_flutter/features/live/domain/models/gift_item.dart';
 import 'package:test_flutter/features/live/presentation/managers/gift_manager.dart';
 import 'package:test_flutter/features/live/presentation/widgets/gift_bottom_sheet.dart';
 import 'package:test_flutter/features/live/presentation/widgets/gift_animation_overlay.dart';
+import 'package:test_flutter/features/live/presentation/widgets/heart_animation_overlay.dart';
 import 'package:test_flutter/features/live/presentation/managers/stream_analytics_manager.dart';
 import 'package:test_flutter/features/live/presentation/screens/stream_summary_screen.dart';
+import 'package:test_flutter/features/live/presentation/widgets/pk_battle_controls.dart';
 
 class LiveStreamScreen extends ConsumerStatefulWidget {
   final bool isBroadcaster;
@@ -50,19 +51,25 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
   StreamSubscription? _giftStreamSubscription;
   final int _mockCoinBalance = 5000; // Mock coin balance
 
+  bool _isZimLoggedIn = false; // Track ZIM login status
+
   @override
   void initState() {
     super.initState();
     _handleAudio();
     _initializeEngine();
+    // UIKit handles ZIM login automatically via signaling plugin
     _setupGiftListener(); // Initialize gift system
     if (widget.isBroadcaster) {
       _startMonitoringHostStats();
-      _setupRtmpPushForHost(); // Set up RTMP push for host
+      // _setupRtmpPushForHost(); // RTMP disabled - using default Zego streaming
       StreamAnalyticsManager().startTracking(); // Start analytics tracking
     }
   }
 
+  // RTMP PUSH DISABLED - Code preserved for future use
+  // Uncomment to re-enable RTMP push to external server
+  /*
   void _setupRtmpPushForHost() {
     // Wait for the stream to start, then add RTMP push
     Future.delayed(const Duration(seconds: 3), () async {
@@ -87,10 +94,11 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
           });
         }
       } catch (e) {
-        debugPrint('❌ RTMP Push Exception: $e');
+        debugPrint('RTMP Push error: $e');
       }
     });
   }
+  */
 
   void _setupGiftListener() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -179,51 +187,9 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
 
     await [Permission.camera, Permission.microphone].request();
 
-    // HOST: Skip custom engine init - let UIKit manage it
-    if (widget.isBroadcaster) {
-      return; // Exit early - UIKit handles everything
-    }
-
-    // AUDIENCE: Initialize custom engine for playback
-    await ZegoExpressEngine.createEngineWithProfile(
-      ZegoEngineProfile(
-        ApiConstants.zegoAppId,
-        ZegoScenario.Broadcast,
-        appSign: ApiConstants.zegoAppSign,
-      ),
-    );
-
-    // Disable Hardware Decoding (Fixes Black Screen on Emulators viewing H264)
-    await ZegoExpressEngine.instance.enableHardwareDecoder(false);
-
-    // Set 720p for better quality (Check device performance if needed)
-    ZegoVideoConfig videoConfig = ZegoVideoConfig.preset(
-      ZegoVideoConfigPreset.Preset720P,
-    );
-    await ZegoExpressEngine.instance.setVideoConfig(videoConfig);
-
-    _setZegoEventHandlers();
-
-    final ZegoUser zegoUser = ZegoUser(_localUserID!, _localUserName!);
-    final ZegoRoomConfig roomConfig = ZegoRoomConfig.defaultConfig()
-      ..isUserStatusNotify = true;
-
-    await ZegoExpressEngine.instance.loginRoom(
-      widget.channelId,
-      zegoUser,
-      config: roomConfig,
-    );
-
-    // Initialize ZIM
-    await _initializeZIM(zegoUser, widget.channelId);
-
-    // Mute RTC Audio to prevent double audio (CDN + RTC)
-    if (!widget.isBroadcaster) {
-      await ZegoExpressEngine.instance.muteAllPlayStreamAudio(true);
-    }
-
-    // Audience Logic: Start the HLS player
-    _startAudienceMode();
+    // UIKit handles engine initialization for both host and audience
+    // Skip manual engine init to avoid conflicts
+    return;
   }
 
   void _setZegoEventHandlers() {
@@ -375,40 +341,71 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
 
   @override
   void dispose() {
-    // Re-enable feed audio before disposing (check mounted to avoid ref access after disposal)
+    debugPrint('🧹 Disposing LiveStreamScreen...');
+
+    // UIKit handles ZIM logout automatically
+
+    // Cleanup with error handling
+    try {
+      _giftStreamSubscription?.cancel();
+    } catch (e) {
+      debugPrint('⚠️ Error canceling gift subscription: $e');
+    }
+
+    try {
+      if (_videoController != null) {
+        _videoController!.dispose();
+      }
+    } catch (e) {
+      debugPrint('⚠️ Error disposing video controller: $e');
+    }
+
+    try {
+      WakelockPlus.disable();
+    } catch (e) {
+      debugPrint('⚠️ Error disabling wakelock: $e');
+    }
+
+    // Access ref safely with try-catch
     try {
       if (mounted) {
         ref.read(isFeedAudioEnabledProvider.notifier).state = true;
       }
     } catch (e) {
-      // Ignore errors if ref is no longer available
-      debugPrint('Note: Could not reset audio state on dispose: $e');
+      debugPrint('⚠️ Error accessing ref in dispose: $e');
     }
 
-    _videoController?.dispose();
-    _giftStreamSubscription?.cancel(); // Clean up gift listener
-
-    // Only destroy engine for audience (hosts use UIKit which manages its own lifecycle)
-    if (!widget.isBroadcaster) {
-      _destroy();
-    }
-
-    WakelockPlus.disable();
-    super.dispose();
-  }
-
-  Future<void> _destroy() async {
-    await ZegoExpressEngine.instance.logoutRoom(widget.channelId);
-    await ZegoExpressEngine.destroyEngine();
+    // UIKit manages engine and ZIM lifecycle - don't manually destroy
+    // if (!widget.isBroadcaster) {
+    //   try {
+    //     _destroy();
+    //   } catch (e) {
+    //     debugPrint('⚠️ Error in _destroy: $e');
+    //   }
+    // }
 
     try {
-      ZIM.getInstance()?.leaveRoom(widget.channelId);
-      ZIM.getInstance()?.logout();
-      ZIM.getInstance()?.destroy();
+      super.dispose();
     } catch (e) {
-      debugPrint("ZIM Destroy Error: $e");
+      debugPrint('⚠️ Error in super.dispose: $e');
     }
+
+    debugPrint('✅ LiveStreamScreen disposed');
   }
+
+  // DISABLED: UIKit manages engine and ZIM - manual destroy causes rejoin errors
+  // Future<void> _destroy() async {
+  //   await ZegoExpressEngine.instance.logoutRoom(widget.channelId);
+  //   await ZegoExpressEngine.destroyEngine();
+  //
+  //   try {
+  //     ZIM.getInstance()?.leaveRoom(widget.channelId);
+  //     ZIM.getInstance()?.logout();
+  //     ZIM.getInstance()?.destroy();
+  //   } catch (e) {
+  //     debugPrint("ZIM Destroy Error: $e");
+  //   }
+  // }
 
   @override
   Widget build(BuildContext context) {
@@ -427,20 +424,13 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
   }
 
   Widget _buildAudienceUIKit(BuildContext context) {
-    // Capture controller locally to ensure null safety during build
-    final activeController = _videoController;
-    final isReady =
-        _isVideoInitialized &&
-        activeController != null &&
-        activeController.value.isInitialized;
-
     return Stack(
       children: [
         ZegoUIKitPrebuiltLiveStreaming(
           appID: ApiConstants.zegoAppId,
           appSign: ApiConstants.zegoAppSign,
           userID: _localUserID ?? 'guest',
-          userName: _localUserName ?? 'Guest',
+          userName: _localUserName ?? 'Guest User',
           liveID: widget.channelId,
           config:
               ZegoUIKitPrebuiltLiveStreamingConfig.audience(
@@ -449,12 +439,21 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
                 // Neon theme customization matching Host
                 ..topMenuBar.backgroundColor = Colors.transparent
                 ..bottomMenuBar.backgroundColor = Colors.transparent
-                // Remove co-host button by restricting visible buttons
-                // Correct property name is 'audienceButtons' (or hostButtons)
+                // Audience buttons - simplified
                 ..bottomMenuBar.audienceButtons = [
                   ZegoLiveStreamingMenuBarButtonName.chatButton,
                 ]
                 ..bottomMenuBar.audienceExtendButtons = [
+                  // Heart/Like button
+                  ZegoLiveStreamingMenuBarExtendButton(
+                    child: IconButton(
+                      icon: Icon(Icons.favorite, color: AppColors.neonPink),
+                      onPressed: () {
+                        // Trigger heart animation
+                        heartOverlayKey.currentState?.addHeart();
+                      },
+                    ),
+                  ),
                   // Gift button
                   ZegoLiveStreamingMenuBarExtendButton(
                     child: IconButton(
@@ -494,39 +493,17 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
                 // User join notifications
                 ..inRoomMessage.notifyUserJoin = true
                 ..inRoomMessage.notifyUserLeave = false
-                ..innerText.userEnter = 'joined'
-                // INJECT HLS PLAYER DIRECTLY INTO ZEGO VIEW
-                // This replaces the RTC Video View with our Custom HLS VideoPlayer
-                ..audioVideoView
-                    .containerBuilder = (context, size, user, extraInfo) {
-                  // Only replace for the host/broadcaster or main stream
-                  // For now, replacing for ANY user in the view (typically just the host)
-                  return isReady
-                      ? Center(
-                          child: AspectRatio(
-                            aspectRatio: activeController.value.aspectRatio,
-                            child: Transform(
-                              alignment: Alignment.center,
-                              transform: Matrix4.rotationY(
-                                math.pi,
-                              ), // Mirror fix
-                              child: VideoPlayer(activeController),
-                            ),
-                          ),
-                        )
-                      : Container(
-                          color: AppColors.deepVoid,
-                          child: const Center(
-                            child: CircularProgressIndicator(
-                              color: AppColors.neonCyan,
-                            ),
-                          ),
-                        );
-                },
+                ..innerText.userEnter = 'joined',
         ),
         // Gift animation overlay
         const Positioned.fill(
           child: IgnorePointer(child: GiftAnimationOverlay()),
+        ),
+        // Heart animation overlay
+        Positioned.fill(
+          child: IgnorePointer(
+            child: HeartAnimationOverlay(key: heartOverlayKey),
+          ),
         ),
       ],
     );
@@ -646,6 +623,14 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
                   ..turnOnCameraWhenJoining = true
                   ..turnOnMicrophoneWhenJoining = true
                   ..useFrontFacingCamera = true
+                  // Host menu buttons - keep all defaults
+                  ..bottomMenuBar.hostButtons = [
+                    ZegoLiveStreamingMenuBarButtonName.toggleCameraButton,
+                    ZegoLiveStreamingMenuBarButtonName.toggleMicrophoneButton,
+                    ZegoLiveStreamingMenuBarButtonName.switchCameraButton,
+                    ZegoLiveStreamingMenuBarButtonName.beautyEffectButton,
+                    ZegoLiveStreamingMenuBarButtonName.soundEffectButton,
+                  ]
                   // Neon theme customization
                   ..topMenuBar.backgroundColor = Colors.transparent
                   ..bottomMenuBar.backgroundColor = Colors.transparent
@@ -722,6 +707,13 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
           const Positioned.fill(
             child: IgnorePointer(child: GiftAnimationOverlay()),
           ),
+          // PK Battle controls removed for now
+          // PKBattleControls(
+          //   myUserId: 'host',
+          //   myUserName: 'Host User',
+          //   channelId: widget.channelId,
+          //   isHost: true,
+          // ),
         ],
       ),
     );
