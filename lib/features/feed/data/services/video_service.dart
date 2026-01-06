@@ -10,11 +10,17 @@ class VideoService {
 
   VideoService({ApiClient? apiClient}) : _apiClient = apiClient ?? ApiClient();
 
-  Future<FeedResponse> getFeed({String? cursor}) async {
+  Future<FeedResponse> getFeed({
+    String? cursor,
+    bool onlyFollowing = false,
+  }) async {
     try {
-      final endpoint = cursor != null
-          ? "${ApiConstants.feed}?cursor=$cursor"
+      final baseEndpoint = onlyFollowing
+          ? ApiConstants.feedFollowing
           : ApiConstants.feed;
+      final endpoint = cursor != null
+          ? "$baseEndpoint?cursor=$cursor"
+          : baseEndpoint;
 
       final response = await _apiClient.get(endpoint);
       print(response);

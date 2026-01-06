@@ -14,6 +14,11 @@ final feedProvider = AsyncNotifierProvider<FeedNotifier, List<Video>>(
   FeedNotifier.new,
 );
 
+final followingFeedProvider =
+    AsyncNotifierProvider<FollowingFeedNotifier, List<Video>>(
+      FollowingFeedNotifier.new,
+    );
+
 class FeedNotifier extends AsyncNotifier<List<Video>> {
   String? _nextCursor;
   bool _hasMore = true;
@@ -62,6 +67,72 @@ class FeedNotifier extends AsyncNotifier<List<Video>> {
     } catch (e) {
       // Keep old state but maybe show error?
       // For now silent failure on pagination
+      print("Pagination error: $e");
+    } finally {
+      _isLoadingMore = false;
+    }
+  }
+
+  void toggleLike(String videoId) {
+    if (state.value == null) return;
+
+    final currentVideos = state.value!;
+    final index = currentVideos.indexWhere((v) => v.id == videoId);
+
+    if (index != -1) {
+      final originalVideo = currentVideos[index];
+      final newIsLiked = !originalVideo.isLiked;
+      final newLikesCount = originalVideo.likesCount + (newIsLiked ? 1 : -1);
+
+      final updatedVideo = originalVideo.copyWith(
+        isLiked: newIsLiked,
+        likesCount: newLikesCount,
+      );
+
+      final List<Video> updatedList = List.from(currentVideos);
+      updatedList[index] = updatedVideo;
+
+      state = AsyncData(updatedList);
+    }
+  }
+}
+
+class FollowingFeedNotifier extends AsyncNotifier<List<Video>> {
+  String? _nextCursor;
+  bool _hasMore = true;
+  bool _isLoadingMore = false;
+
+  @override
+  Future<List<Video>> build() async {
+    return _fetchFirstPage();
+  }
+
+  Future<List<Video>> _fetchFirstPage() async {
+    final service = ref.read(videoServiceProvider);
+    final response = await service.getFeed(onlyFollowing: true);
+    _nextCursor = response.nextCursor;
+    _hasMore = _nextCursor != null;
+
+    return response.videos;
+  }
+
+  Future<void> loadNextPage() async {
+    if (!_hasMore || _isLoadingMore) return;
+
+    _isLoadingMore = true;
+    try {
+      final service = ref.read(videoServiceProvider);
+      final response = await service.getFeed(
+        cursor: _nextCursor,
+        onlyFollowing: true,
+      );
+
+      _nextCursor = response.nextCursor;
+      _hasMore = _nextCursor != null;
+
+      final currentVideos = state.value ?? [];
+      state = AsyncData([...currentVideos, ...response.videos]);
+    } catch (e) {
       print("Pagination error: $e");
     } finally {
       _isLoadingMore = false;

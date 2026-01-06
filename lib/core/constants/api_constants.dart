@@ -19,6 +19,7 @@ class ApiConstants {
 
   // Feed
   static const String feed = '/feeds';
+  static const String feedFollowing = '/feeds/following';
   static const String videos = '/videos';
   static const String createPost = '/videos';
   static const String musics = '/musics';

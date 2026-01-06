@@ -47,6 +47,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
     });
 
     final feedAsync = ref.watch(feedProvider);
+    final followingFeedAsync = ref.watch(followingFeedProvider);
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -59,18 +60,18 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
               // Live Tab
               const LiveFeedList(),
 
-              // Following Tab (Reuse VideoFeedList)
+              // Following Tab - Uses followingFeedProvider
               VideoFeedList(
-                videos: feedAsync.value ?? [],
-                isLoading: feedAsync.isLoading,
-                error: feedAsync.error?.toString(),
-                onRefresh: () async => ref.refresh(feedProvider.future),
+                videos: followingFeedAsync.value ?? [],
+                isLoading: followingFeedAsync.isLoading,
+                error: followingFeedAsync.error?.toString(),
+                onRefresh: () async =>
+                    ref.refresh(followingFeedProvider.future),
                 onLoadMore: () =>
-                    ref.read(feedProvider.notifier).loadNextPage(),
+                    ref.read(followingFeedProvider.notifier).loadNextPage(),
               ),
 
-              // For You Tab (Reuse VideoFeedList)
-              // For You Tab (Reuse VideoFeedList)
+              // For You Tab
               VideoFeedList(
                 key: ValueKey("feed_fy_$_feedKey"),
                 videos: feedAsync.value ?? [],
