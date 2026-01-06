@@ -358,10 +358,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                           }
                         },
                       ),
-                      IconButton(
-                        icon: const Icon(Icons.menu, color: Colors.white),
-                        onPressed: () {},
-                      ),
                     ],
                   ),
                 ],
