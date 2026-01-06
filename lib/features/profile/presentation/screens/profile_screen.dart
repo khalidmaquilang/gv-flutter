@@ -143,16 +143,18 @@ final userProfileProvider = FutureProvider.family<User, String>((
   ref,
   userId,
 ) async {
-  print('userProfileProvider called for userId: $userId');
   return ref.read(profileServiceProvider).getProfile(userId);
 });
 
-final userStatsProvider = FutureProvider.family<Map<String, int>, String>((
-  ref,
-  userId,
-) async {
-  return ref.read(profileServiceProvider).getStats(userId);
-});
+final userStatsProvider =
+    FutureProvider.family<
+      Map<String, int>,
+      ({String userId, bool isCurrentUser})
+    >((ref, params) async {
+      return ref
+          .read(profileServiceProvider)
+          .getStats(params.userId, isCurrentUser: params.isCurrentUser);
+    });
 
 class ProfileScreen extends ConsumerStatefulWidget {
   final String userId;
@@ -258,7 +260,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       'ProfileScreen build - isCurrentUser: ${widget.isCurrentUser}, userId: ${widget.userId}',
     );
     if (widget.isCurrentUser) {
-      print('Using authControllerProvider for current user');
       final authState = ref.watch(authControllerProvider);
       userAsync = authState.when(
         data: (user) =>
@@ -267,15 +268,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         error: (e, st) => AsyncValue.error(e, st),
       );
     } else {
-      print('Using userProfileProvider for userId: ${widget.userId}');
       userAsync = ref.watch(userProfileProvider(widget.userId));
-      userAsync.whenData((user) {
-        print(
-          'userProfileProvider has data - avatar: ${user.avatar}, isFollowing: ${user.isFollowing}',
-        );
-      });
+      userAsync.whenData((user) {});
     }
-    final statsAsync = ref.watch(userStatsProvider(widget.userId));
+    final statsAsync = ref.watch(
+      userStatsProvider((
+        userId: widget.userId,
+        isCurrentUser: widget.isCurrentUser,
+      )),
+    );
     final draftsAsync = ref.watch(draftsProvider);
     final hasDrafts = draftsAsync.valueOrNull?.isNotEmpty ?? false;
     final draftsCount = draftsAsync.valueOrNull?.length ?? 0;
@@ -327,34 +328,33 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   ),
                   Row(
                     children: [
-                      IconButton(
-                        icon: const Icon(
-                          Icons.account_balance_wallet,
-                          color: Colors.white,
+                      if (widget.isCurrentUser)
+                        IconButton(
+                          icon: const Icon(
+                            Icons.account_balance_wallet,
+                            color: Colors.white,
+                          ),
+                          onPressed: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (context) => const WalletScreen(),
+                              ),
+                            );
+                          },
                         ),
-                        onPressed: () {
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (context) => const WalletScreen(),
-                            ),
-                          );
-                        },
-                      ),
                       IconButton(
                         icon: const Icon(Icons.logout, color: Colors.white),
                         onPressed: () async {
-                          if (widget.isCurrentUser) {
-                            await ref
-                                .read(authControllerProvider.notifier)
-                                .logout();
-                            if (context.mounted) {
-                              Navigator.of(context).pushAndRemoveUntil(
-                                MaterialPageRoute(
-                                  builder: (context) => const LoginScreen(),
-                                ),
-                                (route) => false,
-                              );
-                            }
+                          await ref
+                              .read(authControllerProvider.notifier)
+                              .logout();
+                          if (context.mounted) {
+                            Navigator.of(context).pushAndRemoveUntil(
+                              MaterialPageRoute(
+                                builder: (context) => const LoginScreen(),
+                              ),
+                              (route) => false,
+                            );
                           }
                         },
                       ),

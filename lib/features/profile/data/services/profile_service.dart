@@ -21,12 +21,11 @@ class ProfileService {
       }
 
       final url = '/users/$userId';
-      print('Calling API: $url');
+
       final response = await _apiClient.get(url);
-      print('Profile response for $userId: ${response.data}');
+
       return User.fromJson(response.data);
     } catch (e) {
-      print('Error loading profile for $userId: $e');
       rethrow;
     }
   }
@@ -45,9 +44,15 @@ class ProfileService {
     }
   }
 
-  Future<Map<String, int>> getStats(String userId) async {
+  Future<Map<String, int>> getStats(
+    String userId, {
+    bool isCurrentUser = false,
+  }) async {
     try {
-      final user = await getProfile(userId);
+      final user = isCurrentUser
+          ? await getCurrentUser()
+          : await getProfile(userId);
+
       return {
         'following': user.followingCount,
         'followers': user.followersCount,
