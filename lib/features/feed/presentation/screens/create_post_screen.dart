@@ -10,6 +10,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:video_thumbnail/video_thumbnail.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
+import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
+import 'package:ffmpeg_kit_flutter_new/return_code.dart';
 import '../providers/upload_provider.dart';
 import '../providers/drafts_provider.dart';
 import '../../data/models/draft_model.dart';
@@ -234,18 +236,108 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
     }
   }
 
-  void _onPost() {
-    // No async needed for UI
-    String path = _currentFiles.first.path;
+  void _onPost() async {
     final caption = widget.isVideo
         ? _descriptionController.text
         : "${_titleController.text}\n${_descriptionController.text}";
+
+    // Handle multi-segment videos
+    String finalPath;
+    if (_currentFiles.length > 1) {
+      // Show loading dialog for merge operation
+      if (mounted) {
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => const AlertDialog(
+            backgroundColor: Color(0xFF1E1E1E),
+            content: Row(
+              children: [
+                CircularProgressIndicator(color: AppColors.neonPink),
+                SizedBox(width: 20),
+                Expanded(
+                  child: Text(
+                    'Merging video segments...\nThis may take a moment.',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      }
+
+      // Multiple segments - need to merge them
+      try {
+        final tempDir = await getTemporaryDirectory();
+        final listFilePath =
+            '${tempDir.path}/filelist_${DateTime.now().millisecondsSinceEpoch}.txt';
+        final outputPath =
+            '${tempDir.path}/merged_${DateTime.now().millisecondsSinceEpoch}.mp4';
+
+        // Create concat list file
+        final listFile = File(listFilePath);
+        final fileList = _currentFiles
+            .map((xFile) => "file '${xFile.path}'")
+            .join('\n');
+        await listFile.writeAsString(fileList);
+
+        // FFmpeg concat command - using -c copy for speed
+        final command =
+            '-f concat -safe 0 -i "$listFilePath" -c copy "$outputPath"';
+        final session = await FFmpegKit.execute(command);
+        final returnCode = await session.getReturnCode();
+
+        // Close loading dialog
+        if (mounted) Navigator.of(context).pop();
+
+        if (!ReturnCode.isSuccess(returnCode)) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Failed to merge video segments'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+          return;
+        }
+
+        finalPath = outputPath;
+
+        // Clean up list file
+        try {
+          await listFile.delete();
+        } catch (e) {
+          debugPrint('Warning: Could not delete temp file: $e');
+        }
+      } catch (e) {
+        // Close loading dialog if still open
+        if (mounted && Navigator.canPop(context)) {
+          Navigator.of(context).pop();
+        }
+
+        debugPrint('Error merging segments: $e');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error: ${e.toString().substring(0, 50)}...'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+    } else {
+      // Single file - use directly
+      finalPath = _currentFiles.first.path;
+    }
 
     // Fire and forget - The provider handles optimization and upload in background
     ref
         .read(uploadProvider.notifier)
         .startUpload(
-          path,
+          finalPath,
           caption,
           privacy: _privacy,
           allowComments: _allowComments,

@@ -24,6 +24,7 @@ class ProfileFeedScreen extends ConsumerStatefulWidget {
 
 class _ProfileFeedScreenState extends ConsumerState<ProfileFeedScreen> {
   late PageController _pageController;
+  VideoPreloadNotifier? _videoNotifier;
 
   int _currentIndex = 0;
   List<Video> _mappedVideos = [];
@@ -37,16 +38,17 @@ class _ProfileFeedScreenState extends ConsumerState<ProfileFeedScreen> {
     // Convert ProfileVideos to standard Videos for the provider
     _mappedVideos = widget.videos.map((v) => v.toVideo(widget.user)).toList();
 
-    // Init provider with current page
+    // Init provider with current page and store notifier reference
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref
-          .read(videoPreloadProvider.notifier)
-          .onPageChanged(_currentIndex, _mappedVideos);
+      _videoNotifier = ref.read(videoPreloadProvider.notifier);
+      _videoNotifier?.onPageChanged(_currentIndex, _mappedVideos);
     });
   }
 
   @override
   void dispose() {
+    // Pause the current video before disposing using stored reference
+    _videoNotifier?.pauseCurrentVideo();
     _pageController.dispose();
     super.dispose();
   }

@@ -123,8 +123,8 @@ class ProfileVideosNotifier extends StateNotifier<ProfileVideosState> {
   }
 }
 
-final profileVideosProvider = StateNotifierProvider.autoDispose
-    .family<
+final profileVideosProvider =
+    StateNotifierProvider.family<
       ProfileVideosNotifier,
       ProfileVideosState,
       ({String userId, bool isCurrentUser})

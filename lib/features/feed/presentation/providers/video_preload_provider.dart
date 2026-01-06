@@ -99,6 +99,15 @@ class VideoPreloadNotifier extends StateNotifier<VideoPreloadState> {
     }
   }
 
+  void pauseCurrentVideo() {
+    // Pause all active video controllers
+    for (final controller in state.controllers.values) {
+      if (controller.value.isPlaying) {
+        controller.pause();
+      }
+    }
+  }
+
   void disposeAll() {
     for (final controller in state.controllers.values) {
       controller.dispose();
