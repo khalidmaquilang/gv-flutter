@@ -18,6 +18,8 @@ import 'package:test_flutter/features/live/domain/models/gift_item.dart';
 import 'package:test_flutter/features/live/presentation/managers/gift_manager.dart';
 import 'package:test_flutter/features/live/presentation/widgets/gift_bottom_sheet.dart';
 import 'package:test_flutter/features/live/presentation/widgets/gift_animation_overlay.dart';
+import 'package:test_flutter/features/live/presentation/managers/stream_analytics_manager.dart';
+import 'package:test_flutter/features/live/presentation/screens/stream_summary_screen.dart';
 
 class LiveStreamScreen extends ConsumerStatefulWidget {
   final bool isBroadcaster;
@@ -57,6 +59,7 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
     if (widget.isBroadcaster) {
       _startMonitoringHostStats();
       _setupRtmpPushForHost(); // Set up RTMP push for host
+      StreamAnalyticsManager().startTracking(); // Start analytics tracking
     }
   }
 
@@ -109,6 +112,10 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
                   final giftData = jsonDecode(message);
                   final giftMessage = GiftMessage.fromJson(giftData);
                   GiftManager().playGiftAnimation(giftMessage);
+                  // Record gift in analytics if host is tracking
+                  if (widget.isBroadcaster) {
+                    StreamAnalyticsManager().recordGift(giftMessage);
+                  }
                 } catch (e) {
                   debugPrint('Error parsing gift message: $e');
                 }
@@ -543,7 +550,8 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
                     ZegoLiveStreamingLeaveConfirmationEvent event,
                     Future<bool> Function() defaultAction,
                   ) async {
-                    return await showDialog(
+                    final confirmed =
+                        await showDialog<bool>(
                           context: context,
                           barrierDismissible: false,
                           builder: (BuildContext dialogContext) {
@@ -599,6 +607,33 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
                           },
                         ) ??
                         false;
+
+                    // If confirmed, handle stream end manually
+                    if (confirmed) {
+                      // Stop analytics tracking
+                      final analytics = StreamAnalyticsManager().stopTracking();
+
+                      // Manually leave the stream
+                      await ZegoUIKit().leaveRoom();
+
+                      // Small delay to ensure cleanup completes
+                      await Future.delayed(const Duration(milliseconds: 300));
+
+                      // Navigate to summary screen if still mounted
+                      if (mounted) {
+                        Navigator.of(context).pushReplacement(
+                          MaterialPageRoute(
+                            builder: (context) =>
+                                StreamSummaryScreen(analytics: analytics),
+                          ),
+                        );
+                      }
+
+                      // Return false to prevent ZegoUIKit's default navigation
+                      return false;
+                    }
+
+                    return false; // Return false to handle navigation ourselves
                   },
             ),
             config:
