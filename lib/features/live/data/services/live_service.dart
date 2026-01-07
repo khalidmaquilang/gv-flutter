@@ -8,8 +8,6 @@ import '../models/live_interaction_model.dart';
 import 'package:test_flutter/core/constants/api_constants.dart';
 import 'package:test_flutter/core/network/api_client.dart';
 import '../models/live_stream_model.dart';
-import '../../../auth/data/models/user_model.dart';
-import 'dart:math';
 
 class LiveService {
   // Streams for UI
@@ -296,35 +294,25 @@ class LiveService {
   }
 
   Future<List<LiveStream>> getActiveStreams() async {
-    await Future.delayed(const Duration(milliseconds: 500));
-    return List.generate(10, (index) {
-      // FORCE SYNC: First stream matches the Host's "Go Live" ID
-      if (index == 0) {
-        return LiveStream(
-          channelId: ApiConstants.fixedTestChannelId,
-          user: User(
-            id: "host_user",
-            name: "Test Host",
-            email: "host@test.com",
-            avatar: "https://dummyimage.com/50",
-          ),
-          thumbnailUrl: "https://dummyimage.com/300x400",
-          viewersCount: 0,
-          title: "LIVE NOW (Test Channel)",
-        );
+    try {
+      if (!await _setAuthToken()) return [];
+
+      final response = await _apiClient.get('/feeds/live');
+
+      if (response.statusCode == 200) {
+        final data = response.data as Map<String, dynamic>;
+        final List<dynamic> feedsData = data['data'] as List<dynamic>;
+
+        return feedsData
+            .map((json) => LiveStream.fromJson(json as Map<String, dynamic>))
+            .toList();
+      } else {
+        debugPrint('Failed to fetch live feeds: ${response.statusCode}');
+        return [];
       }
-      return LiveStream(
-        channelId: "channel_$index",
-        user: User(
-          id: index.toString(),
-          name: "Live User $index",
-          email: "live$index@test.com",
-          avatar: "https://dummyimage.com/50",
-        ),
-        thumbnailUrl: "https://dummyimage.com/300x400",
-        viewersCount: Random().nextInt(5000) + 100,
-        title: "Live Stream #$index - Join now!",
-      );
-    });
+    } catch (e) {
+      debugPrint('Error fetching live feeds: $e');
+      return [];
+    }
   }
 }

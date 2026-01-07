@@ -74,7 +74,9 @@ class _LiveFeedListState extends State<LiveFeedList> {
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(8),
                 image: DecorationImage(
-                  image: NetworkImage(stream.thumbnailUrl),
+                  image: NetworkImage(
+                    stream.thumbnailUrl ?? 'https://dummyimage.com/300x400',
+                  ),
                   fit: BoxFit.cover,
                 ),
               ),
