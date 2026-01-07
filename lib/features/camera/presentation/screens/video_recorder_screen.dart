@@ -21,6 +21,7 @@ import '../../../live/presentation/screens/live_stream_setup_screen.dart';
 import 'package:test_flutter/core/widgets/neon_border_container.dart';
 import '../widgets/glass_action_button.dart';
 import 'dart:ui'; // For ImageFilter
+import '../../../auth/presentation/providers/auth_provider.dart';
 
 class VideoRecorderScreen extends ConsumerStatefulWidget {
   final List<XFile> initialFiles;
@@ -47,8 +48,7 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
   bool _isDeepArInitialized = false;
 
   bool isRecording = false;
-  int _selectedModeIndex = 1; // 0: Photo, 1: 15s, 2: 60s, 3: Live
-  final List<String> _modes = ['Photo', '15s', '60s', 'Live'];
+  int _selectedModeIndex = 1; // 0: Photo, 1: 15s, 2: 60s, 3: Live (if allowed)
 
   // Effects - Map of display name to effect data (path and preview)
   final Map<String, Map<String, String>> _effects = {
@@ -90,6 +90,18 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
 
   // Sound
   Sound? _selectedSound;
+
+  // Computed list of available modes based on user permissions
+  List<String> get _availableModes {
+    final user = ref.read(authControllerProvider).value;
+    final baseModes = ['Photo', '15s', '60s', 'Live'];
+
+    // Remove 'Live' mode if user doesn't have permission
+    if (user == null || !user.allowLive) {
+      return baseModes.where((mode) => mode != 'Live').toList();
+    }
+    return baseModes;
+  }
 
   @override
   void initState() {
@@ -229,7 +241,7 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
       _selectedModeIndex = index;
     });
 
-    if (_modes[index] == 'Live') {
+    if (_availableModes[index] == 'Live') {
       // Stop DeepAR camera before pushing to LiveStreamSetupScreen
       if (_deepArController != null) {
         try {
@@ -250,9 +262,9 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
       return;
     }
 
-    if (_modes[index] == '15s') {
+    if (_availableModes[index] == '15s') {
       _maxDuration = 15;
-    } else if (_modes[index] == '60s') {
+    } else if (_availableModes[index] == '60s') {
       _maxDuration = 60;
     } else {
       _maxDuration = 0;
@@ -639,7 +651,7 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
     if (_deepArController == null || !_isDeepArInitialized) return;
 
     // Photo Mode
-    if (_modes[_selectedModeIndex] == 'Photo') {
+    if (_availableModes[_selectedModeIndex] == 'Photo') {
       final File file = await _deepArController!.takeScreenshot();
       if (file != null && mounted) {
         Navigator.of(context).push(
@@ -1299,7 +1311,7 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
                       child: ListView.builder(
                         scrollDirection: Axis.horizontal,
                         shrinkWrap: true,
-                        itemCount: _modes.length,
+                        itemCount: _availableModes.length,
                         itemBuilder: (context, index) {
                           bool isSelected = _selectedModeIndex == index;
                           return GestureDetector(
@@ -1309,7 +1321,7 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
                                 horizontal: 15,
                               ),
                               child: Text(
-                                _modes[index],
+                                _availableModes[index],
                                 style: TextStyle(
                                   color: isSelected
                                       ? Colors.white
