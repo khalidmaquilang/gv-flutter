@@ -119,6 +119,9 @@ flutter:
     - assets/images/
     - assets/sounds/
     - assets/deepar/
+    - assets/deepar/Flower_Face/
+    - assets/deepar/Vendetta_Mask/
+    - assets/deepar/Fire_Effect/
 
   # To add custom fonts to your application, add a fonts section here,
   # in this "flutter" section. Each entry in this list should have a

@@ -50,9 +50,27 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
   int _selectedModeIndex = 1; // 0: Photo, 1: 15s, 2: 60s, 3: Live
   final List<String> _modes = ['Photo', '15s', '60s', 'Live'];
 
-  // Effects
-  final List<String> _effects = ['none', 'beats-headphones-ad', 'makeup-kim'];
-  int _selectedEffectIndex = 0;
+  // Effects - Map of display name to effect data (path and preview)
+  final Map<String, Map<String, String>> _effects = {
+    'None': <String, String>{
+      'path': 'none',
+      'preview': '', // No preview for None
+    },
+    'Flower Face': <String, String>{
+      'path': 'Flower_Face/flower_face',
+      'preview': 'assets/deepar/Flower_Face/preview.png',
+    },
+    'Vendetta Mask': <String, String>{
+      'path': 'Vendetta_Mask/Vendetta_Mask',
+      'preview': 'assets/deepar/Vendetta_Mask/preview.png',
+    },
+    'Fire Effect': <String, String>{
+      'path': 'Fire_Effect/Fire_Effect',
+      'preview': 'assets/deepar/Fire_Effect/preview.png',
+    },
+  };
+
+  String _selectedEffectName = 'None';
 
   final List<XFile> _recordedFiles = [];
   Timer? _timer;
@@ -268,19 +286,27 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
     return file;
   }
 
-  void _switchEffect(int index) async {
+  void _switchEffect(String effectName) async {
     if (_deepArController == null) return;
     setState(() {
-      _selectedEffectIndex = index;
+      _selectedEffectName = effectName;
     });
 
-    final effect = _effects[index];
-    if (effect == 'none') {
-      _deepArController?.switchEffect(null as dynamic);
+    final effectData = _effects[effectName];
+    if (effectData == null) return;
+
+    final effectPath = effectData['path'];
+    if (effectPath == null) return;
+
+    if (effectPath == 'none') {
+      // Reinitialize controller to clear effect
+      await _reinitializeDeepAr();
     } else {
-      String assetPath = "assets/deepar/$effect.deepar";
+      String assetPath = "assets/deepar/$effectPath.deepar";
+      print(assetPath);
       try {
         final File file = await _copyAssetToFile(assetPath);
+        print(file.path);
         _deepArController?.switchEffect(file.path);
       } catch (e) {
         debugPrint("Error loading effect: $e");
@@ -289,6 +315,20 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
         ).showSnackBar(SnackBar(content: Text("Error loading effect: $e")));
       }
     }
+  }
+
+  Future<void> _reinitializeDeepAr() async {
+    // Clear current controller
+    setState(() {
+      _deepArController = null;
+      _isDeepArInitialized = false;
+    });
+
+    // Small delay to ensure cleanup
+    await Future.delayed(const Duration(milliseconds: 100));
+
+    // Reinitialize
+    await _initializeDeepAr();
   }
 
   void _toggleTimer() {
@@ -991,10 +1031,12 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     itemCount: _effects.length,
                     itemBuilder: (context, index) {
-                      final effect = _effects[index];
-                      final isSelected = _selectedEffectIndex == index;
+                      final effectName = _effects.keys.elementAt(index);
+                      final effectData = _effects[effectName]!;
+                      final previewPath = effectData['preview'] ?? '';
+                      final isSelected = _selectedEffectName == effectName;
                       return GestureDetector(
-                        onTap: () => _switchEffect(index),
+                        onTap: () => _switchEffect(effectName),
                         child: Container(
                           margin: const EdgeInsets.only(right: 12),
                           width: 60,
@@ -1019,14 +1061,36 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
                                 : [],
                             color: Colors.black.withOpacity(0.5),
                           ),
-                          child: Center(
-                            child: Text(
-                              effect == 'none' ? 'Ø' : effect[0].toUpperCase(),
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
+                          child: ClipOval(
+                            child: previewPath.isNotEmpty
+                                ? Image.asset(
+                                    previewPath,
+                                    fit: BoxFit.cover,
+                                    width: 60,
+                                    height: 60,
+                                    errorBuilder: (context, error, stackTrace) {
+                                      // Fallback to text if image fails to load
+                                      return Center(
+                                        child: Text(
+                                          effectName[0].toUpperCase(),
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                  )
+                                : Center(
+                                    child: Text(
+                                      'Ø',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 20,
+                                      ),
+                                    ),
+                                  ),
                           ),
                         ),
                       );
