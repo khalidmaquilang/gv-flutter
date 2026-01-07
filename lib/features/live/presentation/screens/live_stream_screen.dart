@@ -21,15 +21,20 @@ import 'package:test_flutter/features/live/presentation/widgets/heart_animation_
 import 'package:test_flutter/features/live/presentation/managers/stream_analytics_manager.dart';
 import 'package:test_flutter/features/live/presentation/screens/stream_summary_screen.dart';
 import 'package:test_flutter/features/live/presentation/widgets/pk_battle_controls.dart';
+import '../../data/services/live_service.dart';
 
 class LiveStreamScreen extends ConsumerStatefulWidget {
   final bool isBroadcaster;
   final String channelId;
+  final String? liveId;
+  final String? liveTitle;
 
   const LiveStreamScreen({
     super.key,
     required this.isBroadcaster,
     required this.channelId,
+    this.liveId,
+    this.liveTitle,
   });
 
   @override
@@ -520,6 +525,14 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
             userName: _localUserName ?? 'Unknown User',
             liveID: widget.channelId,
             events: ZegoUIKitPrebuiltLiveStreamingEvents(
+              onStateUpdated: (ZegoLiveStreamingState state) {
+                // Call start API when streaming begins
+                if (state == ZegoLiveStreamingState.living &&
+                    widget.liveId != null) {
+                  final liveService = LiveService();
+                  liveService.startLive(widget.liveId!);
+                }
+              },
               // Note: RTMP push needs to be handled differently
               // The onStateUpdate callback doesn't exist in this version
               onLeaveConfirmation:
@@ -587,6 +600,12 @@ class _LiveStreamScreenState extends ConsumerState<LiveStreamScreen> {
 
                     // If confirmed, handle stream end manually
                     if (confirmed) {
+                      // End live stream via API
+                      if (widget.liveId != null) {
+                        final liveService = LiveService();
+                        await liveService.endLive(widget.liveId!);
+                      }
+
                       // Stop analytics tracking
                       final analytics = StreamAnalyticsManager().stopTracking();
 

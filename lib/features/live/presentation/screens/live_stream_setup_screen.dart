@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:test_flutter/core/theme/app_theme.dart';
-import 'package:test_flutter/core/constants/api_constants.dart';
 import 'live_stream_screen.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../features/feed/presentation/providers/feed_audio_provider.dart';
+import '../../data/services/live_service.dart';
 
 class LiveStreamSetupScreen extends ConsumerStatefulWidget {
   const LiveStreamSetupScreen({super.key});
@@ -20,6 +20,7 @@ class _LiveStreamSetupScreenState extends ConsumerState<LiveStreamSetupScreen> {
   CameraController? _cameraController;
   bool _isPermissionGranted = false;
   bool _isGoingToLive = false;
+  bool _isCreatingLive = false;
   String? _errorMessage;
 
   @override
@@ -99,7 +100,35 @@ class _LiveStreamSetupScreenState extends ConsumerState<LiveStreamSetupScreen> {
       return;
     }
 
+    if (_isCreatingLive) return; // Prevent multiple presses
+
+    setState(() {
+      _isCreatingLive = true;
+    });
+
     _isGoingToLive = true;
+
+    // Create live stream via API
+    final liveService = LiveService();
+    final result = await liveService.createLive(_titleController.text.trim());
+
+    if (result == null ||
+        result['id'] == null ||
+        result['stream_key'] == null) {
+      if (mounted) {
+        setState(() {
+          _isCreatingLive = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to create live stream')),
+        );
+      }
+      _isGoingToLive = false;
+      return;
+    }
+
+    final liveId = result['id'].toString();
+    final streamKey = result['stream_key'].toString();
 
     // Dispose local controller before navigating to release camera
     if (_cameraController != null) {
@@ -117,7 +146,9 @@ class _LiveStreamSetupScreenState extends ConsumerState<LiveStreamSetupScreen> {
       MaterialPageRoute(
         builder: (context) => LiveStreamScreen(
           isBroadcaster: true,
-          channelId: ApiConstants.fixedTestChannelId,
+          channelId: streamKey,
+          liveId: liveId,
+          liveTitle: _titleController.text.trim(),
         ),
       ),
     );
@@ -125,19 +156,26 @@ class _LiveStreamSetupScreenState extends ConsumerState<LiveStreamSetupScreen> {
 
   @override
   void dispose() {
+    // If we are NOT going to live stream (e.g. back button), restore feed audio
+    // Check mounted to ensure widget is still in tree before using ref
+    if (!_isGoingToLive && mounted) {
+      try {
+        ref.read(isFeedAudioEnabledProvider.notifier).state = true;
+      } catch (e) {
+        debugPrint('Error restoring feed audio: $e');
+      }
+    }
+
     _titleController.dispose();
     _cameraController?.dispose();
-
-    // If we are NOT going to live stream (e.g. back button), restore feed audio
-    if (!_isGoingToLive) {
-      ref.read(isFeedAudioEnabledProvider.notifier).state = true;
-    }
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      resizeToAvoidBottomInset:
+          false, // Prevents video distortion when keyboard shows
       backgroundColor: Colors.black,
       body: Stack(
         children: [
@@ -173,7 +211,17 @@ class _LiveStreamSetupScreenState extends ConsumerState<LiveStreamSetupScreen> {
           else if (_isPermissionGranted &&
               _cameraController != null &&
               _cameraController!.value.isInitialized)
-            SizedBox.expand(child: CameraPreview(_cameraController!))
+            // Use FittedBox to prevent stretching
+            SizedBox.expand(
+              child: FittedBox(
+                fit: BoxFit.cover,
+                child: SizedBox(
+                  width: _cameraController!.value.previewSize!.height,
+                  height: _cameraController!.value.previewSize!.width,
+                  child: CameraPreview(_cameraController!),
+                ),
+              ),
+            )
           else
             const Center(child: CircularProgressIndicator()),
 
@@ -192,7 +240,16 @@ class _LiveStreamSetupScreenState extends ConsumerState<LiveStreamSetupScreen> {
                     children: [
                       IconButton(
                         icon: const Icon(Icons.close, color: Colors.white),
-                        onPressed: () => Navigator.of(context).pop(),
+                        onPressed: () {
+                          // Restore feed audio before popping
+                          if (!_isGoingToLive) {
+                            ref
+                                    .read(isFeedAudioEnabledProvider.notifier)
+                                    .state =
+                                true;
+                          }
+                          Navigator.of(context).pop();
+                        },
                       ),
                       const Text(
                         "LIVE Setup",
@@ -210,69 +267,89 @@ class _LiveStreamSetupScreenState extends ConsumerState<LiveStreamSetupScreen> {
                 const Spacer(),
 
                 // Setup Card
-                Container(
-                  padding: const EdgeInsets.all(24.0),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        Colors.transparent,
-                        Colors.black.withOpacity(0.8),
+                Padding(
+                  padding: EdgeInsets.only(
+                    bottom: MediaQuery.of(context).viewInsets.bottom,
+                  ),
+                  child: Container(
+                    padding: const EdgeInsets.all(24.0),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Colors.transparent,
+                          Colors.black.withOpacity(0.8),
+                        ],
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Add a Title regarding your LIVE',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                        TextField(
+                          controller: _titleController,
+                          style: const TextStyle(color: Colors.white),
+                          decoration: InputDecoration(
+                            hintText: 'Enter title here...',
+                            hintStyle: TextStyle(
+                              color: Colors.white.withOpacity(0.5),
+                            ),
+                            filled: true,
+                            fillColor: Colors.white.withOpacity(0.2),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: BorderSide.none,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 30),
+                        SizedBox(
+                          width: double.infinity,
+                          height: 50,
+                          child: ElevatedButton(
+                            onPressed: _isCreatingLive
+                                ? null
+                                : _startLiveStream,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.neonPink,
+                              disabledBackgroundColor: AppColors.neonPink
+                                  .withOpacity(0.5),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(25),
+                              ),
+                            ),
+                            child: _isCreatingLive
+                                ? const SizedBox(
+                                    height: 20,
+                                    width: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      valueColor: AlwaysStoppedAnimation<Color>(
+                                        Colors.white,
+                                      ),
+                                    ),
+                                  )
+                                : const Text(
+                                    'Go LIVE',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                          ),
+                        ),
                       ],
                     ),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Add a Title regarding your LIVE',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-                      TextField(
-                        controller: _titleController,
-                        style: const TextStyle(color: Colors.white),
-                        decoration: InputDecoration(
-                          hintText: 'Enter title here...',
-                          hintStyle: TextStyle(
-                            color: Colors.white.withOpacity(0.5),
-                          ),
-                          filled: true,
-                          fillColor: Colors.white.withOpacity(0.2),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide.none,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 30),
-                      SizedBox(
-                        width: double.infinity,
-                        height: 50,
-                        child: ElevatedButton(
-                          onPressed: _startLiveStream,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.neonPink,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(25),
-                            ),
-                          ),
-                          child: const Text(
-                            'Go LIVE',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
                   ),
                 ),
               ],

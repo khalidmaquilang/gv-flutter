@@ -2,9 +2,11 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:agora_rtm/agora_rtm.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../models/live_interaction_model.dart';
 import 'package:test_flutter/core/constants/api_constants.dart';
+import 'package:test_flutter/core/network/api_client.dart';
 import '../models/live_stream_model.dart';
 import '../../../auth/data/models/user_model.dart';
 import 'dart:math';
@@ -25,7 +27,22 @@ class LiveService {
   String? _currentUserId;
   String? _currentChannelId;
 
-  LiveService();
+  // API Client
+  final ApiClient _apiClient;
+  final FlutterSecureStorage _storage = const FlutterSecureStorage();
+
+  LiveService({ApiClient? apiClient}) : _apiClient = apiClient ?? ApiClient();
+
+  // Helper to set auth token on ApiClient
+  Future<bool> _setAuthToken() async {
+    final token = await _storage.read(key: 'auth_token');
+    if (token == null) {
+      debugPrint('No auth token found');
+      return false;
+    }
+    _apiClient.setToken(token);
+    return true;
+  }
 
   Future<void> initialize({
     required String uid,
@@ -216,6 +233,65 @@ class LiveService {
       await _streamChannel!.publishTextMessage("chat", msg);
     } catch (e) {
       debugPrint("Publish Error: $e");
+    }
+  }
+
+  // API Methods for Live Stream Management
+  Future<Map<String, dynamic>?> createLive(String title) async {
+    try {
+      if (!await _setAuthToken()) return null;
+
+      final response = await _apiClient.post('/lives', data: {'title': title});
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final data = response.data as Map<String, dynamic>;
+        debugPrint('Live created successfully: ${data['id']}');
+        return data;
+      } else {
+        debugPrint('Failed to create live: ${response.statusCode}');
+        return null;
+      }
+    } catch (e) {
+      debugPrint('Error creating live: $e');
+      return null;
+    }
+  }
+
+  Future<bool> startLive(String liveId) async {
+    try {
+      if (!await _setAuthToken()) return false;
+
+      final response = await _apiClient.post('/lives/$liveId/start');
+
+      if (response.statusCode == 200) {
+        debugPrint('Live started successfully: $liveId');
+        return true;
+      } else {
+        debugPrint('Failed to start live: ${response.statusCode}');
+        return false;
+      }
+    } catch (e) {
+      debugPrint('Error starting live: $e');
+      return false;
+    }
+  }
+
+  Future<bool> endLive(String liveId) async {
+    try {
+      if (!await _setAuthToken()) return false;
+
+      final response = await _apiClient.post('/lives/$liveId/end');
+
+      if (response.statusCode == 200) {
+        debugPrint('Live ended successfully: $liveId');
+        return true;
+      } else {
+        debugPrint('Failed to end live: ${response.statusCode}');
+        return false;
+      }
+    } catch (e) {
+      debugPrint('Error ending live: $e');
+      return false;
     }
   }
 
