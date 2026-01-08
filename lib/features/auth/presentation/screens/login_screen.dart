@@ -9,6 +9,7 @@ import 'register_screen.dart';
 import 'forgot_password_screen.dart';
 import '../widgets/auth_text_field.dart';
 import '../widgets/auth_button.dart';
+import '../../../feed/presentation/providers/feed_provider.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -80,6 +81,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           ).showSnackBar(SnackBar(content: Text(next.error.toString())));
         }
       } else if (next is AsyncData && next.value != null) {
+        // Refresh feed on successful login
+        ref.invalidate(feedProvider);
+        ref.invalidate(followingFeedProvider);
+
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(builder: (context) => const MainScreen()),
         );
