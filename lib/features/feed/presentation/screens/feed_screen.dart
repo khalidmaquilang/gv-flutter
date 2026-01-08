@@ -18,6 +18,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   int _feedKey = 0;
+  int _lastTappedIndex = 2; // Track last tapped tab for refresh logic
 
   @override
   void initState() {
@@ -28,16 +29,14 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
       initialIndex: 2,
     ); // Start at "For You"
 
-    // Listen to tab changes
+    // Listen to tab changes (both taps and swipes)
     _tabController.addListener(() {
-      if (_tabController.indexIsChanging) {
-        // Update provider when tab changes
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) {
-            ref.read(activeFeedTabProvider.notifier).state =
-                _tabController.index;
-          }
-        });
+      final newIndex = _tabController.index;
+
+      // Update provider whenever index changes, regardless of how it changed
+      if (newIndex != _lastTappedIndex) {
+        _lastTappedIndex = newIndex;
+        ref.read(activeFeedTabProvider.notifier).state = newIndex;
       }
     });
   }
@@ -127,6 +126,9 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
                   borderSide: BorderSide(width: 2.0, color: Colors.white),
                   insets: EdgeInsets.symmetric(horizontal: 10.0),
                 ),
+                overlayColor: WidgetStateProperty.all(
+                  Colors.transparent,
+                ), // Remove tap overlay
                 labelColor: Colors.white,
                 unselectedLabelColor: Colors.grey,
                 labelStyle: const TextStyle(

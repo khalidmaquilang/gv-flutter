@@ -221,19 +221,20 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
 
     ref.listen(activeFeedTabProvider, (previous, next) {
       final controller = _controller;
-      if (next == 0) {
-        // Live tab - pause all videos
-        if (_isControllerValid(controller)) {
-          controller!.pause();
-        }
-      } else {
-        // Video tabs (Following or For You) - resume if should autoplay
+      if (next == 2) {
+        // For You tab - resume if this video should autoplay
         final shouldPlay =
             widget.autoplay &&
             (widget.ignoreBottomNav || ref.read(bottomNavIndexProvider) == 0) &&
             ref.read(isFeedAudioEnabledProvider);
         if (shouldPlay && _isControllerValid(controller)) {
           controller!.play();
+        }
+      } else {
+        // Live tab (0) or Following tab (1) - pause all videos
+        if (_isControllerValid(controller) && controller!.value.isPlaying) {
+          controller.pause();
+          debugPrint('Pausing video due to tab switch to index $next');
         }
       }
     });
@@ -261,8 +262,10 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
         }
 
         // Auto-play if this video should be playing
+        final currentTab = ref.read(activeFeedTabProvider);
         final shouldPlay =
             widget.autoplay &&
+            currentTab == 2 && // Only autoplay on For You tab
             (widget.ignoreBottomNav || ref.read(bottomNavIndexProvider) == 0) &&
             ref.read(isFeedAudioEnabledProvider) &&
             !_currentController!.value.isPlaying;

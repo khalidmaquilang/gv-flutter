@@ -12,15 +12,22 @@ class LiveFeedList extends ConsumerStatefulWidget {
   ConsumerState<LiveFeedList> createState() => _LiveFeedListState();
 }
 
-class _LiveFeedListState extends ConsumerState<LiveFeedList> {
+class _LiveFeedListState extends ConsumerState<LiveFeedList>
+    with AutomaticKeepAliveClientMixin {
   final _liveService = LiveService();
   List<LiveStream> _streams = [];
   bool _isLoading = true;
+  bool _hasLoaded = false; // Track if data has been loaded
+
+  @override
+  bool get wantKeepAlive => true; // Keep state when switching tabs
 
   @override
   void initState() {
     super.initState();
-    _loadStreams();
+    if (!_hasLoaded) {
+      _loadStreams();
+    }
   }
 
   @override
@@ -43,12 +50,15 @@ class _LiveFeedListState extends ConsumerState<LiveFeedList> {
       setState(() {
         _streams = activeStreams;
         _isLoading = false;
+        _hasLoaded = true; // Mark as loaded
       });
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    super.build(context); // Required for AutomaticKeepAliveClientMixin
+
     if (_isLoading) {
       return const Center(child: CircularProgressIndicator());
     }
