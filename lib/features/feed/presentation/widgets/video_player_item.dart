@@ -65,6 +65,13 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
     _initialFormattedReactionsCount = widget.video.formattedReactionsCount;
   }
 
+  // Helper to safely check if controller is usable
+  bool _isControllerValid(VideoPlayerController? controller) {
+    return controller != null &&
+        controller.value.isInitialized &&
+        !controller.value.hasError;
+  }
+
   void _startViewTimer() {
     if (_hasRecordedView || _viewTimer != null) return;
 
@@ -88,9 +95,9 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
 
   void _onControllerUpdate() {
     final controller = _currentController;
-    if (controller == null) return;
+    if (!_isControllerValid(controller)) return;
 
-    if (controller.value.isPlaying) {
+    if (controller!.value.isPlaying) {
       _startViewTimer();
     } else {
       _cancelViewTimer();
@@ -116,9 +123,7 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
 
     if (widget.autoplay && !oldWidget.autoplay) {
       final controller = _controller;
-      if (controller != null &&
-          controller.value.isInitialized &&
-          !controller.value.isPlaying) {
+      if (_isControllerValid(controller) && !controller!.value.isPlaying) {
         final shouldPlay =
             (widget.ignoreBottomNav || ref.read(bottomNavIndexProvider) == 0) &&
             ref.read(isFeedAudioEnabledProvider);
@@ -128,13 +133,19 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
         }
       }
     } else if (!widget.autoplay && oldWidget.autoplay) {
-      _controller?.pause();
+      final controller = _controller;
+      if (_isControllerValid(controller)) {
+        controller!.pause();
+      }
     }
   }
 
   @override
   void didPushNext() {
-    _controller?.pause();
+    final controller = _controller;
+    if (_isControllerValid(controller)) {
+      controller!.pause();
+    }
   }
 
   @override
@@ -147,7 +158,10 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
         ref.read(isFeedAudioEnabledProvider);
 
     if (shouldPlay) {
-      _controller?.play();
+      final controller = _controller;
+      if (_isControllerValid(controller)) {
+        controller!.play();
+      }
     }
   }
 
@@ -155,58 +169,62 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
   Widget build(BuildContext context) {
     ref.listen(isFeedAudioEnabledProvider, (previous, next) {
       if (next) {
+        final controller = _controller;
         final shouldPlay =
             widget.autoplay &&
             (widget.ignoreBottomNav || ref.read(bottomNavIndexProvider) == 0) &&
-            _controller != null &&
-            !_controller!.value.isPlaying;
+            _isControllerValid(controller) &&
+            !controller!.value.isPlaying;
 
         if (shouldPlay) {
-          _controller?.play();
+          controller.play();
         }
       } else {
-        _controller?.pause();
+        final controller = _controller;
+        if (_isControllerValid(controller)) {
+          controller!.pause();
+        }
       }
     });
 
     ref.listen(videoPreloadProvider, (previous, next) {
       final controller = next.controllers[widget.video.id];
-      // print("VideoPlayerItem check autoplay: ${widget.video.id}, present: ${controller != null}, initialized: ${controller?.value.isInitialized}, autoplay: ${widget.autoplay}");
 
-      if (controller != null &&
-          controller.value.isInitialized &&
-          !controller.value.isPlaying) {
+      if (_isControllerValid(controller) && !controller!.value.isPlaying) {
         final shouldPlay =
             widget.autoplay &&
             (widget.ignoreBottomNav || ref.read(bottomNavIndexProvider) == 0) &&
             ref.read(isFeedAudioEnabledProvider);
 
         if (shouldPlay) {
-          // print("VideoPlayerItem: TRIGGERING PLAY for ${widget.video.id}");
           controller.play();
-        } else {
-          // print("VideoPlayerItem: Autoplay conditions failed.");
         }
       }
     });
 
     ref.listen(bottomNavIndexProvider, (previous, next) {
+      final controller = _controller;
       if (!widget.ignoreBottomNav && next != 0) {
-        _controller?.pause();
+        if (_isControllerValid(controller)) {
+          controller!.pause();
+        }
       } else {
         final shouldPlay =
             widget.autoplay &&
             (widget.ignoreBottomNav || next == 0) &&
             ref.read(isFeedAudioEnabledProvider);
-        if (shouldPlay) {
-          _controller?.play();
+        if (shouldPlay && _isControllerValid(controller)) {
+          controller!.play();
         }
       }
     });
 
     ref.listen(feedTabResetProvider, (previous, next) {
-      if (!widget.ignoreBottomNav && next > 0) {
-        _controller?.pause();
+      final controller = _controller;
+      if (!widget.ignoreBottomNav &&
+          next > 0 &&
+          _isControllerValid(controller)) {
+        controller!.pause();
       }
     });
 
@@ -215,11 +233,13 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
     if (controller != _currentController) {
       _currentController?.removeListener(_onControllerUpdate);
       _currentController = controller;
-      _currentController?.addListener(_onControllerUpdate);
+      if (_isControllerValid(_currentController)) {
+        _currentController!.addListener(_onControllerUpdate);
 
-      // Initial check for the new controller
-      if (_currentController != null && _currentController!.value.isPlaying) {
-        _startViewTimer();
+        // Initial check for the new controller
+        if (_currentController!.value.isPlaying) {
+          _startViewTimer();
+        }
       }
     }
 
@@ -341,7 +361,10 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
                     GestureDetector(
                       onTap: () {
                         // Pause video before navigating
-                        _controller?.pause();
+                        final controller = _controller;
+                        if (_isControllerValid(controller)) {
+                          controller!.pause();
+                        }
 
                         print(
                           'Navigating to profile - video.user.id: ${widget.video.user.id}, username: ${widget.video.user.username}',
@@ -446,17 +469,20 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
   }
 
   void _togglePlay() {
+    final controller = _controller;
+    if (!_isControllerValid(controller)) return;
+
     setState(() {
       if (!_isUiVisible) {
         // If UI is hidden, tapping just brings it back
         _isUiVisible = true;
       } else {
         // Normal toggle play behavior
-        if (_controller != null && _controller!.value.isPlaying) {
-          _controller?.pause();
+        if (controller!.value.isPlaying) {
+          controller.pause();
           _cancelViewTimer();
         } else {
-          _controller?.play();
+          controller.play();
           _startViewTimer();
         }
       }
