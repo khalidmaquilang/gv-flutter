@@ -16,6 +16,14 @@ class Video {
   final int views;
   final String formattedReactionsCount;
   final String formattedViews;
+  final String? streamKey; // For live streams
+  final String? startedAt; // For live streams
+  final String? endedAt; // For live streams
+
+  // Helper to check if this is a live stream
+  bool get isLiveStream => streamKey != null;
+  bool get isLiveBroadcasting =>
+      streamKey != null && startedAt != null && endedAt == null;
 
   Video({
     required this.id,
@@ -32,6 +40,9 @@ class Video {
     this.views = 0,
     this.formattedReactionsCount = '0',
     this.formattedViews = '0',
+    this.streamKey,
+    this.startedAt,
+    this.endedAt,
   });
 
   factory Video.fromJson(Map<String, dynamic> json) {
@@ -53,8 +64,12 @@ class Video {
       formattedReactionsCount:
           json['formatted_reactions_count']?.toString() ?? '0',
       formattedViews: json['formatted_views']?.toString() ?? '0',
+      streamKey: content['stream_key'], // Extract stream_key for live streams
+      startedAt: content['started_at'],
+      endedAt: content['ended_at'],
     );
   }
+
   Video copyWith({
     String? id,
     String? videoUrl,
@@ -70,6 +85,9 @@ class Video {
     int? views,
     String? formattedReactionsCount,
     String? formattedViews,
+    String? streamKey,
+    String? startedAt,
+    String? endedAt,
   }) {
     return Video(
       id: id ?? this.id,
@@ -87,6 +105,9 @@ class Video {
       formattedReactionsCount:
           formattedReactionsCount ?? this.formattedReactionsCount,
       formattedViews: formattedViews ?? this.formattedViews,
+      streamKey: streamKey ?? this.streamKey,
+      startedAt: startedAt ?? this.startedAt,
+      endedAt: endedAt ?? this.endedAt,
     );
   }
 }

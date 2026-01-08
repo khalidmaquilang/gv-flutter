@@ -3,24 +3,23 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/models/video_model.dart';
 import '../providers/video_preload_provider.dart';
 import 'video_player_item.dart';
+import 'live_preview_item.dart';
 
 class VideoFeedList extends ConsumerStatefulWidget {
   final List<Video> videos;
   final bool isLoading;
   final String? error;
   final Future<void> Function()? onRefresh;
+  final VoidCallback? onLoadMore;
 
   const VideoFeedList({
     super.key,
     required this.videos,
     this.isLoading = false,
     this.error,
-
     this.onRefresh,
     this.onLoadMore,
   });
-
-  final VoidCallback? onLoadMore;
 
   @override
   ConsumerState<VideoFeedList> createState() => _VideoFeedListState();
@@ -33,9 +32,10 @@ class _VideoFeedListState extends ConsumerState<VideoFeedList> {
   @override
   void initState() {
     super.initState();
-    // Initialize first video immediately
+    // Initialize preload for first video
     if (widget.videos.isNotEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
+        // Call onPageChanged which will skip live streams automatically
         ref.read(videoPreloadProvider.notifier).onPageChanged(0, widget.videos);
       });
     }
@@ -50,13 +50,6 @@ class _VideoFeedListState extends ConsumerState<VideoFeedList> {
   @override
   void didUpdateWidget(VideoFeedList oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // If the list was replaced and is short (suggests reload), or completely different logic
-    // But simplest for now: If first video ID changes, we assume it's a new feed?
-    // Or if previous list length > current list length?
-    // Let's reset if the list completely changes.
-    // Actually, if we are loading, we are unmounted.
-    // But if we come back, we are new state?
-    // If we are NOT unmounted, we need to reset.
     if (widget.videos.isNotEmpty &&
         oldWidget.videos.isNotEmpty &&
         widget.videos[0].id != oldWidget.videos[0].id) {
@@ -105,9 +98,13 @@ class _VideoFeedListState extends ConsumerState<VideoFeedList> {
           setState(() {
             _currentIndex = index;
           });
-          ref
-              .read(videoPreloadProvider.notifier)
-              .onPageChanged(index, widget.videos);
+
+          // Only preload if it's a regular video, not a live stream
+          if (!widget.videos[index].isLiveStream) {
+            ref
+                .read(videoPreloadProvider.notifier)
+                .onPageChanged(index, widget.videos);
+          }
 
           // Trigger load more when within 2 items of end
           if (widget.onLoadMore != null && index >= widget.videos.length - 2) {
@@ -115,12 +112,23 @@ class _VideoFeedListState extends ConsumerState<VideoFeedList> {
           }
         },
         itemBuilder: (context, index) {
-          return VideoPlayerItem(
-            video: widget.videos[index],
-            onInteractionStart: _onInteractionStart,
-            onInteractionEnd: _onInteractionEnd,
-            autoplay: index == _currentIndex,
-          );
+          final video = widget.videos[index];
+
+          // Show LivePreviewItem for live streams, VideoPlayerItem for regular videos
+          if (video.isLiveStream) {
+            return LivePreviewItem(
+              video: video,
+              onInteractionStart: _onInteractionStart,
+              onInteractionEnd: _onInteractionEnd,
+            );
+          } else {
+            return VideoPlayerItem(
+              video: video,
+              onInteractionStart: _onInteractionStart,
+              onInteractionEnd: _onInteractionEnd,
+              autoplay: index == _currentIndex,
+            );
+          }
         },
       ),
     );

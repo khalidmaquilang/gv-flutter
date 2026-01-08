@@ -28,7 +28,7 @@ class _LiveFeedListState extends ConsumerState<LiveFeedList> {
 
   @override
   void dispose() {
-    _liveListController.dispose();
+    // ZegoLiveStreamingOutsideLiveListController doesn't have a dispose method
     super.dispose();
   }
 
@@ -84,9 +84,7 @@ class _LiveFeedListState extends ConsumerState<LiveFeedList> {
         appSign: ApiConstants.zegoAppSign,
         controller: _liveListController,
         style: ZegoLiveStreamingOutsideLiveListStyle(
-          padding: const EdgeInsets.all(8),
           item: ZegoLiveStreamingOutsideLiveListItemStyle(
-            size: const Size(double.infinity, 240),
             borderRadius: 12,
             foregroundBuilder: _buildLiveItemForeground,
           ),
@@ -139,7 +137,7 @@ class _LiveFeedListState extends ConsumerState<LiveFeedList> {
                   borderRadius: BorderRadius.circular(4),
                   boxShadow: [
                     BoxShadow(
-                      color: AppColors.neonPink.withOpacity(0.6),
+                      color: AppColors.neonPink.withValues(alpha: 0.6),
                       blurRadius: 8,
                       spreadRadius: 1,
                     ),
@@ -163,7 +161,7 @@ class _LiveFeedListState extends ConsumerState<LiveFeedList> {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.5),
+                  color: Colors.black.withValues(alpha: 0.5),
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: Row(

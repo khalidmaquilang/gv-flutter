@@ -73,6 +73,10 @@ class VideoPreloadNotifier extends StateNotifier<VideoPreloadState> {
     // 3. Initialization Phase
     for (final index in targetIndices) {
       final video = videos[index];
+
+      // Skip live streams - they don't use VideoPlayerController
+      if (video.isLiveStream) continue;
+
       if (!newControllers.containsKey(video.id)) {
         // Initialize new controller
         final controller = VideoPlayerController.networkUrl(
