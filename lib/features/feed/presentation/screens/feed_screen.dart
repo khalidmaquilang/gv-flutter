@@ -109,12 +109,14 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
             left: 0,
             right: 0,
             height: 120, // Height of the gradient fade
-            child: Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [Colors.black.withOpacity(0.7), Colors.transparent],
+            child: IgnorePointer(
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Colors.black.withOpacity(0.7), Colors.transparent],
+                  ),
                 ),
               ),
             ),
@@ -123,7 +125,9 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
           // Top Navigation
           SafeArea(
             child: Container(
-              padding: const EdgeInsets.only(top: 10),
+              padding: const EdgeInsets.only(
+                top: 60,
+              ), // Pushed down for User Profile
               alignment: Alignment.topCenter,
               child: TabBar(
                 controller: _tabController,
@@ -171,26 +175,35 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
 
           // Search Icon (Top Right)
           Positioned(
-            top: 50, // Matches SafeArea top padding approx
+            top: 0,
             right: 16,
-            child: IconButton(
-              icon: const Icon(
-                Icons.search,
-                color: Colors.white,
-                size: 28,
-                shadows: [
-                  Shadow(
-                    color: Colors.black,
-                    blurRadius: 4,
-                    offset: Offset(0, 1),
+            child: SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.only(
+                  top: 6,
+                ), // Align with Profile (10px padding + 20px radius - 24px icon center = 6px)
+                child: IconButton(
+                  icon: const Icon(
+                    Icons.search,
+                    color: Colors.white,
+                    size: 28,
+                    shadows: [
+                      Shadow(
+                        color: Colors.black,
+                        blurRadius: 4,
+                        offset: Offset(0, 1),
+                      ),
+                    ],
                   ),
-                ],
+                  onPressed: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (context) => const SearchScreen(),
+                      ),
+                    );
+                  },
+                ),
               ),
-              onPressed: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(builder: (context) => const SearchScreen()),
-                );
-              },
             ),
           ),
         ],

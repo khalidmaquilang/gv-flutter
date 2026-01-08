@@ -8,6 +8,7 @@ class User {
   final bool isFollowing;
   final bool allowLive;
   final int followersCount;
+  final String? formattedFollowersCount;
   final int followingCount;
   final int likesCount;
 
@@ -21,6 +22,7 @@ class User {
     this.isFollowing = false,
     this.allowLive = false,
     this.followersCount = 0,
+    this.formattedFollowersCount,
     this.followingCount = 0,
     this.likesCount = 0,
   });
@@ -36,6 +38,7 @@ class User {
       isFollowing: json['is_following'] ?? false,
       allowLive: json['allow_live'] ?? false,
       followersCount: json['followers_count'] ?? 0,
+      formattedFollowersCount: json['formatted_followers_count'],
       followingCount: json['following_count'] ?? 0,
       likesCount: json['likes_count'] ?? 0,
     );
@@ -52,6 +55,7 @@ class User {
       'is_following': isFollowing,
       'allow_live': allowLive,
       'followers_count': followersCount,
+      'formatted_followers_count': formattedFollowersCount,
       'following_count': followingCount,
       'likes_count': likesCount,
     };

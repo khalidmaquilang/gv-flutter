@@ -78,6 +78,7 @@ class _ProfileFeedScreenState extends ConsumerState<ProfileFeedScreen> {
                 video: video,
                 autoplay: index == _currentIndex,
                 ignoreBottomNav: true,
+                hideProfileInfo: true,
               );
             },
           ),

@@ -24,8 +24,14 @@ class ProfileService {
 
       final response = await _apiClient.get(url);
 
-      return User.fromJson(response.data);
+      // Handle wrapped response data
+      final data = response.data is Map && response.data.containsKey('data')
+          ? response.data['data']
+          : response.data;
+
+      return User.fromJson(data);
     } catch (e) {
+      print("Error in getProfile: $e");
       rethrow;
     }
   }
@@ -38,8 +44,15 @@ class ProfileService {
       }
 
       final response = await _apiClient.get(ApiConstants.user);
-      return User.fromJson(response.data);
+
+      // Handle wrapped response data
+      final data = response.data is Map && response.data.containsKey('data')
+          ? response.data['data']
+          : response.data;
+
+      return User.fromJson(data);
     } catch (e) {
+      print("Error in getCurrentUser: $e");
       rethrow;
     }
   }

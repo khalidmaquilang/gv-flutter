@@ -11,7 +11,8 @@ import 'package:test_flutter/core/utils/route_observer.dart';
 import '../providers/feed_audio_provider.dart';
 import '../providers/feed_provider.dart';
 import '../providers/video_preload_provider.dart';
-import '../../../profile/presentation/screens/profile_screen.dart';
+import '../../../profile/presentation/screens/profile_screen.dart'; // Import ProfileScreen
+import 'package:test_flutter/core/providers/profile_provider.dart'; // Import profile provider
 
 import 'dart:async';
 
@@ -21,6 +22,7 @@ class VideoPlayerItem extends ConsumerStatefulWidget {
   final VoidCallback? onInteractionEnd;
   final bool autoplay;
   final bool ignoreBottomNav;
+  final bool hideProfileInfo;
 
   const VideoPlayerItem({
     super.key,
@@ -29,6 +31,7 @@ class VideoPlayerItem extends ConsumerStatefulWidget {
     this.onInteractionEnd,
     this.autoplay = false,
     this.ignoreBottomNav = false,
+    this.hideProfileInfo = false,
   });
 
   @override
@@ -48,6 +51,11 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
   late int _initialLikesCount;
   late String _initialFormattedReactionsCount;
 
+  // New state for follow feature
+  bool _isFollowing = false;
+  int _followersCount = 0;
+  String? _formattedFollowersCount;
+
   bool _isUiVisible = true;
   bool _hasRecordedView = false;
   Timer? _viewTimer;
@@ -60,9 +68,14 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
   void initState() {
     super.initState();
     _isLiked = widget.video.isLiked;
-    _likesCount = widget.video.likesCount;
     _initialLikesCount = widget.video.likesCount;
+    _likesCount = _initialLikesCount;
     _initialFormattedReactionsCount = widget.video.formattedReactionsCount;
+
+    // Initialize follow state
+    _isFollowing = widget.video.user.isFollowing;
+    _followersCount = widget.video.user.followersCount;
+    _formattedFollowersCount = widget.video.user.formattedFollowersCount;
   }
 
   // Helper to safely check if controller is usable
@@ -102,6 +115,71 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
     } else {
       _cancelViewTimer();
     }
+  }
+
+  Future<void> _toggleFollow() async {
+    final profileService = ref.read(profileServiceProvider);
+
+    // Optimistic update
+    setState(() {
+      _isFollowing = !_isFollowing;
+      if (_isFollowing) {
+        _followersCount++;
+      } else {
+        _followersCount--;
+      }
+    });
+
+    try {
+      if (_isFollowing) {
+        await profileService.followUser(widget.video.user.id);
+      } else {
+        await profileService.unfollowUser(widget.video.user.id);
+      }
+    } catch (e) {
+      // Revert if error
+      if (mounted) {
+        setState(() {
+          _isFollowing = !_isFollowing;
+          if (_isFollowing) {
+            _followersCount++;
+          } else {
+            _followersCount--;
+          }
+        });
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error: $e')));
+      }
+    }
+  }
+
+  void _navigateToProfile() {
+    // Only pause if needed, but going to profile keeps cache alive usually.
+    // However, pushing a new route usually warrants pausing.
+    // The feed screen logic might auto-pause, but explicit pause is safer here.
+    final controller = _currentController; // Use current controller
+    if (_isControllerValid(controller) && controller!.value.isPlaying) {
+      // ref.read(videoPreloadProvider.notifier).pauseCurrentVideo(); // Maybe better to use provider?
+      // For now simple pause:
+    }
+
+    // Note: The main feed logic pauses video when route changes, so this might be redundant
+    // or handled by route observer.
+
+    print(
+      'Navigating to profile - video.user.id: ${widget.video.user.id}, username: ${widget.video.user.username}',
+    );
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) =>
+            ProfileScreen(userId: widget.video.user.id, isCurrentUser: false),
+      ),
+    ).then((_) {
+      // Auto-resume will be handled by feed visibility logic
+    });
   }
 
   @override
@@ -351,9 +429,172 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
           opacity: _isUiVisible ? 1.0 : 0.0,
           child: Stack(
             children: [
-              // Right Side Actions (Avatar, Like, Comment, Share)
+              // Top User Info Header (New Design)
+              if (!widget.hideProfileInfo)
+                Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  child: SafeArea(
+                    child: Padding(
+                      padding: const EdgeInsets.only(
+                        left: 16,
+                        right: 60,
+                        top: 10,
+                      ), // Right padding for Search icon
+                      child: Row(
+                        children: [
+                          // Avatar
+                          GestureDetector(
+                            onTap: _navigateToProfile,
+                            child: Container(
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: Colors.white,
+                                  width: 1.5,
+                                ),
+                                boxShadow: [
+                                  const BoxShadow(
+                                    color: Colors.black26,
+                                    blurRadius: 4,
+                                    offset: Offset(0, 2),
+                                  ),
+                                ],
+                              ),
+                              child: CircleAvatar(
+                                radius: 20,
+                                backgroundImage:
+                                    widget.video.user.avatar != null &&
+                                        widget.video.user.avatar!.isNotEmpty
+                                    ? NetworkImage(widget.video.user.avatar!)
+                                    : null,
+                                child:
+                                    widget.video.user.avatar == null ||
+                                        widget.video.user.avatar!.isEmpty
+                                    ? const Icon(
+                                        Icons.person,
+                                        color: Colors.white,
+                                      )
+                                    : null,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+
+                          // User Name and Followers
+                          Flexible(
+                            // Use Flexible to keep follow button near
+                            child: GestureDetector(
+                              onTap: _navigateToProfile,
+                              behavior: HitTestBehavior
+                                  .translucent, // Ensure taps are captured
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    "@${widget.video.user.username ?? widget.video.user.name}",
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 16,
+                                      shadows: [
+                                        Shadow(
+                                          color: Colors.black,
+                                          blurRadius: 4,
+                                        ),
+                                      ],
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    "${_formattedFollowersCount ?? _followersCount} Followers",
+                                    style: const TextStyle(
+                                      color: Colors.white70,
+                                      fontSize: 12,
+                                      shadows: [
+                                        Shadow(
+                                          color: Colors.black,
+                                          blurRadius: 3,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+
+                          const SizedBox(width: 10),
+
+                          // Follow Button
+                          if (!_isFollowing)
+                            GestureDetector(
+                              onTap: _toggleFollow,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 6,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: AppColors.neonPink,
+                                  borderRadius: BorderRadius.circular(20),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: AppColors.neonPink.withValues(
+                                        alpha: 0.4,
+                                      ),
+                                      blurRadius: 8,
+                                      offset: const Offset(0, 2),
+                                    ),
+                                  ],
+                                ),
+                                child: const Text(
+                                  "Follow",
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ),
+                            )
+                          else
+                            GestureDetector(
+                              onTap: _toggleFollow,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 6,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.black.withValues(alpha: 0.3),
+                                  borderRadius: BorderRadius.circular(20),
+                                  border: Border.all(
+                                    color: Colors.white.withValues(alpha: 0.5),
+                                  ),
+                                ),
+                                child: const Text(
+                                  "Following",
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+
+              // Right Side Actions
               Positioned(
-                bottom: 160,
+                bottom: 220, // Shifted up
                 right: 10,
                 child: Column(
                   children: [
@@ -383,52 +624,15 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
                 ),
               ),
 
-              // Bottom Info (Name, Caption)
+              // Bottom Info (Caption only)
               Positioned(
-                bottom: 130,
+                bottom: 130, // Increased to 130 to fully clear Nav Bar
                 left: 16,
                 right: 80,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    GestureDetector(
-                      onTap: () {
-                        // Pause video before navigating
-                        final controller = _controller;
-                        if (_isControllerValid(controller)) {
-                          controller!.pause();
-                        }
-
-                        print(
-                          'Navigating to profile - video.user.id: ${widget.video.user.id}, username: ${widget.video.user.username}',
-                        );
-
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => ProfileScreen(
-                              userId: widget.video.user.id,
-                              isCurrentUser: false,
-                            ),
-                          ),
-                        ).then((_) {
-                          // Auto-resume will be handled by feed visibility logic
-                        });
-                      },
-                      child: Text(
-                        "@${widget.video.user.username}",
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                          color: Colors.white,
-                          shadows: [
-                            Shadow(color: AppColors.neonCyan, blurRadius: 4),
-                            Shadow(color: Colors.black, blurRadius: 2),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
+                    // Caption
                     Text(
                       widget.video.caption,
                       style: const TextStyle(
@@ -436,6 +640,8 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
                         color: Colors.white,
                         shadows: [Shadow(color: Colors.black, blurRadius: 2)],
                       ),
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 10),
                     Row(

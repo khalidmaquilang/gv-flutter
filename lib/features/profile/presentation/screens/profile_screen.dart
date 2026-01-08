@@ -9,15 +9,14 @@ import '../../../wallet/presentation/screens/wallet_screen.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../auth/presentation/screens/login_screen.dart';
 import '../../../../core/widgets/neon_border_container.dart';
-import 'package:test_flutter/core/providers/navigation_provider.dart'; // Add navigation provider import
+import 'package:test_flutter/core/providers/navigation_provider.dart';
+import 'package:test_flutter/core/providers/profile_provider.dart';
 
 import 'edit_profile_screen.dart';
 import 'package:test_flutter/features/feed/presentation/providers/drafts_provider.dart';
-import '../../data/models/profile_video_model.dart'; // Import Model
+import '../../data/models/profile_video_model.dart';
 import '../../../../features/feed/presentation/screens/drafts_screen.dart';
 import 'profile_feed_screen.dart';
-
-final profileServiceProvider = Provider((ref) => ProfileService());
 
 // State for pagination
 class ProfileVideosState {
