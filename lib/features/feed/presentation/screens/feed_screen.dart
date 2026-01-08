@@ -5,6 +5,7 @@ import '../widgets/video_feed_list.dart';
 import '../widgets/live_feed_list.dart';
 import '../../../../core/providers/navigation_provider.dart';
 import '../../../search/presentation/screens/search_screen.dart';
+import '../providers/feed_audio_provider.dart';
 
 class FeedScreen extends ConsumerStatefulWidget {
   const FeedScreen({super.key});
@@ -26,6 +27,19 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
       vsync: this,
       initialIndex: 2,
     ); // Start at "For You"
+
+    // Listen to tab changes
+    _tabController.addListener(() {
+      if (_tabController.indexIsChanging) {
+        // Update provider when tab changes
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            ref.read(activeFeedTabProvider.notifier).state =
+                _tabController.index;
+          }
+        });
+      }
+    });
   }
 
   @override

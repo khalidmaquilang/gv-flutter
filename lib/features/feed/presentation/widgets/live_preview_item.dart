@@ -75,12 +75,12 @@ class LivePreviewItem extends ConsumerWidget {
             ),
           ),
 
-          // LIVE badge with pulse animation
-          Positioned(top: 16, left: 16, child: _PulsatingLiveBadge()),
+          // LIVE badge with pulse animation - positioned below tabs
+          Positioned(top: 120, left: 16, child: _PulsatingLiveBadge()),
 
-          // Viewers count
+          // Viewers count - positioned below tabs
           Positioned(
-            top: 16,
+            top: 120,
             right: 16,
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),

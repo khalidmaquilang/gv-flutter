@@ -1,11 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:zego_uikit_prebuilt_live_streaming/zego_uikit_prebuilt_live_streaming.dart';
 import '../../../../features/live/data/services/live_service.dart';
 import '../../../../features/live/data/models/live_stream_model.dart';
 import '../../../../features/live/presentation/screens/live_stream_screen.dart';
 import 'package:test_flutter/core/theme/app_theme.dart';
-import 'package:test_flutter/core/constants/api_constants.dart';
 
 class LiveFeedList extends ConsumerStatefulWidget {
   const LiveFeedList({super.key});
@@ -16,7 +14,6 @@ class LiveFeedList extends ConsumerStatefulWidget {
 
 class _LiveFeedListState extends ConsumerState<LiveFeedList> {
   final _liveService = LiveService();
-  final _liveListController = ZegoLiveStreamingOutsideLiveListController();
   List<LiveStream> _streams = [];
   bool _isLoading = true;
 
@@ -28,7 +25,6 @@ class _LiveFeedListState extends ConsumerState<LiveFeedList> {
 
   @override
   void dispose() {
-    // ZegoLiveStreamingOutsideLiveListController doesn't have a dispose method
     super.dispose();
   }
 
@@ -48,20 +44,6 @@ class _LiveFeedListState extends ConsumerState<LiveFeedList> {
         _streams = activeStreams;
         _isLoading = false;
       });
-
-      // Update ZegoCloud live list with hosts
-      if (_streams.isNotEmpty) {
-        _liveListController.updateHosts(
-          _streams.map((stream) {
-            return ZegoLiveStreamingOutsideLiveListHost(
-              roomID: stream.channelId, // Using stream_key as roomID
-              user: ZegoUIKitUser(id: stream.user.id, name: stream.user.name),
-            );
-          }).toList(),
-        );
-      } else {
-        _liveListController.updateHosts([]);
-      }
     }
   }
 
@@ -77,178 +59,178 @@ class _LiveFeedListState extends ConsumerState<LiveFeedList> {
       );
     }
 
-    return RefreshIndicator(
-      onRefresh: _loadStreams,
-      child: ZegoLiveStreamingOutsideLiveList(
-        appID: ApiConstants.zegoAppId,
-        appSign: ApiConstants.zegoAppSign,
-        controller: _liveListController,
-        style: ZegoLiveStreamingOutsideLiveListStyle(
-          item: ZegoLiveStreamingOutsideLiveListItemStyle(
-            borderRadius: 12,
-            foregroundBuilder: _buildLiveItemForeground,
+    return Padding(
+      padding: const EdgeInsets.only(top: 100), // Space for tabs
+      child: RefreshIndicator(
+        onRefresh: _loadStreams,
+        child: GridView.builder(
+          padding: const EdgeInsets.all(16),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 2, // 2 columns
+            childAspectRatio: 0.75, // Slightly taller than wide
+            crossAxisSpacing: 12,
+            mainAxisSpacing: 12,
           ),
+          itemCount: _streams.length,
+          itemBuilder: (context, index) {
+            final stream = _streams[index];
+            return _buildLiveGridItem(stream);
+          },
         ),
       ),
     );
   }
 
-  Widget _buildLiveItemForeground(
-    BuildContext context,
-    Size size,
-    ZegoUIKitUser? user,
-    String roomID,
-  ) {
-    // Find the corresponding stream data
-    final stream = _streams.firstWhere(
-      (s) => s.channelId == roomID,
-      orElse: () => _streams.first,
-    );
-
+  Widget _buildLiveGridItem(LiveStream stream) {
     return GestureDetector(
       onTap: () {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) =>
-                LiveStreamScreen(isBroadcaster: false, channelId: roomID),
+            builder: (context) => LiveStreamScreen(
+              isBroadcaster: false,
+              channelId: stream.channelId,
+            ),
           ),
         );
       },
       child: Container(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(12),
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Colors.transparent, AppColors.deepVoid.withOpacity(0.8)],
-          ),
+          color: AppColors.deepVoid,
         ),
-        child: Stack(
-          children: [
-            // Live Badge
-            Positioned(
-              top: 8,
-              left: 8,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              // Thumbnail/Background
+              if (stream.user.avatar != null)
+                Image.network(
+                  stream.user.avatar!,
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) {
+                    return Container(color: AppColors.deepVoid);
+                  },
+                )
+              else
+                Container(color: AppColors.deepVoid),
+
+              // Gradient overlay
+              Container(
                 decoration: BoxDecoration(
-                  color: AppColors.neonPink,
-                  borderRadius: BorderRadius.circular(4),
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppColors.neonPink.withValues(alpha: 0.6),
-                      blurRadius: 8,
-                      spreadRadius: 1,
-                    ),
-                  ],
-                ),
-                child: const Text(
-                  "LIVE",
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 10,
-                    fontWeight: FontWeight.bold,
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.transparent,
+                      AppColors.deepVoid.withOpacity(0.8),
+                    ],
                   ),
                 ),
               ),
-            ),
 
-            // Viewers Count
-            Positioned(
-              top: 8,
-              right: 8,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.5),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(
-                      Icons.remove_red_eye,
-                      color: AppColors.neonCyan,
-                      size: 12,
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      "${stream.viewersCount}",
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w500,
+              // LIVE Badge
+              Positioned(
+                bottom: 8,
+                left: 8,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 3,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppColors.neonPink,
+                    borderRadius: BorderRadius.circular(4),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppColors.neonPink.withOpacity(0.6),
+                        blurRadius: 6,
+                        spreadRadius: 1,
                       ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-            // User Info at Bottom
-            Positioned(
-              bottom: 8,
-              left: 8,
-              right: 8,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    stream.title,
-                    style: const TextStyle(
+                    ],
+                  ),
+                  child: const Text(
+                    "LIVE",
+                    style: TextStyle(
                       color: Colors.white,
-                      fontSize: 14,
+                      fontSize: 9,
                       fontWeight: FontWeight.bold,
-                      shadows: [Shadow(color: Colors.black, blurRadius: 4)],
                     ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
                   ),
-                  const SizedBox(height: 4),
-                  Row(
+                ),
+              ),
+
+              // Viewers Count
+              Positioned(
+                top: 8,
+                right: 8,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 3,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.5),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Container(
-                        padding: const EdgeInsets.all(1),
-                        decoration: const BoxDecoration(
-                          shape: BoxShape.circle,
-                          gradient: AppColors.primaryGradient,
-                        ),
-                        child: CircleAvatar(
-                          radius: 10,
-                          backgroundImage: stream.user.avatar != null
-                              ? NetworkImage(stream.user.avatar!)
-                              : null,
-                          backgroundColor: AppColors.deepVoid,
-                          child: stream.user.avatar == null
-                              ? Text(
-                                  stream.user.name[0].toUpperCase(),
-                                  style: const TextStyle(
-                                    fontSize: 10,
-                                    color: Colors.white,
-                                  ),
-                                )
-                              : null,
-                        ),
+                      const Icon(
+                        Icons.remove_red_eye,
+                        color: AppColors.neonCyan,
+                        size: 10,
                       ),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: Text(
-                          stream.user.username ?? stream.user.name,
-                          style: const TextStyle(
-                            color: Colors.white70,
-                            fontSize: 12,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                      const SizedBox(width: 3),
+                      Text(
+                        "${stream.viewersCount}",
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w500,
                         ),
                       ),
                     ],
                   ),
-                ],
+                ),
               ),
-            ),
-          ],
+
+              // User Info at Bottom
+              Positioned(
+                bottom: 8,
+                right: 8,
+                left: 60, // Space for LIVE badge
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      stream.title,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        shadows: [Shadow(color: Colors.black, blurRadius: 3)],
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      stream.user.username ?? stream.user.name,
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 10,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

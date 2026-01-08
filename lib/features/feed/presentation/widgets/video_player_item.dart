@@ -219,6 +219,25 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
       }
     });
 
+    ref.listen(activeFeedTabProvider, (previous, next) {
+      final controller = _controller;
+      if (next == 0) {
+        // Live tab - pause all videos
+        if (_isControllerValid(controller)) {
+          controller!.pause();
+        }
+      } else {
+        // Video tabs (Following or For You) - resume if should autoplay
+        final shouldPlay =
+            widget.autoplay &&
+            (widget.ignoreBottomNav || ref.read(bottomNavIndexProvider) == 0) &&
+            ref.read(isFeedAudioEnabledProvider);
+        if (shouldPlay && _isControllerValid(controller)) {
+          controller!.play();
+        }
+      }
+    });
+
     ref.listen(feedTabResetProvider, (previous, next) {
       final controller = _controller;
       if (!widget.ignoreBottomNav &&
@@ -239,6 +258,17 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
         // Initial check for the new controller
         if (_currentController!.value.isPlaying) {
           _startViewTimer();
+        }
+
+        // Auto-play if this video should be playing
+        final shouldPlay =
+            widget.autoplay &&
+            (widget.ignoreBottomNav || ref.read(bottomNavIndexProvider) == 0) &&
+            ref.read(isFeedAudioEnabledProvider) &&
+            !_currentController!.value.isPlaying;
+
+        if (shouldPlay) {
+          _currentController!.play();
         }
       }
     }
