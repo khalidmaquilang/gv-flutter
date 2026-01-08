@@ -1,14 +1,14 @@
 import 'dart:async';
-import 'dart:convert';
-import 'package:agora_rtm/agora_rtm.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../models/live_interaction_model.dart';
-import 'package:test_flutter/core/constants/api_constants.dart';
 import 'package:test_flutter/core/network/api_client.dart';
 import '../models/live_stream_model.dart';
 
+/// LiveService handles live stream interactions.
+/// Note: Real-time messaging (RTM) functionality has been removed.
+/// This service now only provides API-based live stream management.
 class LiveService {
   // Streams for UI
   final _messageController = StreamController<LiveMessage>.broadcast();
@@ -19,10 +19,6 @@ class LiveService {
   Stream<LiveReaction> get reactionStream => _reactionController.stream;
   Stream<LiveGift> get giftStream => _giftController.stream;
 
-  // Agora RTM 2.x
-  RtmClient? _rtmClient;
-  StreamChannel? _streamChannel;
-  String? _currentUserId;
   String? _currentChannelId;
 
   // API Client
@@ -42,155 +38,33 @@ class LiveService {
     return true;
   }
 
+  /// Initialize the live service for a channel.
+  /// Note: RTM functionality has been removed. This is now a no-op
+  /// that just stores the channel ID for local use.
   Future<void> initialize({
     required String uid,
     required String channelId,
   }) async {
-    if (_rtmClient != null) return;
-
-    _currentUserId = uid;
     _currentChannelId = channelId;
-
-    try {
-      // 1. Create Client (RTM 2.x using global RTM function)
-      // Note: RTM is a top-level function exported by agora_rtm
-      final (status, client) = await RTM(ApiConstants.agoraAppId, uid);
-
-      if (status.error == true) {
-        debugPrint("RTM Create Error: ${status.errorCode}");
-        return;
-      }
-      _rtmClient = client;
-
-      // 2. Add Listener (Named callbacks)
-      _rtmClient!.addListener(
-        message: (MessageEvent event) {
-          _handleMessageReceived(event);
-        },
-        linkState: (LinkStateEvent event) {
-          debugPrint("RTM Link State: ${event.currentState}");
-        },
-      );
-
-      // 3. Login
-      final (loginStatus, _) = await _rtmClient!.login(
-        ApiConstants.agoraTempToken,
-      );
-      if (loginStatus.error == true) {
-        debugPrint("RTM Login Failed: ${loginStatus.errorCode}");
-        return;
-      }
-      debugPrint("RTM Info: Logged in as $uid");
-
-      // 4. Create & Join Stream Channel
-      // Note: StreamChannel is for data/signaling synchronization with RTC.
-      // If simple chat is needed, MessageChannel could be used, but StreamChannel is robust.
-      // We will use "chat" as the topic.
-      final (chanStatus, channel) = await _rtmClient!.createStreamChannel(
-        channelId,
-      );
-      if (chanStatus.error == true || channel == null) {
-        debugPrint("RTM Create Stream Channel Failed: ${chanStatus.errorCode}");
-        return;
-      }
-      _streamChannel = channel;
-
-      final (joinStatus, _) = await _streamChannel!.join(
-        token: ApiConstants.agoraTempToken,
-        withMetadata: false,
-        withPresence: true,
-        withLock: false,
-      );
-
-      if (joinStatus.error == true) {
-        debugPrint("RTM Join Stream Channel Failed: ${joinStatus.errorCode}");
-      } else {
-        debugPrint("RTM Info: Joined stream channel $channelId");
-        // Join the topic "chat" to send/receive messages?
-        // StreamChannel requires joining a topic to publish/subscribe?
-        // From docs: joinTopic is needed.
-        await _streamChannel!.joinTopic("chat");
-        await _streamChannel!.subscribeTopic("chat");
-      }
-    } catch (e) {
-      debugPrint("RTM Init Catch: $e");
-    }
-  }
-
-  void _handleMessageReceived(MessageEvent event) {
-    try {
-      final msgString = event.message != null
-          ? utf8.decode(event.message!)
-          : "";
-
-      if (msgString.isEmpty) return;
-
-      final Map<String, dynamic> data = jsonDecode(msgString);
-      final type = data['type'];
-      final senderName = data['username'] ?? "User";
-
-      switch (type) {
-        case 'chat':
-          _messageController.add(
-            LiveMessage(username: senderName, message: data['message']),
-          );
-          break;
-        case 'reaction':
-          _reactionController.add(
-            LiveReaction(type: LiveReactionType.heart, username: senderName),
-          );
-          break;
-        case 'gift':
-          _giftController.add(
-            LiveGift(
-              username: senderName,
-              giftName: data['giftName'] ?? 'Gift',
-              value: data['value'] ?? 0,
-            ),
-          );
-          break;
-      }
-    } catch (e) {
-      debugPrint("RTM Parse Error: $e");
-    }
+    debugPrint(
+      "LiveService: Initialized for user $uid in channel $channelId (RTM disabled)",
+    );
   }
 
   Future<void> dispose() async {
-    debugPrint("RTM: Disposing service for channel $_currentChannelId");
+    debugPrint("LiveService: Disposing service for channel $_currentChannelId");
     _messageController.close();
     _reactionController.close();
     _giftController.close();
-
-    try {
-      if (_streamChannel != null) {
-        await _streamChannel!.leaveTopic("chat");
-        await _streamChannel!.leave();
-        _streamChannel = null;
-      }
-      if (_rtmClient != null) {
-        await _rtmClient!.logout();
-        _rtmClient = null;
-      }
-    } catch (e) {
-      debugPrint("RTM Dispose Error: $e");
-    }
   }
 
-  // User Actions
+  // User Actions - These now only update local UI (optimistic updates)
+  // Without RTM, messages won't be sent to other users
 
   Future<void> sendComment(String text) async {
     // Optimistic UI: Echo locally immediately
     _messageController.add(LiveMessage(username: 'Me', message: text));
-
-    if (_streamChannel == null) return;
-
-    final payload = jsonEncode({
-      'type': 'chat',
-      'username': _currentUserId ?? 'Me',
-      'message': text,
-    });
-
-    await _publish(payload);
+    debugPrint("LiveService: Comment sent locally (RTM disabled)");
   }
 
   Future<void> sendReaction() async {
@@ -198,40 +72,13 @@ class LiveService {
     _reactionController.add(
       LiveReaction(type: LiveReactionType.heart, username: 'Me'),
     );
-
-    if (_streamChannel == null) return;
-
-    final payload = jsonEncode({
-      'type': 'reaction',
-      'username': _currentUserId ?? 'Me',
-    });
-
-    await _publish(payload);
+    debugPrint("LiveService: Reaction sent locally (RTM disabled)");
   }
 
   Future<void> sendGift(String name, int value) async {
     // Optimistic UI
     _giftController.add(LiveGift(username: 'Me', giftName: name, value: value));
-
-    if (_streamChannel == null) return;
-
-    final payload = jsonEncode({
-      'type': 'gift',
-      'username': _currentUserId ?? 'Me',
-      'giftName': name,
-      'value': value,
-    });
-
-    await _publish(payload);
-  }
-
-  Future<void> _publish(String msg) async {
-    try {
-      // publishTextMessage expects (topic, message)
-      await _streamChannel!.publishTextMessage("chat", msg);
-    } catch (e) {
-      debugPrint("Publish Error: $e");
-    }
+    debugPrint("LiveService: Gift sent locally (RTM disabled)");
   }
 
   // API Methods for Live Stream Management

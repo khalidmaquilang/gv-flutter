@@ -28,17 +28,8 @@ class ApiConstants {
   // DeepAR
   static const String deepArAndroidLicenseKey =
       "2f95939383b07b667868a05a342b1c8f3dc6b9d923e08dfb7d8572074ef0536f7a940aa8886c5798";
-  static const String deepArIosLicenseKey = "REPLACE_WITH_YOUR_IOS_KEY";
-
-  // Agora
-  static const String agoraAppId = "c0108ab6bba14678982d1aea8a4470b4";
-  static const String agoraCustomerId =
-      "1fbaf7050e6746ba92feaab6bc0998b5"; // Customer ID
-  static const String agoraCustomerSecret =
-      "8b84a7fa9c914c31ae0f32c125946751"; // Customer Secret
-  static const String agoraTempToken = ""; // Add your temporary token here
-  static const String fixedTestChannelId =
-      "test_channel"; // Fixed channel for testing
+  static const String deepArIosLicenseKey =
+      "b3feba950e64e1989d70661df9c87af9e549b02bbf8ba4fdf051e8f9abe89528b7776cde50e35e6a";
 
   // Streaming
   static const String rtmpUrl = "rtmp://rtmp.maralabs.ph/live/test";
