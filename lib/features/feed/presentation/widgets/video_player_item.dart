@@ -372,7 +372,19 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
           onTap: _togglePlay,
           child: Container(
             color: Colors.black,
-            child: Center(
+            child: Align(
+              alignment: isControllerInitialized
+                  // Align standard vertical videos (9:16 is ~0.56) to top
+                  // Align wider videos (4:5, 1:1, 16:9) to center
+                  ? (_controller!.value.aspectRatio < 0.7
+                        ? Alignment.topCenter
+                        : Alignment.center)
+                  : Alignment.center,
+              // Layout strategy:
+              // 1. Vertical Videos (< 0.7): Use SizedBox.expand + FittedBox(cover) to fill screen.
+              //    - This crops slightly on sides for tall screens but removes black bars.
+              // 2. Other Videos (Square/Landscape): Use Center + AspectRatio (effectively contain)
+              //    - This ensures the whole video is visible with black bars.
               child: _hasError
                   ? Column(
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -400,7 +412,17 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
                           child: (widget.video.thumbnailUrl.isNotEmpty)
                               ? Image.network(
                                   widget.video.thumbnailUrl,
-                                  fit: BoxFit.contain,
+                                  // If we assume the thumbnail matches video AR, we can try to cover for vertical.
+                                  // But we don't know AR yet safely. Defaulting to cover is risky if it's landscape.
+                                  // Let's stick to contain/center for safety, OR if we had metadata we could choose.
+                                  // For now, let's try 'cover' to match the "no gap" desire, assuming most feed content is vertical.
+                                  // Actually, safe bet: BoxFit.contain with Alignment.center.
+                                  // Wait, user wants "no big black gap".
+                                  // IF the user produces correctly post-processed videos (9:16), they want cover.
+                                  // Let's use fitHeight for thumbnails if we can, or just cover.
+                                  // Given the user expectation (TikTok style), cover is usually the default for feed thumbnails.
+                                  fit: BoxFit.cover,
+                                  alignment: Alignment.center,
                                   errorBuilder: (context, error, stackTrace) {
                                     return Container(color: Colors.black);
                                   },
@@ -409,9 +431,22 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
                         ),
                       ],
                     )
-                  : AspectRatio(
-                      aspectRatio: _controller!.value.aspectRatio,
-                      child: VideoPlayer(_controller!),
+                  : (_controller!.value.aspectRatio < 0.7)
+                  ? SizedBox.expand(
+                      child: FittedBox(
+                        fit: BoxFit.cover,
+                        child: SizedBox(
+                          width: _controller!.value.size.width,
+                          height: _controller!.value.size.height,
+                          child: VideoPlayer(_controller!),
+                        ),
+                      ),
+                    )
+                  : Center(
+                      child: AspectRatio(
+                        aspectRatio: _controller!.value.aspectRatio,
+                        child: VideoPlayer(_controller!),
+                      ),
                     ),
             ),
           ),
