@@ -18,6 +18,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   int _feedKey = 0;
+  int _liveKey = 0;
   int _lastTappedIndex = 2; // Track last tapped tab for refresh logic
 
   @override
@@ -29,11 +30,9 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
       initialIndex: 2,
     ); // Start at "For You"
 
-    // Listen to tab changes (both taps and swipes)
+    // Listen to tab changes to update activeFeedTabProvider
     _tabController.addListener(() {
       final newIndex = _tabController.index;
-
-      // Update provider whenever index changes, regardless of how it changed
       if (newIndex != _lastTappedIndex) {
         _lastTappedIndex = newIndex;
         ref.read(activeFeedTabProvider.notifier).state = newIndex;
@@ -52,10 +51,17 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
     ref.listen(feedTabResetProvider, (previous, next) {
       if (next > 0) {
         _tabController.animateTo(2); // Reset to "For You"
+
+        // Refresh all three tabs
+        // ignore: unused_result
+        ref.refresh(followingFeedProvider.future);
+        // ignore: unused_result
+        ref.refresh(feedProvider.future);
+
         setState(() {
           _feedKey++;
+          _liveKey++; // Force Live tab to rebuild and refresh
         });
-        ref.refresh(feedProvider.future);
       }
     });
 
@@ -71,7 +77,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
             controller: _tabController,
             children: [
               // Live Tab
-              const LiveFeedList(),
+              LiveFeedList(key: ValueKey("live_$_liveKey")),
 
               // Following Tab - Uses followingFeedProvider
               VideoFeedList(
