@@ -27,9 +27,9 @@ class ApiConstants {
 
   // DeepAR
   static const String deepArAndroidLicenseKey =
-      "2f95939383b07b667868a05a342b1c8f3dc6b9d923e08dfb7d8572074ef0536f7a940aa8886c5798";
+      "bdc0c5c55c9b202efafe392f4a06f8be9585f082a8f370c2fecad4e027cd712e293c63730d249d8e";
   static const String deepArIosLicenseKey =
-      "b3feba950e64e1989d70661df9c87af9e549b02bbf8ba4fdf051e8f9abe89528b7776cde50e35e6a";
+      "c8e3f93725530c06a59ee7efcc71f879b8af1932ddd04c308702f8c878adafeeaf4b63b4200e743e";
 
   // Streaming
   static const String rtmpUrl = "rtmp://rtmp.maralabs.ph/live/test";
