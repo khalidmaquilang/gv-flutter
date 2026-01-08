@@ -9,7 +9,7 @@ class DeepArService {
       final result = await controller.initialize(
         androidLicenseKey: ApiConstants.deepArAndroidLicenseKey,
         iosLicenseKey: ApiConstants.deepArIosLicenseKey,
-        resolution: Resolution.high,
+        resolution: Resolution.medium,
       );
       if (result.success ?? false) {
         // Handle potential null success

@@ -402,9 +402,6 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
       // Background: Stop recording and save file
       final dynamic result = await _deepArController!.stopVideoRecording();
 
-      // Pause Music concurrently or after
-      // await _audioPlayer.pause(); // Moved up
-
       File? file;
       if (result is File) {
         file = result;
@@ -414,26 +411,35 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
 
       if (!mounted) return;
 
-      setState(() {
-        if (file != null) {
-          debugPrint("Recorder: Segment saved. Path: ${file.path}");
-          _recordedFiles.add(XFile(file.path));
+      if (file != null && await file.exists()) {
+        // iOS fix: Copy to unique path to prevent overwriting by next segment
+        final tempDir = await getTemporaryDirectory();
+        final timestamp = DateTime.now().millisecondsSinceEpoch;
+        final uniquePath = '${tempDir.path}/segment_$timestamp.mp4';
+        final uniqueFile = await file.copy(uniquePath);
+
+        debugPrint(
+          "Recorder: Segment saved and copied. Original: ${file.path}, Unique: ${uniqueFile.path}",
+        );
+
+        setState(() {
+          _recordedFiles.add(XFile(uniqueFile.path));
           _segments.add(_currentSegmentProgress);
-        } else {
-          debugPrint("Recorder: Stop returned NULL file!");
-          // If save failed, we might want to revert UI??
-          // For now, let's keep it paused but with no new segment added,
-          // or we could show error.
-        }
-        _currentSegmentProgress = 0.0;
-        _isProcessing = false; // Re-enable actions
-      });
+          _currentSegmentProgress = 0.0;
+          _isProcessing = false;
+        });
+      } else {
+        debugPrint("Recorder: Stop returned NULL or non-existent file!");
+        setState(() {
+          _currentSegmentProgress = 0.0;
+          _isProcessing = false;
+        });
+      }
     } catch (e) {
       debugPrint("Error pausing recording: $e");
       if (mounted) {
         setState(() {
           _isProcessing = false;
-          // Optionally revert state if critical failure
         });
       }
     }
@@ -563,8 +569,17 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
         file = File(result);
       }
 
-      if (file != null) {
-        _recordedFiles.add(XFile(file.path));
+      if (file != null && await file.exists()) {
+        // iOS fix: Copy to unique path to prevent overwriting
+        final tempDir = await getTemporaryDirectory();
+        final timestamp = DateTime.now().millisecondsSinceEpoch;
+        final uniquePath = '${tempDir.path}/segment_$timestamp.mp4';
+        final uniqueFile = await file.copy(uniquePath);
+
+        debugPrint(
+          "Recorder: Final segment saved and copied. Unique: ${uniqueFile.path}",
+        );
+        _recordedFiles.add(XFile(uniqueFile.path));
       }
     }
 
