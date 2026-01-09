@@ -72,8 +72,8 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
     _likesCount = _initialLikesCount;
     _initialFormattedReactionsCount = widget.video.formattedReactionsCount;
 
-    // Initialize follow state
-    _isFollowing = widget.video.user.isFollowing;
+    // Initialize follow state from video-level property
+    _isFollowing = widget.video.isAuthorFollowedByUser;
     _followersCount = widget.video.user.followersCount;
     _formattedFollowersCount = widget.video.user.formattedFollowersCount;
   }

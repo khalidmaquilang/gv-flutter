@@ -19,6 +19,8 @@ class Video {
   final String? streamKey; // For live streams
   final String? startedAt; // For live streams
   final String? endedAt; // For live streams
+  final bool
+  isAuthorFollowedByUser; // Whether the authenticated user follows the video author
 
   // Helper to check if this is a live stream
   bool get isLiveStream => streamKey != null;
@@ -43,6 +45,7 @@ class Video {
     this.streamKey,
     this.startedAt,
     this.endedAt,
+    this.isAuthorFollowedByUser = false,
   });
 
   factory Video.fromJson(Map<String, dynamic> json) {
@@ -67,6 +70,7 @@ class Video {
       streamKey: content['stream_key'], // Extract stream_key for live streams
       startedAt: content['started_at'],
       endedAt: content['ended_at'],
+      isAuthorFollowedByUser: json['is_author_followed_by_user'] ?? false,
     );
   }
 
@@ -88,6 +92,7 @@ class Video {
     String? streamKey,
     String? startedAt,
     String? endedAt,
+    bool? isAuthorFollowedByUser,
   }) {
     return Video(
       id: id ?? this.id,
@@ -108,6 +113,8 @@ class Video {
       streamKey: streamKey ?? this.streamKey,
       startedAt: startedAt ?? this.startedAt,
       endedAt: endedAt ?? this.endedAt,
+      isAuthorFollowedByUser:
+          isAuthorFollowedByUser ?? this.isAuthorFollowedByUser,
     );
   }
 }
