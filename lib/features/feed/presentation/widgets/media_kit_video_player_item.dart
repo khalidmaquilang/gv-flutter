@@ -149,16 +149,16 @@ class _MediaKitVideoPlayerItemState
     _lastPlayTime = DateTime.now();
     print('DEBUG VIEW: Started tracking time for video ${widget.video.id}');
 
-    // For short videos (< 2 sec), we'll track cumulative time in build()
-    // For normal videos (>= 2 sec), use a simple timer
+    // For short videos (< 3 sec), we'll track cumulative time in build()
+    // For normal videos (>= 3 sec), use a simple timer
     final videoDuration = _player?.state.duration ?? Duration.zero;
     print('DEBUG VIEW: Video duration: ${videoDuration.inSeconds}s');
 
-    if (videoDuration.inSeconds >= 2) {
-      // Normal video: simple 2-second timer
+    if (videoDuration.inSeconds >= 3) {
+      // Normal video: simple 3-second timer
       if (_viewTimer == null) {
-        print('DEBUG VIEW: Setting 2-second timer');
-        _viewTimer = Timer(const Duration(seconds: 2), () {
+        print('DEBUG VIEW: Setting 3-second timer');
+        _viewTimer = Timer(const Duration(seconds: 3), () {
           print('DEBUG VIEW: Timer fired! Recording view...');
           _recordView();
         });
@@ -178,8 +178,8 @@ class _MediaKitVideoPlayerItemState
 
       print('DEBUG VIEW: Cumulative time: ${_cumulativeWatchTimeMs}ms');
 
-      // Check if we've watched enough total time (2 seconds)
-      if (_cumulativeWatchTimeMs >= 2000) {
+      // Check if we've watched enough total time (3 seconds)
+      if (_cumulativeWatchTimeMs >= 3000) {
         print('DEBUG VIEW: Cumulative threshold reached! Recording view...');
         _recordView();
       }
@@ -191,9 +191,21 @@ class _MediaKitVideoPlayerItemState
 
   Future<void> _recordView() async {
     if (_hasRecordedView || !mounted) return;
+
+    // Only record if this video is still the active one being watched
+    // (widget.autoplay is only true for the current video in the pageview)
+    if (!widget.autoplay) {
+      print('DEBUG VIEW: Skipping record - video no longer active');
+      return;
+    }
+
     _hasRecordedView = true;
     _viewTimer = null;
     print('DEBUG VIEW: Recording view for video ${widget.video.id}');
+
+    // Double-check mounted before using ref
+    if (!mounted) return;
+
     await ref.read(videoServiceProvider).recordView(widget.video.id);
     print('DEBUG VIEW: View recorded successfully!');
   }
