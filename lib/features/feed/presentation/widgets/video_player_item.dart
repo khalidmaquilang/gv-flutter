@@ -158,10 +158,10 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
     // Only pause if needed, but going to profile keeps cache alive usually.
     // However, pushing a new route usually warrants pausing.
     // The feed screen logic might auto-pause, but explicit pause is safer here.
-    final controller = _currentController; // Use current controller
+    // Explicitly pause the current controller before navigation
+    final controller = _currentController;
     if (_isControllerValid(controller) && controller!.value.isPlaying) {
-      // ref.read(videoPreloadProvider.notifier).pauseCurrentVideo(); // Maybe better to use provider?
-      // For now simple pause:
+      controller.pause();
     }
 
     // Note: The main feed logic pauses video when route changes, so this might be redundant
@@ -180,6 +180,12 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
     ).then((_) {
       // Auto-resume will be handled by feed visibility logic
     });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    routeObserver.subscribe(this, ModalRoute.of(context)!);
   }
 
   @override
@@ -220,6 +226,7 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
 
   @override
   void didPushNext() {
+    // Called when a new route is pushed on top of this one
     final controller = _controller;
     if (_isControllerValid(controller)) {
       controller!.pause();
@@ -227,9 +234,8 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
   }
 
   @override
-  @override
-  @override
   void didPopNext() {
+    // Called when the top route is popped off, and this one becomes visible again
     final shouldPlay =
         widget.autoplay &&
         (widget.ignoreBottomNav || ref.read(bottomNavIndexProvider) == 0) &&
