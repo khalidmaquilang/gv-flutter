@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:media_kit/media_kit.dart';
@@ -56,6 +58,12 @@ class _MediaKitVideoPlayerItemState
   int _initialLikesCount = 0;
   String _initialFormattedReactionsCount = "";
 
+  // View tracking
+  Timer? _viewTimer;
+  bool _hasRecordedView = false;
+  int _cumulativeWatchTimeMs = 0; // Track total watch time for short videos
+  DateTime? _lastPlayTime;
+
   @override
   void initState() {
     super.initState();
@@ -69,6 +77,12 @@ class _MediaKitVideoPlayerItemState
     _likesCount = widget.video.likesCount;
     _initialLikesCount = widget.video.likesCount;
     _initialFormattedReactionsCount = widget.video.formattedReactionsCount;
+  }
+
+  @override
+  void dispose() {
+    _cancelViewTimer();
+    super.dispose();
   }
 
   Future<void> _toggleFollow() async {
@@ -126,6 +140,62 @@ class _MediaKitVideoPlayerItemState
     await Share.share(
       'Check out this video by @${widget.video.user.username}: ${widget.video.videoUrl}',
     );
+  }
+
+  void _startViewTimer() {
+    if (_hasRecordedView) return;
+
+    // Start tracking watch time
+    _lastPlayTime = DateTime.now();
+    print('DEBUG VIEW: Started tracking time for video ${widget.video.id}');
+
+    // For short videos (< 2 sec), we'll track cumulative time in build()
+    // For normal videos (>= 2 sec), use a simple timer
+    final videoDuration = _player?.state.duration ?? Duration.zero;
+    print('DEBUG VIEW: Video duration: ${videoDuration.inSeconds}s');
+
+    if (videoDuration.inSeconds >= 2) {
+      // Normal video: simple 2-second timer
+      if (_viewTimer == null) {
+        print('DEBUG VIEW: Setting 2-second timer');
+        _viewTimer = Timer(const Duration(seconds: 2), () {
+          print('DEBUG VIEW: Timer fired! Recording view...');
+          _recordView();
+        });
+      }
+    } else {
+      print('DEBUG VIEW: Short video, using cumulative tracking');
+    }
+    // For short videos, we'll check cumulative time in build()
+  }
+
+  void _cancelViewTimer() {
+    // Update cumulative watch time before cancelling
+    if (_lastPlayTime != null && !_hasRecordedView && mounted) {
+      final elapsed = DateTime.now().difference(_lastPlayTime!);
+      _cumulativeWatchTimeMs += elapsed.inMilliseconds;
+      _lastPlayTime = null;
+
+      print('DEBUG VIEW: Cumulative time: ${_cumulativeWatchTimeMs}ms');
+
+      // Check if we've watched enough total time (2 seconds)
+      if (_cumulativeWatchTimeMs >= 2000) {
+        print('DEBUG VIEW: Cumulative threshold reached! Recording view...');
+        _recordView();
+      }
+    }
+
+    _viewTimer?.cancel();
+    _viewTimer = null;
+  }
+
+  Future<void> _recordView() async {
+    if (_hasRecordedView || !mounted) return;
+    _hasRecordedView = true;
+    _viewTimer = null;
+    print('DEBUG VIEW: Recording view for video ${widget.video.id}');
+    await ref.read(videoServiceProvider).recordView(widget.video.id);
+    print('DEBUG VIEW: View recorded successfully!');
   }
 
   Widget _buildAction(
@@ -340,6 +410,8 @@ class _MediaKitVideoPlayerItemState
           await Future.delayed(const Duration(milliseconds: 100));
           if (mounted && _player != null && !_player!.state.playing) {
             _player!.play();
+            // Start view timer after video starts playing
+            _startViewTimer();
           }
         });
       }
@@ -353,7 +425,7 @@ class _MediaKitVideoPlayerItemState
           // Video player
           if (_controller != null)
             Center(
-              child: GestureDetector(
+              child: _ZoomableContent(
                 onTap: () {
                   if (_player != null) {
                     if (_player!.state.playing) {
@@ -622,6 +694,237 @@ class _MediaKitVideoPlayerItemState
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// _ZoomableContent widget for zoom gestures
+class _ZoomableContent extends StatefulWidget {
+  final Widget child;
+  final VoidCallback? onInteractionStart;
+  final VoidCallback? onInteractionEnd;
+  final VoidCallback? onTap;
+
+  const _ZoomableContent({
+    required this.child,
+    this.onInteractionStart,
+    this.onInteractionEnd,
+    this.onTap,
+  });
+
+  @override
+  State<_ZoomableContent> createState() => _ZoomableContentState();
+}
+
+class _ZoomableContentState extends State<_ZoomableContent>
+    with TickerProviderStateMixin {
+  final TransformationController _transformationController =
+      TransformationController();
+  late AnimationController _animationController;
+  late Animation<Matrix4> _zoomAnimation;
+  int _pointers = 0;
+  bool _canPan = false;
+  Timer? _longPressTimer;
+  Offset? _longPressOrigin;
+
+  @override
+  void initState() {
+    super.initState();
+    _animationController =
+        AnimationController(
+          vsync: this,
+          duration: const Duration(milliseconds: 300),
+        )..addListener(() {
+          _transformationController.value = _zoomAnimation.value;
+        });
+
+    _transformationController.addListener(_onTransformationChange);
+  }
+
+  @override
+  void dispose() {
+    _transformationController.removeListener(_onTransformationChange);
+    _transformationController.dispose();
+    _animationController.dispose();
+    _longPressTimer?.cancel();
+    super.dispose();
+  }
+
+  void _onTransformationChange() {
+    _updatePanEnablement();
+  }
+
+  void _updatePanEnablement() {
+    final isZoomed = !_transformationController.value.isIdentity();
+    final shouldEnablePan = isZoomed || _pointers >= 2;
+
+    if (shouldEnablePan != _canPan) {
+      if (mounted) {
+        setState(() {
+          _canPan = shouldEnablePan;
+        });
+      }
+    }
+  }
+
+  void _handleDoubleTap() {
+    Matrix4 endMatrix;
+    if (_transformationController.value.isIdentity()) {
+      // Zoom In to 2x at Center
+      final size = MediaQuery.of(context).size;
+      final center = size.center(Offset.zero);
+
+      endMatrix = Matrix4.identity()
+        ..translate(center.dx, center.dy)
+        ..scale(2.0)
+        ..translate(-center.dx, -center.dy);
+
+      widget.onInteractionStart?.call();
+    } else {
+      // Zoom Out to 1x
+      endMatrix = Matrix4.identity();
+      widget.onInteractionEnd?.call();
+    }
+
+    _zoomAnimation =
+        Matrix4Tween(
+          begin: _transformationController.value,
+          end: endMatrix,
+        ).animate(
+          CurveTween(curve: Curves.easeInOut).animate(_animationController),
+        );
+
+    _animationController.forward(from: 0).then((_) {
+      if (endMatrix.isIdentity()) {
+        widget.onInteractionEnd?.call();
+      }
+    });
+  }
+
+  void _showOptionsMenu() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1E1E1E),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                margin: const EdgeInsets.only(top: 8, bottom: 8),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey[600],
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              ListTile(
+                leading: const Icon(Icons.download, color: Colors.white),
+                title: const Text(
+                  'Download Video',
+                  style: TextStyle(color: Colors.white),
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Downloading video...')),
+                  );
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.flag, color: Colors.white),
+                title: const Text(
+                  'Report',
+                  style: TextStyle(color: Colors.white),
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Report submitted.')),
+                  );
+                },
+              ),
+              const SizedBox(height: 16),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Listener(
+      onPointerDown: (event) {
+        _pointers++;
+        _updatePanEnablement();
+
+        if (_pointers >= 2) {
+          widget.onInteractionStart?.call();
+          _longPressTimer?.cancel();
+        }
+
+        if (_pointers == 1) {
+          _longPressOrigin = event.position;
+          _longPressTimer?.cancel();
+          _longPressTimer = Timer(const Duration(milliseconds: 500), () {
+            if (mounted && _pointers == 1) {
+              _showOptionsMenu();
+            }
+          });
+        }
+      },
+      onPointerMove: (event) {
+        if (_longPressOrigin != null) {
+          final distance = (event.position - _longPressOrigin!).distance;
+          if (distance > 10.0) {
+            _longPressTimer?.cancel();
+          }
+        }
+      },
+      onPointerUp: (event) {
+        _pointers--;
+        _updatePanEnablement();
+        _longPressTimer?.cancel();
+        if (_pointers == 0) {
+          if (_transformationController.value.isIdentity()) {
+            widget.onInteractionEnd?.call();
+          }
+        }
+      },
+      onPointerCancel: (event) {
+        _pointers = 0;
+        _updatePanEnablement();
+        _longPressTimer?.cancel();
+        if (_transformationController.value.isIdentity()) {
+          widget.onInteractionEnd?.call();
+        }
+      },
+      child: InteractiveViewer(
+        transformationController: _transformationController,
+        minScale: 1.0,
+        maxScale: 4.0,
+        panEnabled: _canPan,
+        onInteractionStart: (details) {
+          if (_pointers >= 2 || !_transformationController.value.isIdentity()) {
+            widget.onInteractionStart?.call();
+          }
+        },
+        onInteractionEnd: (details) {
+          _transformationController.value = Matrix4.identity();
+          widget.onInteractionEnd?.call();
+        },
+        child: GestureDetector(
+          onTap: widget.onTap,
+          onDoubleTap: _handleDoubleTap,
+          behavior: HitTestBehavior.opaque,
+          child: widget.child,
+        ),
       ),
     );
   }
