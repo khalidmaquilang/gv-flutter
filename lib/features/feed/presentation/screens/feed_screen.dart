@@ -133,7 +133,8 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
               alignment: Alignment.topCenter,
               child: TabBar(
                 controller: _tabController,
-                isScrollable: true,
+                isScrollable: false,
+                tabAlignment: TabAlignment.center,
                 indicator: const UnderlineTabIndicator(
                   borderSide: BorderSide(width: 2.0, color: Colors.white),
                   insets: EdgeInsets.symmetric(horizontal: 10.0),
