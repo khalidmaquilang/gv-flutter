@@ -40,6 +40,32 @@ class VideoService {
     }
   }
 
+  Future<FeedResponse> getVideosByMusic(
+    String musicId, {
+    String? cursor,
+  }) async {
+    try {
+      final endpoint = cursor != null
+          ? "${ApiConstants.musics}/$musicId/videos?cursor=$cursor"
+          : "${ApiConstants.musics}/$musicId/videos";
+
+      final response = await _apiClient.get(endpoint);
+
+      if (response.statusCode == 200 && response.data != null) {
+        final data = response.data['data'] as List;
+        final videos = data.map((e) => Video.fromJson(e)).toList();
+        final nextCursor = response.data['next_cursor'] as String?;
+
+        return FeedResponse(videos: videos, nextCursor: nextCursor);
+      }
+
+      return FeedResponse(videos: [], nextCursor: null);
+    } catch (e) {
+      print("Get Music Videos Error: $e");
+      return FeedResponse(videos: [], nextCursor: null);
+    }
+  }
+
   Future<bool> toggleReaction(String videoId) async {
     try {
       await _apiClient.post('/feeds/$videoId/react');

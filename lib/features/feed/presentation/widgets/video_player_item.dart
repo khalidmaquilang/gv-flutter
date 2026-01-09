@@ -10,9 +10,11 @@ import 'comment_bottom_sheet.dart';
 import 'package:test_flutter/core/utils/route_observer.dart';
 import '../providers/feed_audio_provider.dart';
 import '../providers/feed_provider.dart';
-import '../providers/video_preload_provider.dart';
+import '../providers/video_preload_provider.dart'; // Import video preload provider
+import '../../../camera/data/models/sound_model.dart';
 import '../../../profile/presentation/screens/profile_screen.dart'; // Import ProfileScreen
 import 'package:test_flutter/core/providers/profile_provider.dart'; // Import profile provider
+import '../screens/music_detail_screen.dart';
 
 import 'dart:async';
 
@@ -685,38 +687,74 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
                       overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        _SpinningDisc(
-                          imageUrl:
-                              widget.video.sound?.coverUrl ??
-                              widget.video.user.avatar,
-                          size: 30,
-                        ),
-                        const SizedBox(width: 8),
-                        const Icon(
-                          Icons.music_note,
-                          size: 15,
-                          color: Colors.white,
-                        ),
-                        const SizedBox(width: 4),
-                        Expanded(
-                          child: Text(
-                            widget.video.sound != null
-                                ? "${widget.video.sound!.title} • ${widget.video.sound!.author}"
-                                : "Original Sound - ${widget.video.user.username}",
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 13,
-                              shadows: [
-                                Shadow(color: Colors.black, blurRadius: 2),
-                              ],
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                    GestureDetector(
+                      onTap: () {
+                        // Create sound object (real or mock)
+                        final sound =
+                            widget.video.sound ??
+                            Sound(
+                              id: 'original_${widget.video.user.id}',
+                              title: "Original Sound",
+                              author:
+                                  widget.video.user.username ??
+                                  widget.video.user.name,
+                              url:
+                                  "", // No separate audio URL for original sound
+                              coverUrl: widget.video.thumbnailUrl.isNotEmpty
+                                  ? widget.video.thumbnailUrl
+                                  : (widget.video.user.avatar ??
+                                        "https://www.shutterstock.com/image-vector/music-note-icon-vector-illustration-600nw-2253322131.jpg"),
+                              duration: 0,
+                            );
+
+                        // Pause video before navigating
+                        final controller = _currentController;
+                        if (_isControllerValid(controller) &&
+                            controller!.value.isPlaying) {
+                          controller.pause();
+                        }
+
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (context) =>
+                                MusicDetailScreen(sound: sound),
                           ),
-                        ),
-                      ],
+                        );
+                      },
+                      behavior: HitTestBehavior.opaque,
+                      child: Row(
+                        children: [
+                          _SpinningDisc(
+                            imageUrl:
+                                widget.video.sound?.coverUrl ??
+                                widget.video.user.avatar,
+                            size: 30,
+                          ),
+                          const SizedBox(width: 8),
+                          const Icon(
+                            Icons.music_note,
+                            size: 15,
+                            color: Colors.white,
+                          ),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: Text(
+                              widget.video.sound != null
+                                  ? "${widget.video.sound!.title} • ${widget.video.sound!.author}"
+                                  : "Original Sound - ${widget.video.user.username}",
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 13,
+                                shadows: [
+                                  Shadow(color: Colors.black, blurRadius: 2),
+                                ],
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),
