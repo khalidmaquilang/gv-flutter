@@ -208,11 +208,34 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
                       }
                     }
 
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (context) => const SearchScreen(),
-                      ),
-                    );
+                    Navigator.of(context)
+                        .push(
+                          MaterialPageRoute(
+                            builder: (context) => const SearchScreen(),
+                          ),
+                        )
+                        .then((_) {
+                          // Resume the current video when returning from search
+                          final updatedProvider = ref.read(
+                            mediaKitVideoProvider,
+                          );
+                          final audioEnabled = ref.read(
+                            isFeedAudioEnabledProvider,
+                          );
+
+                          // Find and resume the playing video if audio is enabled
+                          if (audioEnabled &&
+                              updatedProvider.players.isNotEmpty) {
+                            // Resume all players that were paused (media_kit will handle which one to actually play)
+                            for (final player
+                                in updatedProvider.players.values) {
+                              if (!player.state.playing) {
+                                player.play();
+                                break; // Only resume one player
+                              }
+                            }
+                          }
+                        });
                   },
                 ),
               ),
