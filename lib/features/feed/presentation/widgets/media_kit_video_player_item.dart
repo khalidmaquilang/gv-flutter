@@ -15,7 +15,6 @@ import '../../../profile/presentation/screens/profile_screen.dart';
 import '../../../camera/data/models/sound_model.dart';
 import '../screens/music_detail_screen.dart';
 import 'comment_bottom_sheet.dart';
-import '../../../../core/utils/route_observer.dart';
 
 /// MediaKit video player with UI overlay
 class MediaKitVideoPlayerItem extends ConsumerStatefulWidget {
@@ -40,8 +39,7 @@ class MediaKitVideoPlayerItem extends ConsumerStatefulWidget {
 }
 
 class _MediaKitVideoPlayerItemState
-    extends ConsumerState<MediaKitVideoPlayerItem>
-    with RouteAware {
+    extends ConsumerState<MediaKitVideoPlayerItem> {
   Player? get _player =>
       ref.watch(mediaKitVideoProvider).players[widget.video.id];
   mk_video.VideoController? get _controller =>
@@ -130,45 +128,6 @@ class _MediaKitVideoPlayerItemState
     );
   }
 
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    // Subscribe to route changes
-    final modalRoute = ModalRoute.of(context);
-    if (modalRoute is PageRoute) {
-      routeObserver.subscribe(this, modalRoute);
-    }
-  }
-
-  @override
-  void dispose() {
-    routeObserver.unsubscribe(this);
-    super.dispose();
-  }
-
-  // RouteAware methods
-  @override
-  void didPushNext() {
-    // User navigated away (e.g., to search, profile, etc.)
-    _player?.pause();
-  }
-
-  @override
-  void didPopNext() {
-    // User returned from another screen
-    if (widget.autoplay && _player != null && !_player!.state.playing) {
-      final bottomNav = ref.read(bottomNavIndexProvider);
-      final audioEnabled = ref.read(isFeedAudioEnabledProvider);
-      final currentTab = ref.read(activeFeedTabProvider);
-
-      if ((widget.ignoreBottomNav || bottomNav == 0) &&
-          audioEnabled &&
-          (currentTab == 1 || currentTab == 2)) {
-        _player!.play();
-      }
-    }
-  }
-
   Widget _buildAction(
     IconData icon,
     String text, {
@@ -216,14 +175,14 @@ class _MediaKitVideoPlayerItemState
   }
 
   void _navigateToProfile() {
-    // Pause ALL players to ensure no background audio
+    // Pause ALL players unconditionally to ensure no background audio
     final provider = ref.read(mediaKitVideoProvider);
     print('DEBUG: Total players: ${provider.players.length}');
     for (final entry in provider.players.entries) {
-      if (entry.value.state.playing) {
-        print('DEBUG: Pausing player for video ${entry.key}');
-        entry.value.pause();
-      }
+      print(
+        'DEBUG: Pausing player for video ${entry.key} (playing: ${entry.value.state.playing})',
+      );
+      entry.value.pause();
     }
 
     Navigator.push(
@@ -259,14 +218,10 @@ class _MediaKitVideoPlayerItemState
   }
 
   void _navigateToMusicDetail() {
-    // Access player via ref.read to get the current player
-    final player = ref.read(mediaKitVideoProvider).players[widget.video.id];
-    print(
-      'DEBUG: Navigating to music, player exists: ${player != null}, playing: ${player?.state.playing}',
-    );
-    if (player != null && player.state.playing) {
-      player.pause();
-      print('DEBUG: Paused player');
+    // Pause ALL players unconditionally to ensure no background audio
+    final provider = ref.read(mediaKitVideoProvider);
+    for (final entry in provider.players.entries) {
+      entry.value.pause();
     }
 
     // Create sound object (real or mock)
@@ -292,6 +247,9 @@ class _MediaKitVideoPlayerItemState
         )
         .then((_) {
           // Resume if this is the current video (autoplay=true) and conditions are met
+          final player = ref
+              .read(mediaKitVideoProvider)
+              .players[widget.video.id];
           if (widget.autoplay && player != null && !player.state.playing) {
             final bottomNav = ref.read(bottomNavIndexProvider);
             final audioEnabled = ref.read(isFeedAudioEnabledProvider);
