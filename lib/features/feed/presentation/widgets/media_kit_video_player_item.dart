@@ -147,24 +147,18 @@ class _MediaKitVideoPlayerItemState
 
     // Start tracking watch time
     _lastPlayTime = DateTime.now();
-    print('DEBUG VIEW: Started tracking time for video ${widget.video.id}');
 
     // For short videos (< 3 sec), we'll track cumulative time in build()
     // For normal videos (>= 3 sec), use a simple timer
     final videoDuration = _player?.state.duration ?? Duration.zero;
-    print('DEBUG VIEW: Video duration: ${videoDuration.inSeconds}s');
 
     if (videoDuration.inSeconds >= 3) {
       // Normal video: simple 3-second timer
       if (_viewTimer == null) {
-        print('DEBUG VIEW: Setting 3-second timer');
         _viewTimer = Timer(const Duration(seconds: 3), () {
-          print('DEBUG VIEW: Timer fired! Recording view...');
           _recordView();
         });
       }
-    } else {
-      print('DEBUG VIEW: Short video, using cumulative tracking');
     }
     // For short videos, we'll check cumulative time in build()
   }
@@ -176,11 +170,8 @@ class _MediaKitVideoPlayerItemState
       _cumulativeWatchTimeMs += elapsed.inMilliseconds;
       _lastPlayTime = null;
 
-      print('DEBUG VIEW: Cumulative time: ${_cumulativeWatchTimeMs}ms');
-
       // Check if we've watched enough total time (3 seconds)
       if (_cumulativeWatchTimeMs >= 3000) {
-        print('DEBUG VIEW: Cumulative threshold reached! Recording view...');
         _recordView();
       }
     }
@@ -194,20 +185,15 @@ class _MediaKitVideoPlayerItemState
 
     // Only record if this video is still the active one being watched
     // (widget.autoplay is only true for the current video in the pageview)
-    if (!widget.autoplay) {
-      print('DEBUG VIEW: Skipping record - video no longer active');
-      return;
-    }
+    if (!widget.autoplay) return;
 
     _hasRecordedView = true;
     _viewTimer = null;
-    print('DEBUG VIEW: Recording view for video ${widget.video.id}');
 
     // Double-check mounted before using ref
     if (!mounted) return;
 
     await ref.read(videoServiceProvider).recordView(widget.video.id);
-    print('DEBUG VIEW: View recorded successfully!');
   }
 
   Widget _buildAction(
