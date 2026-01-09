@@ -433,6 +433,10 @@ class _MediaKitVideoPlayerItemState
                     }
                   }
                 },
+                onDoubleTap: () {
+                  // Auto-react on double tap (like TikTok)
+                  _toggleLike();
+                },
                 child: mk_video.Video(
                   controller: _controller!,
                   fit: BoxFit.cover,
@@ -703,12 +707,14 @@ class _ZoomableContent extends StatefulWidget {
   final VoidCallback? onInteractionStart;
   final VoidCallback? onInteractionEnd;
   final VoidCallback? onTap;
+  final VoidCallback? onDoubleTap;
 
   const _ZoomableContent({
     required this.child,
     this.onInteractionStart,
     this.onInteractionEnd,
     this.onTap,
+    this.onDoubleTap,
   });
 
   @override
@@ -767,37 +773,8 @@ class _ZoomableContentState extends State<_ZoomableContent>
   }
 
   void _handleDoubleTap() {
-    Matrix4 endMatrix;
-    if (_transformationController.value.isIdentity()) {
-      // Zoom In to 2x at Center
-      final size = MediaQuery.of(context).size;
-      final center = size.center(Offset.zero);
-
-      endMatrix = Matrix4.identity()
-        ..translate(center.dx, center.dy)
-        ..scale(2.0)
-        ..translate(-center.dx, -center.dy);
-
-      widget.onInteractionStart?.call();
-    } else {
-      // Zoom Out to 1x
-      endMatrix = Matrix4.identity();
-      widget.onInteractionEnd?.call();
-    }
-
-    _zoomAnimation =
-        Matrix4Tween(
-          begin: _transformationController.value,
-          end: endMatrix,
-        ).animate(
-          CurveTween(curve: Curves.easeInOut).animate(_animationController),
-        );
-
-    _animationController.forward(from: 0).then((_) {
-      if (endMatrix.isIdentity()) {
-        widget.onInteractionEnd?.call();
-      }
-    });
+    // Just call the callback (will be used for auto-react/like)
+    widget.onDoubleTap?.call();
   }
 
   void _showOptionsMenu() {
