@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:test_flutter/features/auth/data/models/user_model.dart';
-import 'package:test_flutter/features/feed/presentation/widgets/video_player_item.dart';
-import 'package:test_flutter/features/feed/presentation/providers/video_preload_provider.dart';
+import 'package:test_flutter/features/feed/presentation/widgets/media_kit_video_player_item.dart';
+import 'package:test_flutter/features/feed/presentation/providers/media_kit_video_provider.dart';
 import 'package:test_flutter/features/feed/data/models/video_model.dart';
 import '../../data/models/profile_video_model.dart';
 
@@ -24,7 +24,7 @@ class ProfileFeedScreen extends ConsumerStatefulWidget {
 
 class _ProfileFeedScreenState extends ConsumerState<ProfileFeedScreen> {
   late PageController _pageController;
-  VideoPreloadNotifier? _videoNotifier;
+  MediaKitVideoNotifier? _videoNotifier;
 
   int _currentIndex = 0;
   List<Video> _mappedVideos = [];
@@ -40,15 +40,15 @@ class _ProfileFeedScreenState extends ConsumerState<ProfileFeedScreen> {
 
     // Init provider with current page and store notifier reference
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _videoNotifier = ref.read(videoPreloadProvider.notifier);
+      _videoNotifier = ref.read(mediaKitVideoProvider.notifier);
       _videoNotifier?.onPageChanged(_currentIndex, _mappedVideos);
     });
   }
 
   @override
   void dispose() {
-    // Pause the current video before disposing using stored reference
-    _videoNotifier?.pauseCurrentVideo();
+    // Pause all videos before disposing using stored reference
+    _videoNotifier?.pauseAll();
     _pageController.dispose();
     super.dispose();
   }
@@ -68,28 +68,49 @@ class _ProfileFeedScreenState extends ConsumerState<ProfileFeedScreen> {
                 _currentIndex = index;
               });
               ref
-                  .read(videoPreloadProvider.notifier)
+                  .read(mediaKitVideoProvider.notifier)
                   .onPageChanged(index, _mappedVideos);
             },
             itemBuilder: (context, index) {
               final video = _mappedVideos[index];
-              return VideoPlayerItem(
+              return MediaKitVideoPlayerItem(
                 key: ValueKey(video.id),
                 video: video,
                 autoplay: index == _currentIndex,
-                ignoreBottomNav: true,
                 hideProfileInfo: true,
+                ignoreBottomNav: true,
               );
             },
           ),
 
           // Back Button
           Positioned(
-            top: 40,
-            left: 10,
-            child: IconButton(
-              icon: const Icon(Icons.arrow_back, color: Colors.white),
-              onPressed: () => Navigator.pop(context),
+            top: 0,
+            left: 0,
+            child: SafeArea(
+              child: GestureDetector(
+                onTap: () => Navigator.pop(context),
+                child: Container(
+                  margin: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.5),
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.3),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: const Icon(
+                    Icons.arrow_back,
+                    color: Colors.white,
+                    size: 24,
+                  ),
+                ),
+              ),
             ),
           ),
         ],

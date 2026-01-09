@@ -25,6 +25,7 @@ class MediaKitVideoPlayerItem extends ConsumerStatefulWidget {
   final VoidCallback? onInteractionEnd;
   final bool autoplay;
   final bool ignoreBottomNav;
+  final bool hideProfileInfo;
 
   const MediaKitVideoPlayerItem({
     super.key,
@@ -33,6 +34,7 @@ class MediaKitVideoPlayerItem extends ConsumerStatefulWidget {
     this.onInteractionEnd,
     this.autoplay = false,
     this.ignoreBottomNav = false,
+    this.hideProfileInfo = false,
   });
 
   @override
@@ -446,131 +448,134 @@ class _MediaKitVideoPlayerItemState
             ),
 
           // Top-Left: User Info
-          Positioned(
-            left: 10,
-            top: 10,
-            right: 80,
-            child: SafeArea(
-              bottom: false,
-              child: Row(
-                children: [
-                  // Avatar
-                  GestureDetector(
-                    onTap: _navigateToProfile,
-                    child: CircleAvatar(
-                      radius: 20,
-                      backgroundColor: Colors.white,
-                      backgroundImage: widget.video.user.avatar != null
-                          ? NetworkImage(widget.video.user.avatar!)
-                          : null,
-                      child: widget.video.user.avatar == null
-                          ? Text(
-                              widget.video.user.name[0].toUpperCase(),
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: Colors.black,
-                              ),
-                            )
-                          : null,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-
-                  // User Name
-                  Flexible(
-                    child: GestureDetector(
+          if (!widget.hideProfileInfo)
+            Positioned(
+              left: 10,
+              top: 10,
+              right: 80,
+              child: SafeArea(
+                bottom: false,
+                child: Row(
+                  children: [
+                    // Avatar
+                    GestureDetector(
                       onTap: _navigateToProfile,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            "@${widget.video.user.username}",
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16,
-                              shadows: [
-                                Shadow(color: Colors.black, blurRadius: 4),
-                              ],
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            "${_formattedFollowersCount ?? _followersCount} Followers",
-                            style: const TextStyle(
-                              color: Colors.white70,
-                              fontSize: 12,
-                              shadows: [
-                                Shadow(color: Colors.black, blurRadius: 3),
-                              ],
-                            ),
-                          ),
-                        ],
+                      child: CircleAvatar(
+                        radius: 20,
+                        backgroundColor: Colors.white,
+                        backgroundImage: widget.video.user.avatar != null
+                            ? NetworkImage(widget.video.user.avatar!)
+                            : null,
+                        child: widget.video.user.avatar == null
+                            ? Text(
+                                widget.video.user.name[0].toUpperCase(),
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.black,
+                                ),
+                              )
+                            : null,
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 10),
+                    const SizedBox(width: 10),
 
-                  // Follow Button
-                  if (!_isFollowing)
-                    GestureDetector(
-                      onTap: _toggleFollow,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 6,
-                        ),
-                        decoration: BoxDecoration(
-                          color: AppColors.neonPink,
-                          borderRadius: BorderRadius.circular(20),
-                          boxShadow: [
-                            BoxShadow(
-                              color: AppColors.neonPink.withValues(alpha: 0.4),
-                              blurRadius: 8,
-                              offset: const Offset(0, 2),
+                    // User Name
+                    Flexible(
+                      child: GestureDetector(
+                        onTap: _navigateToProfile,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              "@${widget.video.user.username}",
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                                shadows: [
+                                  Shadow(color: Colors.black, blurRadius: 4),
+                                ],
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              "${_formattedFollowersCount ?? _followersCount} Followers",
+                              style: const TextStyle(
+                                color: Colors.white70,
+                                fontSize: 12,
+                                shadows: [
+                                  Shadow(color: Colors.black, blurRadius: 3),
+                                ],
+                              ),
                             ),
                           ],
                         ),
-                        child: const Text(
-                          "Follow",
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ),
-                    )
-                  else
-                    GestureDetector(
-                      onTap: _toggleFollow,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 6,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.3),
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(
-                            color: Colors.white.withValues(alpha: 0.5),
-                          ),
-                        ),
-                        child: const Text(
-                          "Following",
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 12,
-                          ),
-                        ),
                       ),
                     ),
-                ],
+                    const SizedBox(width: 10),
+
+                    // Follow Button
+                    if (!_isFollowing)
+                      GestureDetector(
+                        onTap: _toggleFollow,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppColors.neonPink,
+                            borderRadius: BorderRadius.circular(20),
+                            boxShadow: [
+                              BoxShadow(
+                                color: AppColors.neonPink.withValues(
+                                  alpha: 0.4,
+                                ),
+                                blurRadius: 8,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: const Text(
+                            "Follow",
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                      )
+                    else
+                      GestureDetector(
+                        onTap: _toggleFollow,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.3),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                              color: Colors.white.withValues(alpha: 0.5),
+                            ),
+                          ),
+                          child: const Text(
+                            "Following",
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
               ),
             ),
-          ),
 
           // Right Side Actions
           Positioned(

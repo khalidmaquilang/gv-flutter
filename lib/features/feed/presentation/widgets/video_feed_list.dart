@@ -3,12 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:preload_page_view/preload_page_view.dart'; // PreloadPageView
 import '../../data/models/video_model.dart';
 import '../providers/media_kit_video_provider.dart'; // MediaKit provider
-import 'video_player_item.dart';
-import 'media_kit_video_player_item.dart'; // NEW: Simple test widget
+import 'media_kit_video_player_item.dart';
 import 'live_preview_item.dart';
 import '../providers/feed_audio_provider.dart';
-import '../providers/feed_provider.dart';
-import '../../../../core/providers/navigation_provider.dart';
 
 class VideoFeedList extends ConsumerStatefulWidget {
   final List<Video> videos;
@@ -52,10 +49,12 @@ class _VideoFeedListState extends ConsumerState<VideoFeedList>
 
     // Initialize media_kit preload for first video
     if (widget.videos.isNotEmpty) {
-      print('VideoFeedList.initState: Scheduling media_kit initialization');
-      print('  videos.length: ${widget.videos.length}');
+      debugPrint(
+        'VideoFeedList.initState: Scheduling media_kit initialization',
+      );
+      debugPrint('  videos.length: ${widget.videos.length}');
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        print('VideoFeedList: Post-frame callback executing');
+        debugPrint('VideoFeedList: Post-frame callback executing');
         // Use media_kit provider instead of old preload provider
         ref
             .read(mediaKitVideoProvider.notifier)
@@ -82,8 +81,8 @@ class _VideoFeedListState extends ConsumerState<VideoFeedList>
 
     // Initialize media_kit when videos first become available
     if (widget.videos.isNotEmpty && oldWidget.videos.isEmpty) {
-      print('VideoFeedList: Videos just loaded, initializing media_kit');
-      print('  videos.length: ${widget.videos.length}');
+      debugPrint('VideoFeedList: Videos just loaded, initializing media_kit');
+      debugPrint('  videos.length: ${widget.videos.length}');
       WidgetsBinding.instance.addPostFrameCallback((_) {
         ref
             .read(mediaKitVideoProvider.notifier)
