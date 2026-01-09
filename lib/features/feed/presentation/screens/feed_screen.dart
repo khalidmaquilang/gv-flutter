@@ -79,7 +79,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
               // Live Tab
               LiveFeedList(key: ValueKey("live_$_liveKey")),
 
-              // Following Tab - Uses followingFeedProvider
+              // Following Tab
               VideoFeedList(
                 videos: followingFeedAsync.value ?? [],
                 isLoading: followingFeedAsync.isLoading,
@@ -88,6 +88,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
                     ref.refresh(followingFeedProvider.future),
                 onLoadMore: () =>
                     ref.read(followingFeedProvider.notifier).loadNextPage(),
+                tabIndex: 1, // Following Tab Index
               ),
 
               // For You Tab
@@ -99,6 +100,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
                 onRefresh: () async => ref.refresh(feedProvider.future),
                 onLoadMore: () =>
                     ref.read(feedProvider.notifier).loadNextPage(),
+                tabIndex: 2, // For You Tab Index
               ),
             ],
           ),

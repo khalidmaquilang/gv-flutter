@@ -4,6 +4,7 @@ import '../../data/models/video_model.dart';
 import '../providers/video_preload_provider.dart';
 import 'video_player_item.dart';
 import 'live_preview_item.dart';
+import '../providers/feed_audio_provider.dart';
 
 class VideoFeedList extends ConsumerStatefulWidget {
   final List<Video> videos;
@@ -11,6 +12,7 @@ class VideoFeedList extends ConsumerStatefulWidget {
   final String? error;
   final Future<void> Function()? onRefresh;
   final VoidCallback? onLoadMore;
+  final int tabIndex; // Index of the tab this list belongs to
 
   const VideoFeedList({
     super.key,
@@ -19,6 +21,7 @@ class VideoFeedList extends ConsumerStatefulWidget {
     this.error,
     this.onRefresh,
     this.onLoadMore,
+    required this.tabIndex,
   });
 
   @override
@@ -87,6 +90,10 @@ class _VideoFeedListState extends ConsumerState<VideoFeedList>
   Widget build(BuildContext context) {
     super.build(context); // Required for AutomaticKeepAliveClientMixin
 
+    // Watch the active tab index
+    final activeTab = ref.watch(activeFeedTabProvider);
+    final isTabActive = activeTab == widget.tabIndex;
+
     if (widget.isLoading) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -148,7 +155,8 @@ class _VideoFeedListState extends ConsumerState<VideoFeedList>
               video: video,
               onInteractionStart: _onInteractionStart,
               onInteractionEnd: _onInteractionEnd,
-              autoplay: index == _currentIndex,
+              // Only autoplay if this list's tab is active AND it's the current item
+              autoplay: isTabActive && (index == _currentIndex),
             );
           }
         },
