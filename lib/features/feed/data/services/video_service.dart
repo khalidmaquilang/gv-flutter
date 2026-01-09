@@ -1,7 +1,7 @@
 import 'package:dio/dio.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/constants/api_constants.dart';
-import '../../../auth/data/models/user_model.dart';
+
 import '../models/comment_model.dart';
 import '../models/video_model.dart';
 
@@ -33,10 +33,10 @@ class VideoService {
         return FeedResponse(videos: videos, nextCursor: nextCursor);
       }
 
-      return FeedResponse(videos: _getMockVideos(), nextCursor: null);
+      return FeedResponse(videos: [], nextCursor: null);
     } catch (e) {
-      // Fallback to mock data
-      return FeedResponse(videos: _getMockVideos(), nextCursor: null);
+      // Return empty on error
+      return FeedResponse(videos: [], nextCursor: null);
     }
   }
 
@@ -133,9 +133,6 @@ class VideoService {
     }
   }
 
-  // In-memory storage for uploaded videos
-  static final List<Video> _uploadedVideos = [];
-
   Future<bool> uploadVideo({
     required String videoPath,
     required String description,
@@ -171,30 +168,6 @@ class VideoService {
     } catch (e) {
       rethrow;
     }
-  }
-
-  List<Video> _getMockVideos() {
-    final mock = List.generate(
-      5,
-      (index) => Video(
-        id: index.toString(),
-        videoUrl:
-            'https://flutter.github.io/assets-for-api-docs/assets/videos/bee.mp4',
-        thumbnailUrl: 'https://dummyimage.com/150',
-        caption: 'Video $index #fyp',
-        likesCount: 100 + index,
-
-        isLiked: false,
-        user: User(
-          id: "1",
-          name: 'User $index',
-          email: 'test@test.com',
-          avatar: 'https://dummyimage.com/50',
-        ),
-      ),
-    );
-    // Combine uploaded videos with mock videos
-    return [..._uploadedVideos, ...mock];
   }
 }
 
