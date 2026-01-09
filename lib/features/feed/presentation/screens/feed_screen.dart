@@ -4,6 +4,7 @@ import '../providers/feed_provider.dart';
 import '../widgets/video_feed_list.dart';
 import '../widgets/live_feed_list.dart';
 import '../../../../core/providers/navigation_provider.dart';
+import '../providers/media_kit_video_provider.dart';
 import '../../../search/presentation/screens/search_screen.dart';
 import '../providers/feed_audio_provider.dart';
 
@@ -199,6 +200,14 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
                     ],
                   ),
                   onPressed: () {
+                    // Pause all videos before navigating
+                    final provider = ref.read(mediaKitVideoProvider);
+                    for (final player in provider.players.values) {
+                      if (player.state.playing) {
+                        player.pause();
+                      }
+                    }
+
                     Navigator.of(context).push(
                       MaterialPageRoute(
                         builder: (context) => const SearchScreen(),
