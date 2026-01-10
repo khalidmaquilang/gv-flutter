@@ -53,9 +53,9 @@ class _VideoFeedListState extends ConsumerState<VideoFeedList>
         'VideoFeedList.initState: Scheduling media_kit initialization',
       );
       debugPrint('  videos.length: ${widget.videos.length}');
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        debugPrint('VideoFeedList: Post-frame callback executing');
-        // Use media_kit provider instead of old preload provider
+      // Use Future.microtask to initialize BEFORE PageView builds
+      Future.microtask(() {
+        debugPrint('VideoFeedList: Microtask executing');
         ref
             .read(mediaKitVideoProvider.notifier)
             .onPageChanged(0, widget.videos);
@@ -83,7 +83,8 @@ class _VideoFeedListState extends ConsumerState<VideoFeedList>
     if (widget.videos.isNotEmpty && oldWidget.videos.isEmpty) {
       debugPrint('VideoFeedList: Videos just loaded, initializing media_kit');
       debugPrint('  videos.length: ${widget.videos.length}');
-      WidgetsBinding.instance.addPostFrameCallback((_) {
+      // Use Future.microtask for immediate initialization
+      Future.microtask(() {
         ref
             .read(mediaKitVideoProvider.notifier)
             .onPageChanged(0, widget.videos);

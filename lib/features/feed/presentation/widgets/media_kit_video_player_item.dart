@@ -245,7 +245,17 @@ class _MediaKitVideoPlayerItemState
     // Double-check mounted before using ref
     if (!mounted) return;
 
-    await ref.read(videoServiceProvider).recordView(widget.video.id);
+    try {
+      await ref.read(videoServiceProvider).recordView(widget.video.id);
+    } on StateError catch (_) {
+      // Widget was disposed during async operation, silently ignore
+      return;
+    } catch (e) {
+      // Other errors should be logged
+      if (mounted) {
+        debugPrint('Error recording view: $e');
+      }
+    }
   }
 
   Widget _buildAction(

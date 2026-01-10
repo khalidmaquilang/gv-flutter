@@ -26,8 +26,9 @@ class MediaKitVideoState {
 class MediaKitVideoNotifier extends StateNotifier<MediaKitVideoState> {
   MediaKitVideoNotifier() : super(MediaKitVideoState());
 
-  // Max number of simultaneous players (current, next, previous)
-  static const int kMaxConcurrentPlayers = 3;
+  // Max number of simultaneous players
+  // Increased to allow feed + profile videos to coexist without disposing each other
+  static const int kMaxConcurrentPlayers = 10;
 
   Future<void> onPageChanged(int currentIndex, List<model.Video> videos) async {
     print('MediaKitVideoProvider.onPageChanged called:');
