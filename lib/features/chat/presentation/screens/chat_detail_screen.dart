@@ -286,14 +286,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                             ],
                           ),
                         ),
-                        if (_broadcastingService.isInitialized)
-                          Text(
-                            'Real-time',
-                            style: TextStyle(
-                              color: AppColors.neonCyan.withOpacity(0.8),
-                              fontSize: 12,
-                            ),
-                          ),
                       ],
                     ),
                   ),

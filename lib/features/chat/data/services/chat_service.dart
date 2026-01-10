@@ -2,15 +2,23 @@ import '../../../../core/network/api_client.dart';
 import '../../../../core/constants/api_constants.dart';
 import '../../../auth/data/models/user_model.dart';
 import '../models/chat_model.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class ChatService {
   final ApiClient _apiClient;
+  final _storage = const FlutterSecureStorage();
 
   ChatService({ApiClient? apiClient}) : _apiClient = apiClient ?? ApiClient();
 
   /// GET /chats/{userId} - Get chat messages between authenticated user and another user
   Future<ChatResponse> getChats(String userId, {String? cursor}) async {
     try {
+      // Set auth token
+      final token = await _storage.read(key: 'auth_token');
+      if (token != null) {
+        _apiClient.setToken(token);
+      }
+
       final endpoint = cursor != null
           ? "${ApiConstants.chatMessages(userId)}?cursor=$cursor"
           : ApiConstants.chatMessages(userId);
@@ -35,6 +43,12 @@ class ChatService {
   /// POST /chats - Send a new chat message
   Future<String?> sendMessage(String receiverId, String message) async {
     try {
+      // Set auth token
+      final token = await _storage.read(key: 'auth_token');
+      if (token != null) {
+        _apiClient.setToken(token);
+      }
+
       final response = await _apiClient.post(
         ApiConstants.chats,
         data: {"receiver_id": receiverId, "message": message},
@@ -53,6 +67,12 @@ class ChatService {
   /// POST /chats/{chatId}/read - Mark a chat message as read
   Future<bool> markAsRead(String chatId) async {
     try {
+      // Set auth token
+      final token = await _storage.read(key: 'auth_token');
+      if (token != null) {
+        _apiClient.setToken(token);
+      }
+
       final response = await _apiClient.post(
         ApiConstants.markChatAsRead(chatId),
       );
@@ -67,6 +87,12 @@ class ChatService {
   /// GET /chats/unread/count - Get total unread message count
   Future<int> getUnreadCount() async {
     try {
+      // Set auth token
+      final token = await _storage.read(key: 'auth_token');
+      if (token != null) {
+        _apiClient.setToken(token);
+      }
+
       final response = await _apiClient.get(ApiConstants.chatUnreadCount);
 
       if (response.statusCode == 200 && response.data != null) {
