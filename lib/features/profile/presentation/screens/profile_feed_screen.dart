@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:media_kit/media_kit.dart';
 import 'package:test_flutter/features/auth/data/models/user_model.dart';
 import 'package:test_flutter/features/feed/presentation/widgets/media_kit_video_player_item.dart';
 import 'package:test_flutter/features/feed/presentation/providers/media_kit_video_provider.dart';
@@ -28,6 +29,7 @@ class _ProfileFeedScreenState extends ConsumerState<ProfileFeedScreen> {
 
   int _currentIndex = 0;
   List<Video> _mappedVideos = [];
+  Player? _currentPlayer; // Track current player for cleanup
 
   @override
   void initState() {
@@ -42,13 +44,21 @@ class _ProfileFeedScreenState extends ConsumerState<ProfileFeedScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _videoNotifier = ref.read(mediaKitVideoProvider.notifier);
       _videoNotifier?.onPageChanged(_currentIndex, _mappedVideos);
+
+      // Store the current player reference for cleanup
+      if (_mappedVideos.isNotEmpty) {
+        final videoId = _mappedVideos[_currentIndex].id;
+        _currentPlayer = ref.read(mediaKitVideoProvider).players[videoId];
+      }
     });
   }
 
   @override
   void dispose() {
-    // Pause all videos before disposing using stored reference
-    _videoNotifier?.pauseAll();
+    // Pause the current video using stored player reference
+    if (_currentPlayer != null && _currentPlayer!.state.playing) {
+      _currentPlayer!.pause();
+    }
     _pageController.dispose();
     super.dispose();
   }
@@ -67,6 +77,14 @@ class _ProfileFeedScreenState extends ConsumerState<ProfileFeedScreen> {
               setState(() {
                 _currentIndex = index;
               });
+
+              // Update current player reference when page changes
+              if (index < _mappedVideos.length) {
+                final videoId = _mappedVideos[index].id;
+                _currentPlayer = ref
+                    .read(mediaKitVideoProvider)
+                    .players[videoId];
+              }
               ref
                   .read(mediaKitVideoProvider.notifier)
                   .onPageChanged(index, _mappedVideos);

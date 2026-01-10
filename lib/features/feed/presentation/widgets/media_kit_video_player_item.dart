@@ -44,10 +44,23 @@ class MediaKitVideoPlayerItem extends ConsumerStatefulWidget {
 
 class _MediaKitVideoPlayerItemState
     extends ConsumerState<MediaKitVideoPlayerItem> {
-  Player? get _player =>
-      ref.watch(mediaKitVideoProvider).players[widget.video.id];
-  mk_video.VideoController? get _controller =>
-      ref.watch(mediaKitVideoProvider).controllers[widget.video.id];
+  Player? get _player {
+    if (!mounted) return null;
+    try {
+      return ref.read(mediaKitVideoProvider).players[widget.video.id];
+    } catch (e) {
+      return null;
+    }
+  }
+
+  mk_video.VideoController? get _controller {
+    if (!mounted) return null;
+    try {
+      return ref.read(mediaKitVideoProvider).controllers[widget.video.id];
+    } catch (e) {
+      return null;
+    }
+  }
 
   // Follow state
   bool _isFollowing = false;
@@ -82,12 +95,47 @@ class _MediaKitVideoPlayerItemState
   }
 
   @override
+  void didUpdateWidget(MediaKitVideoPlayerItem oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    // If autoplay state changed from false to true, resume playback
+    if (!oldWidget.autoplay && widget.autoplay && _player != null && mounted) {
+      final currentTab = ref.read(activeFeedTabProvider);
+      final bottomNav = ref.read(bottomNavIndexProvider);
+      final audioEnabled = ref.read(isFeedAudioEnabledProvider);
+
+      final shouldPlay =
+          (currentTab == 1 || currentTab == 2) &&
+          (widget.ignoreBottomNav || bottomNav == 0) &&
+          audioEnabled &&
+          !_player!.state.playing;
+
+      if (shouldPlay) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && _player != null && !_player!.state.playing) {
+            _player!.play();
+            _startViewTimer();
+          }
+        });
+      }
+    }
+    // If autoplay changed from true to false, pause playback
+    else if (oldWidget.autoplay && !widget.autoplay && _player != null) {
+      if (_player!.state.playing) {
+        _player!.pause();
+        _cancelViewTimer();
+      }
+    }
+  }
+
+  @override
   void dispose() {
     _cancelViewTimer();
     super.dispose();
   }
 
   Future<void> _toggleFollow() async {
+    if (!mounted) return;
     final profileService = ref.read(profileServiceProvider);
 
     // Optimistic update
@@ -125,6 +173,7 @@ class _MediaKitVideoPlayerItemState
   }
 
   Future<void> _toggleLike() async {
+    if (!mounted) return;
     setState(() {
       _isLiked = !_isLiked;
       if (_isLiked) {
@@ -134,6 +183,7 @@ class _MediaKitVideoPlayerItemState
       }
     });
 
+    if (!mounted) return;
     ref.read(feedProvider.notifier).toggleLike(widget.video.id);
     await ref.read(videoServiceProvider).toggleReaction(widget.video.id);
   }
@@ -245,6 +295,7 @@ class _MediaKitVideoPlayerItemState
   }
 
   void _navigateToProfile() {
+    if (!mounted) return;
     // Pause ALL players unconditionally to ensure no background audio
     final provider = ref.read(mediaKitVideoProvider);
     print('DEBUG: Total players: ${provider.players.length}');
@@ -262,6 +313,9 @@ class _MediaKitVideoPlayerItemState
             ProfileScreen(userId: widget.video.user.id, isCurrentUser: false),
       ),
     ).then((_) {
+      // Check if widget is still mounted before using ref
+      if (!mounted) return;
+
       // Resume if this is the current video (autoplay=true) and conditions are met
       final player = ref.read(mediaKitVideoProvider).players[widget.video.id];
       if (widget.autoplay && player != null && !player.state.playing) {
@@ -288,6 +342,7 @@ class _MediaKitVideoPlayerItemState
   }
 
   void _navigateToMusicDetail() {
+    if (!mounted) return;
     // Pause ALL players unconditionally to ensure no background audio
     final provider = ref.read(mediaKitVideoProvider);
     for (final entry in provider.players.entries) {
@@ -316,6 +371,9 @@ class _MediaKitVideoPlayerItemState
           ),
         )
         .then((_) {
+          // Check if widget is still mounted before using ref
+          if (!mounted) return;
+
           // Resume if this is the current video (autoplay=true) and conditions are met
           final player = ref
               .read(mediaKitVideoProvider)
@@ -336,8 +394,12 @@ class _MediaKitVideoPlayerItemState
 
   @override
   Widget build(BuildContext context) {
+    // Only set up listeners if widget is mounted
+    if (!mounted) return const SizedBox.shrink();
+
     // Listen to audio enabled changes - only pause when disabled
     ref.listen(isFeedAudioEnabledProvider, (previous, next) {
+      if (!mounted) return;
       if (!next) {
         _player?.pause();
       }
@@ -346,10 +408,12 @@ class _MediaKitVideoPlayerItemState
 
     // Listen to bottom nav changes - pause when leaving feed
     ref.listen(bottomNavIndexProvider, (previous, next) {
+      if (!mounted) return;
       if (!widget.ignoreBottomNav && next != 0) {
         _player?.pause();
       } else if (widget.autoplay && next == 0 && previous != 0) {
         // Resume when returning to feed, but ONLY if this widget has autoplay=true
+        if (!mounted) return;
         final audioEnabled = ref.read(isFeedAudioEnabledProvider);
         final currentTab = ref.read(activeFeedTabProvider);
 
@@ -365,6 +429,7 @@ class _MediaKitVideoPlayerItemState
 
     // Listen to feed tab changes (For You, Following, Live)
     ref.listen(activeFeedTabProvider, (previous, next) {
+      if (!mounted) return;
       // Get the current video's tab from VideoFeedList's tabIndex
       // Note: We can't directly access widget.tabIndex from parent, but we can infer:
       // If this video is playing and tab changes, pause it
@@ -380,6 +445,7 @@ class _MediaKitVideoPlayerItemState
           next != previous &&
           _player != null &&
           !_player!.state.playing) {
+        if (!mounted) return;
         final bottomNav = ref.read(bottomNavIndexProvider);
         final audioEnabled = ref.read(isFeedAudioEnabledProvider);
 
@@ -393,7 +459,7 @@ class _MediaKitVideoPlayerItemState
 
     // Autoplay logic: Only play if this widget has autoplay=true (which VideoFeedList
     // only sets for the current index) AND all other conditions are met
-    if (widget.autoplay && _player != null && _controller != null) {
+    if (widget.autoplay && _player != null && _controller != null && mounted) {
       final currentTab = ref.read(activeFeedTabProvider);
       final bottomNav = ref.read(bottomNavIndexProvider);
       final audioEnabled = ref.read(isFeedAudioEnabledProvider);
