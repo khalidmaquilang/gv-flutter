@@ -30,6 +30,11 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
       initialIndex: 2,
     ); // Start at "For You"
 
+    // Explicitly set the active tab to match initial index
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(activeFeedTabProvider.notifier).state = 2;
+    });
+
     // Listen to tab changes to update activeFeedTabProvider
     _tabController.addListener(() {
       final newIndex = _tabController.index;

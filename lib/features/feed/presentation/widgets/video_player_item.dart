@@ -359,6 +359,28 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
         if (shouldPlay) {
           _currentController!.play();
         }
+
+        // Add post-frame callback to retry playback if it didn't start
+        // This handles timing issues where tab state might not be set yet
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+
+          final retryController = _currentController;
+          if (_isControllerValid(retryController) &&
+              !retryController!.value.isPlaying) {
+            final retryCurrentTab = ref.read(activeFeedTabProvider);
+            final retryShouldPlay =
+                widget.autoplay &&
+                retryCurrentTab == 2 &&
+                (widget.ignoreBottomNav ||
+                    ref.read(bottomNavIndexProvider) == 0) &&
+                ref.read(isFeedAudioEnabledProvider);
+
+            if (retryShouldPlay) {
+              retryController.play();
+            }
+          }
+        });
       }
     }
 
@@ -378,6 +400,8 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
             widget.onInteractionEnd?.call();
           },
           onTap: _togglePlay,
+          isLiked: _isLiked,
+          onToggleLike: _toggleLike,
           child: Container(
             color: Colors.black,
             child: Align(
@@ -868,12 +892,16 @@ class _ZoomableContent extends StatefulWidget {
   final VoidCallback? onInteractionStart;
   final VoidCallback? onInteractionEnd;
   final VoidCallback? onTap;
+  final bool isLiked;
+  final VoidCallback? onToggleLike;
 
   const _ZoomableContent({
     required this.child,
     this.onInteractionStart,
     this.onInteractionEnd,
     this.onTap,
+    required this.isLiked,
+    this.onToggleLike,
   });
 
   @override
@@ -933,38 +961,11 @@ class _ZoomableContentState extends State<_ZoomableContent>
   }
 
   void _handleDoubleTap() {
-    Matrix4 endMatrix;
-    if (_transformationController.value.isIdentity()) {
-      // Zoom In to 2x at Center
-      final size = MediaQuery.of(context).size;
-      final center = size.center(Offset.zero);
-
-      // Matrix: Translate(Center) * Scale(2) * Translate(-Center)
-      endMatrix = Matrix4.identity()
-        ..translate(center.dx, center.dy)
-        ..scale(2.0)
-        ..translate(-center.dx, -center.dy);
-
-      widget.onInteractionStart?.call(); // Lock scroll
-    } else {
-      // Zoom Out to 1x
-      endMatrix = Matrix4.identity();
-      widget.onInteractionEnd?.call(); // Unlock scroll
+    // Double tap to like (only if not already liked)
+    if (!widget.isLiked) {
+      widget.onToggleLike?.call();
     }
-
-    _zoomAnimation =
-        Matrix4Tween(
-          begin: _transformationController.value,
-          end: endMatrix,
-        ).animate(
-          CurveTween(curve: Curves.easeInOut).animate(_animationController),
-        );
-
-    _animationController.forward(from: 0).then((_) {
-      if (endMatrix.isIdentity()) {
-        widget.onInteractionEnd?.call();
-      }
-    });
+    // If already liked, do nothing
   }
 
   void _showOptionsMenu() {

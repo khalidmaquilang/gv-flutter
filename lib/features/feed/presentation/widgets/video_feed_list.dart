@@ -33,6 +33,7 @@ class _VideoFeedListState extends ConsumerState<VideoFeedList>
   bool _isScrollEnabled = true;
   int _currentIndex = 0;
   late PageController _pageController;
+  int _firstVideoPlayRetries = 0;
 
   @override
   bool get wantKeepAlive => true; // Keep state when switching tabs
@@ -50,6 +51,36 @@ class _VideoFeedListState extends ConsumerState<VideoFeedList>
       WidgetsBinding.instance.addPostFrameCallback((_) {
         // Call onPageChanged which will skip live streams automatically
         ref.read(videoPreloadProvider.notifier).onPageChanged(0, widget.videos);
+
+        // For the "For You" tab, force first video to play
+        if (widget.tabIndex == 2 && !widget.videos[0].isLiveStream) {
+          _tryPlayFirstVideo();
+        }
+      });
+    }
+  }
+
+  void _tryPlayFirstVideo() {
+    if (!mounted || widget.videos.isEmpty || _firstVideoPlayRetries >= 20) {
+      return;
+    }
+
+    final firstVideo = widget.videos[0];
+    final controller = ref
+        .read(videoPreloadProvider)
+        .controllers[firstVideo.id];
+
+    if (controller != null &&
+        controller.value.isInitialized &&
+        !controller.value.hasError) {
+      if (!controller.value.isPlaying) {
+        controller.play();
+      } else {}
+    } else {
+      // Controller not ready yet, retry after 100ms
+      _firstVideoPlayRetries++;
+      Future.delayed(const Duration(milliseconds: 100), () {
+        if (mounted) _tryPlayFirstVideo();
       });
     }
   }
@@ -69,6 +100,23 @@ class _VideoFeedListState extends ConsumerState<VideoFeedList>
   @override
   void didUpdateWidget(VideoFeedList oldWidget) {
     super.didUpdateWidget(oldWidget);
+
+    // Check if videos just became available (loaded from API)
+    if (oldWidget.videos.isEmpty && widget.videos.isNotEmpty) {
+      // Initialize preload for first video
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        ref.read(videoPreloadProvider.notifier).onPageChanged(0, widget.videos);
+
+        // For the "For You" tab, force first video to play
+        if (widget.tabIndex == 2 && !widget.videos[0].isLiveStream) {
+          _firstVideoPlayRetries = 0; // Reset retry counter
+          _tryPlayFirstVideo();
+        }
+      });
+    }
+
+    // Existing logic: feed changed (refreshed)
     if (widget.videos.isNotEmpty &&
         oldWidget.videos.isNotEmpty &&
         widget.videos[0].id != oldWidget.videos[0].id) {

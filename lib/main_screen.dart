@@ -29,6 +29,15 @@ class _MainScreenState extends ConsumerState<MainScreen> {
     const ProfileScreen(userId: "1", isCurrentUser: true), // Mock current user
   ];
 
+  @override
+  void initState() {
+    super.initState();
+    // Ensure we always start on the feed screen (index 0) after login
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(bottomNavIndexProvider.notifier).state = 0;
+    });
+  }
+
   void _onItemTapped(int index) async {
     final currentIndex = ref.read(bottomNavIndexProvider);
 

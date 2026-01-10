@@ -56,6 +56,7 @@ class UploadNotifier extends StateNotifier<UploadState> {
     String? musicId,
     String? overlayPath, // Accept overlay
     bool shouldOptimize = false,
+    bool isFromGallery = false,
   }) async {
     state = state.copyWith(
       isUploading: true,
@@ -119,6 +120,7 @@ class UploadNotifier extends StateNotifier<UploadState> {
         privacy: privacy,
         allowComments: allowComments,
         musicId: musicId,
+        fromCamera: !isFromGallery,
       );
 
       if (success) {
