@@ -509,7 +509,7 @@ class _MediaKitVideoPlayerItemState
                 },
                 child: mk_video.Video(
                   controller: _controller!,
-                  fit: BoxFit.cover,
+                  fit: BoxFit.contain,
                   controls: mk_video.NoVideoControls,
                 ),
               ),

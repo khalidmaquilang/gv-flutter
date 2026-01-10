@@ -139,6 +139,7 @@ class VideoService {
     required String privacy,
     required bool allowComments,
     String? musicId,
+    bool fromCamera = true, // Default to true for backward compatibility
   }) async {
     try {
       String fileName = videoPath.split('/').last;
@@ -148,6 +149,7 @@ class VideoService {
         "description": description,
         "privacy": privacy,
         "allow_comments": allowComments ? 1 : 0,
+        "from_camera": fromCamera ? 1 : 0, // Add fromCamera flag to API request
         if (musicId != null) "music_id": musicId,
       });
 

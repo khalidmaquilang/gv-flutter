@@ -344,6 +344,7 @@ class _CreatePostScreenState extends ConsumerState<CreatePostScreen> {
           musicId: widget.sound?.id,
           overlayPath: widget.overlayPath,
           shouldOptimize: widget.isFromGallery,
+          isFromGallery: widget.isFromGallery, // Pass the flag through
         );
 
     // Immediate feedback and exit
