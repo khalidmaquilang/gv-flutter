@@ -46,6 +46,19 @@ dependencies:
   # Video & Camera
   camera: ^0.10.5+5
   chewie: ^1.7.0
+  video_player: ^2.10.1 # Keep for backwards compatibility during migration
+  video_player_rtmp_ext: ^0.2.1
+  
+  # New Video Stack (media_kit)
+  preload_page_view: ^0.2.0
+  media_kit: ^1.2.6
+  media_kit_video: ^2.0.1
+  media_kit_libs_ios_video: ^1.1.4
+  media_kit_libs_macos_video: ^1.1.4
+  media_kit_libs_windows_video: ^1.0.11
+  media_kit_libs_linux: ^1.2.1
+  flutter_video_caching: ^0.4.6
+
 
   # Live Streaming
 
@@ -62,8 +75,6 @@ dependencies:
   path_provider: ^2.1.5
   just_audio: ^0.10.5
   audio_session: ^0.2.2
-  video_player_rtmp_ext: ^0.2.1
-  video_player: ^2.10.1
   wakelock_plus: ^1.4.0
   video_thumbnail: ^0.5.3
   uuid: ^4.0.0
@@ -75,6 +86,7 @@ dependencies:
   video_editor: ^3.0.0
   google_fonts: ^6.3.3
   ffmpeg_kit_flutter_new: ^4.1.0
+  inview_notifier_list: ^3.0.0
 
 dependency_overrides:
   ffi: ^2.1.0

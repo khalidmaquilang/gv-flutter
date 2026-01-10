@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:preload_page_view/preload_page_view.dart'; // PreloadPageView
 import '../../data/models/video_model.dart';
-import '../providers/video_preload_provider.dart';
-import 'video_player_item.dart';
+import '../providers/media_kit_video_provider.dart'; // MediaKit provider
+import 'media_kit_video_player_item.dart';
 import 'live_preview_item.dart';
 import '../providers/feed_audio_provider.dart';
 
@@ -32,7 +33,8 @@ class _VideoFeedListState extends ConsumerState<VideoFeedList>
     with AutomaticKeepAliveClientMixin {
   bool _isScrollEnabled = true;
   int _currentIndex = 0;
-  late PageController _pageController;
+  late PreloadPageController
+  _pageController; // Changed to PreloadPageController
 
   @override
   bool get wantKeepAlive => true; // Keep state when switching tabs
@@ -40,16 +42,23 @@ class _VideoFeedListState extends ConsumerState<VideoFeedList>
   @override
   void initState() {
     super.initState();
-    _pageController = PageController(
+    _pageController = PreloadPageController(
       initialPage: _currentIndex,
       keepPage: true, // Preserve page position
     );
 
-    // Initialize preload for first video
+    // Initialize media_kit preload for first video
     if (widget.videos.isNotEmpty) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        // Call onPageChanged which will skip live streams automatically
-        ref.read(videoPreloadProvider.notifier).onPageChanged(0, widget.videos);
+      debugPrint(
+        'VideoFeedList.initState: Scheduling media_kit initialization',
+      );
+      debugPrint('  videos.length: ${widget.videos.length}');
+      // Use Future.microtask to initialize BEFORE PageView builds
+      Future.microtask(() {
+        debugPrint('VideoFeedList: Microtask executing');
+        ref
+            .read(mediaKitVideoProvider.notifier)
+            .onPageChanged(0, widget.videos);
       });
     }
   }
@@ -69,6 +78,19 @@ class _VideoFeedListState extends ConsumerState<VideoFeedList>
   @override
   void didUpdateWidget(VideoFeedList oldWidget) {
     super.didUpdateWidget(oldWidget);
+
+    // Initialize media_kit when videos first become available
+    if (widget.videos.isNotEmpty && oldWidget.videos.isEmpty) {
+      debugPrint('VideoFeedList: Videos just loaded, initializing media_kit');
+      debugPrint('  videos.length: ${widget.videos.length}');
+      // Use Future.microtask for immediate initialization
+      Future.microtask(() {
+        ref
+            .read(mediaKitVideoProvider.notifier)
+            .onPageChanged(0, widget.videos);
+      });
+    }
+
     if (widget.videos.isNotEmpty &&
         oldWidget.videos.isNotEmpty &&
         widget.videos[0].id != oldWidget.videos[0].id) {
@@ -115,10 +137,12 @@ class _VideoFeedListState extends ConsumerState<VideoFeedList>
 
     return RefreshIndicator(
       onRefresh: widget.onRefresh ?? () async {},
-      child: PageView.builder(
-        controller: _pageController, // Attach controller
-        allowImplicitScrolling: true,
+      child: PreloadPageView.builder(
+        // Changed to PreloadPageView
+        controller: _pageController,
         scrollDirection: Axis.vertical,
+        preloadPagesCount:
+            1, // Preload 1 page before and after (built-in feature!)
         physics: _isScrollEnabled
             ? const AlwaysScrollableScrollPhysics()
             : const NeverScrollableScrollPhysics(),
@@ -131,7 +155,7 @@ class _VideoFeedListState extends ConsumerState<VideoFeedList>
           // Only preload if it's a regular video, not a live stream
           if (!widget.videos[index].isLiveStream) {
             ref
-                .read(videoPreloadProvider.notifier)
+                .read(mediaKitVideoProvider.notifier) // Use media_kit provider
                 .onPageChanged(index, widget.videos);
           }
 
@@ -151,7 +175,7 @@ class _VideoFeedListState extends ConsumerState<VideoFeedList>
               onInteractionEnd: _onInteractionEnd,
             );
           } else {
-            return VideoPlayerItem(
+            return MediaKitVideoPlayerItem(
               video: video,
               onInteractionStart: _onInteractionStart,
               onInteractionEnd: _onInteractionEnd,

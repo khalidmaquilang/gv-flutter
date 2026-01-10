@@ -1,6 +1,6 @@
 class ApiConstants {
   static const String baseUrl =
-      'https://bbdb3665fafa.ngrok-free.app/api/v1'; // Android Emulator localhost
+      'https://gv.stock-manager.online/api/v1'; // Android Emulator localhost
 
   // Auth
   static const String login = '/login';

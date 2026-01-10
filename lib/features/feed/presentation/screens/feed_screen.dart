@@ -4,6 +4,7 @@ import '../providers/feed_provider.dart';
 import '../widgets/video_feed_list.dart';
 import '../widgets/live_feed_list.dart';
 import '../../../../core/providers/navigation_provider.dart';
+import '../providers/media_kit_video_provider.dart';
 import '../../../search/presentation/screens/search_screen.dart';
 import '../providers/feed_audio_provider.dart';
 
@@ -199,11 +200,42 @@ class _FeedScreenState extends ConsumerState<FeedScreen>
                     ],
                   ),
                   onPressed: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (context) => const SearchScreen(),
-                      ),
-                    );
+                    // Pause all videos before navigating
+                    final provider = ref.read(mediaKitVideoProvider);
+                    for (final player in provider.players.values) {
+                      if (player.state.playing) {
+                        player.pause();
+                      }
+                    }
+
+                    Navigator.of(context)
+                        .push(
+                          MaterialPageRoute(
+                            builder: (context) => const SearchScreen(),
+                          ),
+                        )
+                        .then((_) {
+                          // Resume the current video when returning from search
+                          final updatedProvider = ref.read(
+                            mediaKitVideoProvider,
+                          );
+                          final audioEnabled = ref.read(
+                            isFeedAudioEnabledProvider,
+                          );
+
+                          // Find and resume the playing video if audio is enabled
+                          if (audioEnabled &&
+                              updatedProvider.players.isNotEmpty) {
+                            // Resume all players that were paused (media_kit will handle which one to actually play)
+                            for (final player
+                                in updatedProvider.players.values) {
+                              if (!player.state.playing) {
+                                player.play();
+                                break; // Only resume one player
+                              }
+                            }
+                          }
+                        });
                   },
                 ),
               ),

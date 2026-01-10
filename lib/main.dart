@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:media_kit/media_kit.dart'; // MediaKit initialization
 import 'core/theme/app_theme.dart';
 import 'features/auth/presentation/screens/login_screen.dart';
 import 'main_screen.dart';
@@ -7,6 +8,8 @@ import 'features/auth/presentation/providers/auth_provider.dart';
 import 'core/utils/route_observer.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  MediaKit.ensureInitialized(); // Initialize media_kit
   runApp(const ProviderScope(child: MyApp()));
 }
 
