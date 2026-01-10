@@ -77,7 +77,7 @@ dependencies:
   ffmpeg_kit_flutter_new: ^4.1.0
 
   # Broadcasting / WebSocket
-  pusher_channels_flutter: ^2.6.0
+  pusher_channels_flutter: ^2.4.0
 
 dependency_overrides:
   ffi: ^2.1.0
