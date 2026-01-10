@@ -84,12 +84,24 @@ class _ProfileFeedScreenState extends ConsumerState<ProfileFeedScreen> {
           ),
 
           // Back Button
-          Positioned(
-            top: 40,
-            left: 10,
-            child: IconButton(
-              icon: const Icon(Icons.arrow_back, color: Colors.white),
-              onPressed: () => Navigator.pop(context),
+          SafeArea(
+            child: Align(
+              alignment: Alignment.topLeft,
+              child: Padding(
+                padding: const EdgeInsets.all(10),
+                child: Material(
+                  color: Colors.transparent,
+                  child: IconButton(
+                    icon: const Icon(
+                      Icons.arrow_back,
+                      color: Colors.white,
+                      shadows: [Shadow(color: Colors.black, blurRadius: 10)],
+                    ),
+                    iconSize: 32,
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ),
+              ),
             ),
           ),
         ],
