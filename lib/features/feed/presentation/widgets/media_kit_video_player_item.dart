@@ -502,8 +502,10 @@ class _MediaKitVideoPlayerItemState
                   }
                 },
                 onDoubleTap: () {
-                  // Auto-react on double tap (like TikTok)
-                  _toggleLike();
+                  // Auto-react on double tap - only if not already liked
+                  if (!_isLiked) {
+                    _toggleLike();
+                  }
                 },
                 child: mk_video.Video(
                   controller: _controller!,
