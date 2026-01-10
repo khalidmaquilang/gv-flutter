@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../auth/data/models/user_model.dart';
+import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../data/services/chat_service.dart';
 import 'chat_detail_screen.dart';
 import '../../../../core/theme/app_theme.dart';
@@ -8,6 +9,9 @@ import '../../../../core/widgets/neon_border_container.dart';
 
 final chatServiceProvider = Provider((ref) => ChatService());
 
+// Note: getConversations() currently returns an empty list
+// TODO: Once a backend endpoint for conversation list is created (e.g., GET /chats/conversations),
+// update the ChatService.getConversations() method to fetch real conversation data
 final conversationsProvider = FutureProvider<List<User>>((ref) async {
   return ref.read(chatServiceProvider).getConversations();
 });
@@ -96,10 +100,18 @@ class ChatListScreen extends ConsumerWidget {
                           size: 16,
                         ),
                         onTap: () {
+                          // Get current user from auth provider
+                          final currentUser = ref
+                              .read(authControllerProvider)
+                              .value;
+                          if (currentUser == null) return;
+
                           Navigator.of(context).push(
                             MaterialPageRoute(
-                              builder: (context) =>
-                                  ChatDetailScreen(user: user),
+                              builder: (context) => ChatDetailScreen(
+                                user: user,
+                                currentUserId: currentUser.id,
+                              ),
                             ),
                           );
                         },
