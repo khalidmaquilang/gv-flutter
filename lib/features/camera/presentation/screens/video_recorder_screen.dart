@@ -94,7 +94,7 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
   // Computed list of available modes based on user permissions
   List<String> get _availableModes {
     final user = ref.read(authControllerProvider).value;
-    final baseModes = ['Photo', '15s', '60s', 'Live'];
+    final baseModes = ['15s', '60s', 'Live'];
 
     // Remove 'Live' mode if user doesn't have permission
     if (user == null || !user.allowLive) {
@@ -800,92 +800,75 @@ class _VideoRecorderScreenState extends ConsumerState<VideoRecorderScreen> {
 
   void _pickFromGallery() async {
     final ImagePicker picker = ImagePicker();
-    final XFile? media = await picker.pickMedia();
+    // Only allow video selection
+    final XFile? video = await picker.pickVideo(source: ImageSource.gallery);
 
-    if (media != null && mounted) {
-      final bool isVideo =
-          media.path.toLowerCase().endsWith('.mp4') ||
-          media.path.toLowerCase().endsWith('.mov') ||
-          media.path.toLowerCase().endsWith('.avi');
+    if (video != null && mounted) {
+      VideoPlayerController? tempController;
+      try {
+        // Check duration
+        tempController = VideoPlayerController.file(File(video.path));
+        await tempController.initialize();
 
-      if (isVideo) {
-        VideoPlayerController? tempController;
-        try {
-          // Check duration
-          tempController = VideoPlayerController.file(File(media.path));
-          await tempController.initialize();
-
-          if (tempController.value.duration.inSeconds > 60) {
-            // Needs trimming
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text(
-                    "Video longer than 60s. Trimming to first 60 seconds...",
-                  ),
-                ),
-              );
-            }
-
-            final tempDir = await getTemporaryDirectory();
-            final outputPath =
-                '${tempDir.path}/trimmed_${DateTime.now().millisecondsSinceEpoch}.mp4';
-
-            // -ss 0 -i input -t 60 -c copy output
-            // Using -c copy is fast and prevents re-encoding quality loss here.
-            final command =
-                '-ss 0 -i "${media.path}" -t 60 -c copy "$outputPath"';
-
-            await FFmpegKit.execute(command);
-
-            // Use the trimmed file
-            Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (context) => PreviewScreen(
-                  files: [XFile(outputPath)],
-                  isVideo: true,
-                  isFromGallery: true,
-                ),
-              ),
-            );
-          } else {
-            // Duration OK
-            Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (context) => PreviewScreen(
-                  files: [media],
-                  isVideo: true,
-                  isFromGallery: true,
+        if (tempController.value.duration.inSeconds > 60) {
+          // Needs trimming
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text(
+                  "Video longer than 60s. Trimming to first 60 seconds...",
                 ),
               ),
             );
           }
-        } catch (e) {
-          debugPrint("Error checking/trimming video: $e");
-          // Fallback to original
+
+          final tempDir = await getTemporaryDirectory();
+          final outputPath =
+              '${tempDir.path}/trimmed_${DateTime.now().millisecondsSinceEpoch}.mp4';
+
+          // -ss 0 -i input -t 60 -c copy output
+          // Using -c copy is fast and prevents re-encoding quality loss here.
+          final command =
+              '-ss 0 -i "${video.path}" -t 60 -c copy "$outputPath"';
+
+          await FFmpegKit.execute(command);
+
+          // Use the trimmed file
           Navigator.of(context).push(
             MaterialPageRoute(
               builder: (context) => PreviewScreen(
-                files: [media],
+                files: [XFile(outputPath)],
                 isVideo: true,
                 isFromGallery: true,
               ),
             ),
           );
-        } finally {
-          tempController?.dispose();
+        } else {
+          // Duration OK
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (context) => PreviewScreen(
+                files: [video],
+                isVideo: true,
+                isFromGallery: true,
+              ),
+            ),
+          );
         }
-      } else {
-        // Image
+      } catch (e) {
+        debugPrint("Error checking/trimming video: $e");
+        // Fallback to original
         Navigator.of(context).push(
           MaterialPageRoute(
             builder: (context) => PreviewScreen(
-              files: [media],
-              isVideo: false,
+              files: [video],
+              isVideo: true,
               isFromGallery: true,
             ),
           ),
         );
+      } finally {
+        tempController?.dispose();
       }
     }
   }
