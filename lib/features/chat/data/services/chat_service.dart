@@ -1,37 +1,156 @@
-import 'package:dio/dio.dart';
-import '../../../auth/data/models/user_model.dart';
+import '../../../../core/network/api_client.dart';
+import '../../../../core/constants/api_constants.dart';
+import '../models/chat_model.dart';
+import '../models/conversation_model.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class ChatService {
-  // final Dio _dio;
+  final ApiClient _apiClient;
+  final _storage = const FlutterSecureStorage();
 
-  ChatService({Dio? dio}); // : _dio = dio ?? Dio();
+  ChatService({ApiClient? apiClient}) : _apiClient = apiClient ?? ApiClient();
 
-  Future<List<User>> getConversations() async {
-    // Mock
-    await Future.delayed(const Duration(milliseconds: 500));
-    return List.generate(
-      5,
-      (index) => User(
-        id: (index + 10).toString(),
-        name: "Chat User $index",
-        email: "chat$index@test.com",
-        avatar: "https://dummyimage.com/50",
-        bio: "Hi",
-      ),
-    );
+  /// GET /chats/{userId} - Get chat messages between authenticated user and another user
+  Future<ChatResponse> getChats(String userId, {String? cursor}) async {
+    try {
+      // Set auth token
+      final token = await _storage.read(key: 'auth_token');
+      if (token != null) {
+        _apiClient.setToken(token);
+      }
+
+      final endpoint = cursor != null
+          ? "${ApiConstants.chatMessages(userId)}?cursor=$cursor"
+          : ApiConstants.chatMessages(userId);
+
+      final response = await _apiClient.get(endpoint);
+
+      if (response.statusCode == 200 && response.data != null) {
+        final data = response.data['data'] as List;
+        final chats = data.map((e) => Chat.fromJson(e)).toList();
+        final nextCursor = response.data['next_cursor'] as String?;
+
+        return ChatResponse(chats: chats, nextCursor: nextCursor);
+      }
+
+      return ChatResponse(chats: [], nextCursor: null);
+    } catch (e) {
+      print("Get Chats Error: $e");
+      return ChatResponse(chats: [], nextCursor: null);
+    }
   }
 
-  Future<List<Map<String, dynamic>>> getMessages(String userId) async {
-    // Mock
-    await Future.delayed(const Duration(milliseconds: 500));
-    return [
-      {'senderId': "1", 'text': 'Hello!', 'time': '10:00 AM'},
-      {'senderId': userId, 'text': 'Hi there!', 'time': '10:01 AM'},
-      {'senderId': "1", 'text': 'How are you?', 'time': '10:02 AM'},
-    ];
+  /// POST /chats - Send a new chat message
+  Future<String?> sendMessage(String receiverId, String message) async {
+    try {
+      // Set auth token
+      final token = await _storage.read(key: 'auth_token');
+      if (token != null) {
+        _apiClient.setToken(token);
+      }
+
+      final response = await _apiClient.post(
+        ApiConstants.chats,
+        data: {"receiver_id": receiverId, "message": message},
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return response.data['id']?.toString();
+      }
+      return null;
+    } catch (e) {
+      print("Send Message Error: $e");
+      return null;
+    }
   }
 
-  Future<void> sendMessage(String userId, String text) async {
-    // Mock Send
+  /// POST /chats/{chatId}/read - Mark a chat message as read
+  Future<bool> markAsRead(String chatId) async {
+    try {
+      // Set auth token
+      final token = await _storage.read(key: 'auth_token');
+      if (token != null) {
+        _apiClient.setToken(token);
+      }
+
+      final response = await _apiClient.post(
+        ApiConstants.markChatAsRead(chatId),
+      );
+
+      return response.statusCode == 200 || response.statusCode == 201;
+    } catch (e) {
+      print("Mark As Read Error: $e");
+      return false;
+    }
   }
+
+  /// GET /chats/unread/count - Get total unread message count
+  Future<int> getUnreadCount() async {
+    try {
+      // Set auth token
+      final token = await _storage.read(key: 'auth_token');
+      if (token != null) {
+        _apiClient.setToken(token);
+      }
+
+      final response = await _apiClient.get(ApiConstants.chatUnreadCount);
+
+      if (response.statusCode == 200 && response.data != null) {
+        return response.data['unread_count'] ?? 0;
+      }
+      return 0;
+    } catch (e) {
+      print("Get Unread Count Error: $e");
+      return 0;
+    }
+  }
+
+  /// GET /chats/conversations - Get paginated list of conversations
+  Future<ConversationResponse> getConversations({String? cursor}) async {
+    try {
+      // Set auth token
+      final token = await _storage.read(key: 'auth_token');
+      if (token != null) {
+        _apiClient.setToken(token);
+      }
+
+      final endpoint = cursor != null
+          ? "${ApiConstants.chatConversations}?cursor=$cursor"
+          : ApiConstants.chatConversations;
+
+      final response = await _apiClient.get(endpoint);
+
+      if (response.statusCode == 200 && response.data != null) {
+        final data = response.data['data'] as List;
+        final conversations = data
+            .map((conv) => Conversation.fromJson(conv))
+            .toList();
+
+        final nextCursor = response.data['next_cursor'] as String?;
+
+        return ConversationResponse(
+          conversations: conversations,
+          nextCursor: nextCursor,
+        );
+      }
+
+      return ConversationResponse(conversations: [], nextCursor: null);
+    } catch (e) {
+      return ConversationResponse(conversations: [], nextCursor: null);
+    }
+  }
+}
+
+class ChatResponse {
+  final List<Chat> chats;
+  final String? nextCursor;
+
+  ChatResponse({required this.chats, this.nextCursor});
+}
+
+class ConversationResponse {
+  final List<Conversation> conversations;
+  final String? nextCursor;
+
+  ConversationResponse({required this.conversations, this.nextCursor});
 }

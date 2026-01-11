@@ -25,6 +25,13 @@ class ApiConstants {
   static const String musics = '/musics';
   static const String myVideos = '/my-videos';
 
+  // Chat
+  static const String chats = '/chats';
+  static const String chatConversations = '/chats/conversations';
+  static const String chatUnreadCount = '/chats/unread/count';
+  static String chatMessages(String userId) => '/chats/$userId';
+  static String markChatAsRead(String chatId) => '/chats/$chatId/read';
+
   // DeepAR
   static const String deepArAndroidLicenseKey =
       "bdc0c5c55c9b202efafe392f4a06f8be9585f082a8f370c2fecad4e027cd712e293c63730d249d8e";
@@ -40,4 +47,15 @@ class ApiConstants {
   static const int zegoAppId = 33314593; // Replace with your AppID (int)
   static const String zegoAppSign =
       "4ce1de23510d38c70b26458a350f38947851faddc39baa6506777b8f26b58cd3"; // Replace with your AppSign (String)
+
+  // Broadcasting (Pusher/Reverb)
+  // TODO: Update these with your broadcasting credentials
+  static const String pusherAppKey =
+      "6c991585b92b0c69b450"; // Or Reverb app key
+  static const String pusherCluster = "ap1"; // For Pusher
+  static const String pusherHost =
+      "gv.stock-manager.online"; // For Reverb/self-hosted
+  static const int pusherPort = 443;
+  static const bool pusherUseTLS = true;
+  static const String pusherScheme = "https";
 }

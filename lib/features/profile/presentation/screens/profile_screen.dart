@@ -16,6 +16,7 @@ import 'edit_profile_screen.dart';
 import 'package:test_flutter/features/feed/presentation/providers/drafts_provider.dart';
 import '../../data/models/profile_video_model.dart';
 import '../../../../features/feed/presentation/screens/drafts_screen.dart';
+import '../../../chat/presentation/screens/chat_detail_screen.dart';
 import 'profile_feed_screen.dart';
 
 // State for pagination
@@ -145,6 +146,11 @@ final userProfileProvider = FutureProvider.family<User, String>((
   return ref.read(profileServiceProvider).getProfile(userId);
 });
 
+// Provider for current user's profile (calls /user endpoint)
+final currentUserProfileProvider = FutureProvider<User>((ref) async {
+  return ref.read(profileServiceProvider).getCurrentUser();
+});
+
 final userStatsProvider =
     FutureProvider.family<
       Map<String, int>,
@@ -177,12 +183,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     super.initState();
     _scrollController.addListener(_scrollListener);
 
-    // Invalidate profile provider to force fresh fetch for other users
-    if (!widget.isCurrentUser) {
-      Future.microtask(() {
+    // Invalidate profile provider to force fresh fetch
+    Future.microtask(() {
+      if (widget.isCurrentUser) {
+        ref.invalidate(currentUserProfileProvider);
+      } else {
         ref.invalidate(userProfileProvider(widget.userId));
-      });
-    }
+      }
+    });
 
     Future.microtask(
       () => ref
@@ -213,7 +221,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       }
 
       // Refresh user data
-      ref.invalidate(userProfileProvider(widget.userId));
+      if (widget.isCurrentUser) {
+        ref.invalidate(currentUserProfileProvider);
+      } else {
+        ref.invalidate(userProfileProvider(widget.userId));
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(
@@ -258,24 +270,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     print(
       'ProfileScreen build - isCurrentUser: ${widget.isCurrentUser}, userId: ${widget.userId}',
     );
+
+    // Always fetch fresh user data from API
     if (widget.isCurrentUser) {
-      final authState = ref.watch(authControllerProvider);
-      userAsync = authState.when(
-        data: (user) =>
-            user != null ? AsyncValue.data(user) : const AsyncValue.loading(),
-        loading: () => const AsyncValue.loading(),
-        error: (e, st) => AsyncValue.error(e, st),
-      );
+      // Use a separate provider that calls getCurrentUser() for fresh data
+      userAsync = ref.watch(currentUserProfileProvider);
     } else {
       userAsync = ref.watch(userProfileProvider(widget.userId));
       userAsync.whenData((user) {});
     }
-    final statsAsync = ref.watch(
-      userStatsProvider((
-        userId: widget.userId,
-        isCurrentUser: widget.isCurrentUser,
-      )),
-    );
     final draftsAsync = ref.watch(draftsProvider);
     final hasDrafts = draftsAsync.valueOrNull?.isNotEmpty ?? false;
     final draftsCount = draftsAsync.valueOrNull?.length ?? 0;
@@ -436,24 +439,30 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                       error: (_, __) => const SizedBox(),
                     ),
                     const SizedBox(height: 20),
-                    // Stats
-                    statsAsync.when(
-                      data: (stats) => Row(
+                    // Stats - use formatted counts from user
+                    userAsync.when(
+                      data: (user) => Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          _buildStat("Following", stats['following'] ?? 0),
+                          _buildStat(
+                            "Following",
+                            user.formattedFollowingCount ?? '0',
+                          ),
                           Container(
                             height: 30,
                             width: 1,
                             color: Colors.white.withValues(alpha: 0.2),
                           ),
-                          _buildStat("Followers", stats['followers'] ?? 0),
+                          _buildStat(
+                            "Followers",
+                            user.formattedFollowersCount ?? '0',
+                          ),
                           Container(
                             height: 30,
                             width: 1,
                             color: Colors.white.withValues(alpha: 0.2),
                           ),
-                          _buildStat("Likes", stats['likes'] ?? 0),
+                          _buildStat("Likes", user.formattedLikesCount ?? '0'),
                         ],
                       ),
                       loading: () => const CircularProgressIndicator(),
@@ -565,6 +574,81 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                                 ),
                               ),
                             ),
+                            error: (_, __) => const SizedBox.shrink(),
+                          ),
+                        // Add message button if both users follow each other
+                        if (!widget.isCurrentUser)
+                          userAsync.when(
+                            data: (user) {
+                              // Show message button only if mutual following
+                              if (user.isFollowing && user.youAreFollowed) {
+                                return Row(
+                                  children: [
+                                    const SizedBox(width: 12),
+                                    Container(
+                                      decoration: BoxDecoration(
+                                        gradient: AppColors.primaryGradient,
+                                        borderRadius: BorderRadius.circular(30),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: AppColors.neonCyan
+                                                .withValues(alpha: 0.4),
+                                            blurRadius: 10,
+                                            offset: const Offset(0, 4),
+                                          ),
+                                        ],
+                                      ),
+                                      child: MaterialButton(
+                                        onPressed: () {
+                                          // Get current user
+                                          final currentUser = ref
+                                              .read(authControllerProvider)
+                                              .value;
+                                          if (currentUser == null) return;
+
+                                          // Navigate to chat screen
+                                          Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                              builder: (context) =>
+                                                  ChatDetailScreen(
+                                                    user: user,
+                                                    currentUserId:
+                                                        currentUser.id,
+                                                  ),
+                                            ),
+                                          );
+                                        },
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 24,
+                                          vertical: 12,
+                                        ),
+                                        child: const Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(
+                                              Icons.message_rounded,
+                                              color: Colors.white,
+                                              size: 18,
+                                            ),
+                                            SizedBox(width: 8),
+                                            Text(
+                                              "Message",
+                                              style: TextStyle(
+                                                color: Colors.white,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                );
+                              }
+                              return const SizedBox.shrink();
+                            },
+                            loading: () => const SizedBox.shrink(),
                             error: (_, __) => const SizedBox.shrink(),
                           ),
                         const SizedBox(width: 12),
@@ -759,13 +843,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     );
   }
 
-  Widget _buildStat(String label, int count) {
+  Widget _buildStat(String label, String count) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16.0),
       child: Column(
         children: [
           Text(
-            "$count",
+            count,
             style: const TextStyle(
               fontWeight: FontWeight.bold,
               fontSize: 18,

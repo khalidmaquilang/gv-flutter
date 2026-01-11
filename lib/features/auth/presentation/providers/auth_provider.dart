@@ -1,8 +1,9 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../../data/models/user_model.dart';
 import '../../data/services/auth_service.dart';
-
 import '../../../../core/providers/api_provider.dart';
+import '../../../../core/services/broadcasting_service.dart';
 
 final authServiceProvider = Provider((ref) {
   final apiClient = ref.watch(apiClientProvider);
@@ -23,6 +24,20 @@ class AuthController extends StateNotifier<AsyncValue<User?>> {
     try {
       final user = await _authService.login(email, password);
       state = AsyncValue.data(user);
+
+      // Initialize broadcasting for real-time chat
+      try {
+        final broadcastingService = BroadcastingService();
+        final token = await const FlutterSecureStorage().read(
+          key: 'auth_token',
+        );
+        if (token != null) {
+          await broadcastingService.initialize(user.id, token);
+        }
+      } catch (e) {
+        print('Broadcasting initialization error: $e');
+        // Don't fail login if broadcasting fails
+      }
     } catch (e, st) {
       state = AsyncValue.error(e, st);
     }
@@ -78,6 +93,22 @@ class AuthController extends StateNotifier<AsyncValue<User?>> {
     try {
       final user = await _authService.restoreSession();
       state = AsyncValue.data(user);
+
+      // Initialize broadcasting if user session restored
+      if (user != null) {
+        try {
+          final broadcastingService = BroadcastingService();
+          final token = await const FlutterSecureStorage().read(
+            key: 'auth_token',
+          );
+          if (token != null) {
+            await broadcastingService.initialize(user.id, token);
+          }
+        } catch (e) {
+          print('Broadcasting initialization error on restore: $e');
+          // Don't fail session restore if broadcasting fails
+        }
+      }
     } catch (e, st) {
       state = AsyncValue.error(e, st);
     }
