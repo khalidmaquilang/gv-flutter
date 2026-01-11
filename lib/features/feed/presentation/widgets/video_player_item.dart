@@ -405,18 +405,7 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
           child: Container(
             color: Colors.black,
             child: Align(
-              alignment: isControllerInitialized
-                  // Align standard vertical videos (9:16 is ~0.56) to top
-                  // Align wider videos (4:5, 1:1, 16:9) to center
-                  ? (_controller!.value.aspectRatio < 0.7
-                        ? Alignment.topCenter
-                        : Alignment.center)
-                  : Alignment.center,
-              // Layout strategy:
-              // 1. Vertical Videos (< 0.7): Use SizedBox.expand + FittedBox(cover) to fill screen.
-              //    - This crops slightly on sides for tall screens but removes black bars.
-              // 2. Other Videos (Square/Landscape): Use Center + AspectRatio (effectively contain)
-              //    - This ensures the whole video is visible with black bars.
+              alignment: Alignment.center,
               child: _hasError
                   ? Column(
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -462,17 +451,6 @@ class _VideoPlayerItemState extends ConsumerState<VideoPlayerItem>
                               : Container(color: Colors.black),
                         ),
                       ],
-                    )
-                  : (_controller!.value.aspectRatio < 0.7)
-                  ? SizedBox.expand(
-                      child: FittedBox(
-                        fit: BoxFit.cover,
-                        child: SizedBox(
-                          width: _controller!.value.size.width,
-                          height: _controller!.value.size.height,
-                          child: VideoPlayer(_controller!),
-                        ),
-                      ),
                     )
                   : Center(
                       child: AspectRatio(
