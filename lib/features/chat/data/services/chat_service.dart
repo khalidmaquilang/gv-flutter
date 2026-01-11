@@ -1,7 +1,7 @@
 import '../../../../core/network/api_client.dart';
 import '../../../../core/constants/api_constants.dart';
-import '../../../auth/data/models/user_model.dart';
 import '../models/chat_model.dart';
+import '../models/conversation_model.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class ChatService {
@@ -105,12 +105,39 @@ class ChatService {
     }
   }
 
-  /// Mock method to get conversations (will be replaced with real API later)
-  /// This aggregates chat data to show on the chat list screen
-  Future<List<User>> getConversations() async {
-    // TODO: Create a backend endpoint to get list of users with recent conversations
-    // For now, returning empty to be compatible with existing code
-    return [];
+  /// GET /chats/conversations - Get paginated list of conversations
+  Future<ConversationResponse> getConversations({String? cursor}) async {
+    try {
+      // Set auth token
+      final token = await _storage.read(key: 'auth_token');
+      if (token != null) {
+        _apiClient.setToken(token);
+      }
+
+      final endpoint = cursor != null
+          ? "${ApiConstants.chatConversations}?cursor=$cursor"
+          : ApiConstants.chatConversations;
+
+      final response = await _apiClient.get(endpoint);
+
+      if (response.statusCode == 200 && response.data != null) {
+        final data = response.data['data'] as List;
+        final conversations = data
+            .map((conv) => Conversation.fromJson(conv))
+            .toList();
+
+        final nextCursor = response.data['next_cursor'] as String?;
+
+        return ConversationResponse(
+          conversations: conversations,
+          nextCursor: nextCursor,
+        );
+      }
+
+      return ConversationResponse(conversations: [], nextCursor: null);
+    } catch (e) {
+      return ConversationResponse(conversations: [], nextCursor: null);
+    }
   }
 }
 
@@ -119,4 +146,11 @@ class ChatResponse {
   final String? nextCursor;
 
   ChatResponse({required this.chats, this.nextCursor});
+}
+
+class ConversationResponse {
+  final List<Conversation> conversations;
+  final String? nextCursor;
+
+  ConversationResponse({required this.conversations, this.nextCursor});
 }

@@ -1,6 +1,6 @@
 class ApiConstants {
   static const String baseUrl =
-      'https://gv.stock-manager.online/api/v1'; // Android Emulator localhost
+      'https://1c51a75c5653.ngrok-free.app/api/v1'; // Android Emulator localhost
 
   // Auth
   static const String login = '/login';
@@ -27,6 +27,7 @@ class ApiConstants {
 
   // Chat
   static const String chats = '/chats';
+  static const String chatConversations = '/chats/conversations';
   static const String chatUnreadCount = '/chats/unread/count';
   static String chatMessages(String userId) => '/chats/$userId';
   static String markChatAsRead(String chatId) => '/chats/$chatId/read';

@@ -1,17 +1,44 @@
 import '../../../auth/data/models/user_model.dart';
 
 class Conversation {
-  final User user; // The other user in the conversation
+  final String id;
+  final List<User> participants;
   final String? lastMessage;
   final int unreadCount;
   final DateTime? lastMessageTime;
 
   Conversation({
-    required this.user,
+    required this.id,
+    required this.participants,
     this.lastMessage,
     this.unreadCount = 0,
     this.lastMessageTime,
   });
+
+  factory Conversation.fromJson(Map<String, dynamic> json) {
+    // Parse participants array
+    final participantsList =
+        (json['participants'] as List?)
+            ?.map((p) => User.fromJson(p as Map<String, dynamic>))
+            .toList() ??
+        [];
+
+    // Parse last_message object
+    final lastMessageData = json['last_message'] as Map<String, dynamic>?;
+    final messageText = lastMessageData?['message'] as String?;
+    final createdAt = lastMessageData?['created_at'] as String?;
+
+    return Conversation(
+      id: json['id'] as String,
+      participants: participantsList,
+      lastMessage: messageText,
+      unreadCount: json['unread_count'] as int? ?? 0,
+      lastMessageTime: createdAt != null ? DateTime.parse(createdAt) : null,
+    );
+  }
+
+  // Get the other user (for direct conversations)
+  User? get user => participants.isNotEmpty ? participants.first : null;
 
   // Helper method to get formatted time
   String get formattedTime {
